@@ -1,0 +1,6 @@
+[Unit]
+Description=Braillatron device services
+Wants=braillatron-ui.service braillatron-sentinel.service braillatron-sync.timer
+
+[Install]
+WantedBy=multi-user.target

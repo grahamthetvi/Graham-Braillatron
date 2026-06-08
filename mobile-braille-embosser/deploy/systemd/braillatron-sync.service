@@ -1,0 +1,8 @@
+[Unit]
+Description=Braillatron document sync to /data
+After=local-fs.target
+
+[Service]
+Type=oneshot
+Environment=BRAILLATRON_CONFIG=/etc/braillatron
+ExecStart=/usr/local/bin/braillatron-sync

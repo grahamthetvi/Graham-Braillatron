@@ -1,0 +1,14 @@
+[Unit]
+Description=Braillatron ScreenReader UI
+After=network.target sound.target speech-dispatcher.service brltty.service
+Wants=speech-dispatcher.service
+
+[Service]
+Type=simple
+Environment=BRAILLATRON_CONFIG=/etc/braillatron
+ExecStart=/usr/local/bin/braillatron-ui /etc/braillatron/hardware.conf
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=braillatron.target

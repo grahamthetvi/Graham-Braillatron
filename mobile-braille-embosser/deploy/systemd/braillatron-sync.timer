@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic Braillatron document sync
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60s
+Unit=braillatron-sync.service
+
+[Install]
+WantedBy=timers.target

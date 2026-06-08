@@ -1,0 +1,16 @@
+speech-dispatcher
+espeak-ng
+espeak-ng-data
+brltty
+pipewire
+wireplumber
+rsync
+parted
+e2fsprogs
+gpiod
+curl
+unzip
+build-essential
+g++
+libspeechd-dev
+libbrlapi-dev

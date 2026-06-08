@@ -1,0 +1,10 @@
+# Append to /etc/asound.conf on Orange Pi 3B after I2S bring-up.
+pcm.!default {
+  type plug
+  slave.pcm "hw:1,0"
+}
+
+ctl.!default {
+  type hw
+  card 1
+}

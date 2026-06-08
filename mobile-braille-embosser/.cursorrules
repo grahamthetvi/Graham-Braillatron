@@ -1,0 +1,81 @@
+# Master Project Profile: Mobile Smart Braille Notetaker & Embosser
+
+## 1. System Engineering & OS Architecture
+- **Lead Architect**: Addison
+- **Target Hardware**: Orange Pi 3B SBC (4GB LPDDR4, Rockchip RK3566) + Custom PCB HAT
+- **Operating System**: DietPi Linux (Debian 13 Trixie, Vendor Kernel 6.1.115 for peripheral stability)
+- **Firmware Runtime**: Arduino Micro (ATmega32U4, 5V Logic) acting as a real-time safety watchdog
+- **Storage Protection Strategy (Prototype Stage)**:
+  - Core root filesystem (`/`) is mounted **Read-Only (RO)** to prevent SD/eMMC flash degradation
+  - Volatile directories (`/var/log`, `/var/tmp`, `/tmp`) are isolated in RAM via an **overlayfs** layer
+  - A background `rsync` script handles document persistence transactionally by mirroring serial blocks from a RAM write-buffer to a persistent flash folder. (Production A/B partition switching via U-Boot is deferred).
+
+## 2. Workspace & Directory Topology
+- `firmware-arduino/`: Real-time watchdog, hardware interrupt routines, MPU6050 freefall handling, local keyboard scanning.
+- `daemon-dietpi/`: Core ScreenReader service, focus loops, asynchronous processing, spatial delay line filtration, telemetry trackers.
+- `shared/`: Single source of truth for communication schemas, binary frame packet formats, and CRC validation rules.
+- `specs/`: Houses the master `architecture_v6.md` file.
+
+## 3. Subsystem Specifications & Hard Constraints
+
+### 3.1 Unified I/O & The ScreenReader Paradigm
+- **Interface UI Architecture**: Focus-based linear navigation state machine to process and route unified focused entries concurrently.
+- **Built-in Physical Key Matrix Layout**: Standard 6-key Braille layout equipped with a center D-pad (Up/Down) and custom Action Keys.
+  - *Backspace Key*: Affixed left of the D-pad.
+  - *Enter Key*: Affixed right of the D-pad.
+  - *Shift / TTS Control Key*: Located beneath Enter. Functions as a global low-latency hardware interrupt to instantly pause/resume audio speech synthesis streams.
+  - *Speech Button*: Acts as a global Push-to-Talk (PTT) gate for the local Vosk Speech-to-Text (STT) audio capture engine buffer.
+  - *Menu Button*: Hardware override that forces the global UI overlay layout to open.
+- **Peripheral / Assistive Mappings**:
+  - QWERTY (USB/Bluetooth): Mirror desktop access patterns (Windows Key = Menu, Win + H = Dictation).
+  - Refreshable Displays (Mantis Q40): Integrated over USB/Bluetooth sockets leveraging direct BRLTTY or serial socket abstractions.
+
+### 3.2 Production Keyboard Matrix Driver
+- **Electrical Layout**: 4x4 matrix with 1N4148 fast-switching axial diodes wired in series with each switch. Guarantees true N-Key Rollover (NKRO) without ghosting.
+- **Processing Architecture Split**:
+  - *Arduino Micro*: Runs a non-blocking Timer1 hardware interrupt to scan rows and sample columns at exactly 1 kHz. Applies an 8-ms sliding software integrator bitwise debounce window. Transmits a packed 2-byte matrix state update over UART/SPI *only when an edge state change is detected*.
+  - *Orange Pi 3B*: Receives the 2-byte packet passively and executes a 40-ms temporal chord integration window to aggregate multiple concurrent key state transitions into a single multi-finger Braille chord character (e.g., Dots 1+3+5 = "O").
+
+### 3.3 Y-Axis Paper Transport (Tractor Feed Kinematics)
+- **Material Constraints**: Continuous-form 100 lb cardstock paper. Perforations are spaced exactly 0.5 inches (12.7 mm) apart center-to-center.
+- **Motor Profile**: NEMA 17 Bipolar Stepper Motor ($1.8^{\circ}$ step angle, 200 full steps/revolution). Minimum holding torque $\ge 0.45\text{ N}\cdot\text{m}$ (45 N·cm). Operated between 1.2A and 1.5A RMS via TMC2209 driver UART configuration registers protected by 1N4148 steering diodes.
+- **Mechanical Reduction Assembly**:
+  - Tractor Sprocket Wheel: 10-pin drive sprocket with an exact Pitch Circumference ($C$) of $10 \times 12.7\text{ mm} = 127\text{ mm}$.
+  - Driving Pulley: 20-tooth aluminum pulley ($Z_1$) mounted to the NEMA 17 motor shaft.
+  - Driven Pulley: 127-tooth custom pulley ($Z_2$) mounted to the 8 mm ground steel linear tractor shaft supported by twin KFL08 zinc flange bearings.
+  - Reduction Ratio ($R$): Exactly $\frac{Z_2}{Z_1} = \frac{127}{20} = 6.35$.
+- **Mathematical Resolution Proof**:
+  $$\text{Linear Travel Per Motor Revolution} = \frac{C}{R} = \frac{127\text{ mm}}{6.35} = 20\text{ mm}$$
+  $$\text{Resolution Per Full Step} = \frac{20\text{ mm}}{200\text{ steps}} = 0.1\text{ mm/step}$$
+- **Execution Rule**: To process an exact 10-mm paper line advance, the motion driver must execute exactly 100 full steps (or 1,600 microsteps when locked at 16x microstepping mode).
+
+### 3.4 Embossing Head Carriage & Mechanical Linkage Mechanics
+- **Actuator Spacing Topology**: Staggered dual-row layout to meet standard 2.5-mm Braille dot profiles.
+  - *Row A*: Handles Pins 1, 3, 5.
+  - *Row B*: Handles Pins 2, 4, 6.
+  - *Physical Offsets*: Staggered by exactly 2.5 mm along the X-axis and 20 mm along the Y-axis.
+- **Spatial Delay Filter Strategy**: The carriage control daemon on the Pi must store outbound dot matrices inside a thread-safe circular delay line. Firing pulses for Row B actuators must be mathematically deferred until the carriage movement log registers exactly 2.5 mm of horizontal travel past Row A's execution strike coordinate.
+- **Linkage Physics**: Slider-Crank / Eccentric Toggle Joint assembly. 
+  - Generates a linear pin throw of 1.8 mm to 2.0 mm to produce a clean 0.5-mm deep indentation.
+  - Mechanical force amplification follows the function:
+    $$F_{\text{pin}} = \frac{\tau_{\text{motor}}}{r \cdot \cos(\theta)}$$
+  - As the linkage passes through its $90^{\circ}$ sweep toward Top Dead Center (TDC), the force advantage approaches infinity, lowering current draw and thermal dissipation at the peak of the impact stroke.
+  - Retraction is assisted by high-carbon music-wire compression springs ($k = 1.6\text{ N/mm}$, preloaded to 2.0 N) mounted around the pin body to ensure rapid, snappy retraction.
+  - Thermal mitigation is managed via a unified extruded aluminum cooling bar (120 mm x 15 mm) tracking the actuator array, backed by a non-resettable, metal-cased 85°C thermal cutoff safety fuse.
+
+### 3.5 System Safety Interlocks & Telemetry
+- **Hardware Freefall Protection**:
+  - On system boot, the Arduino Micro configures the hardware freefall threshold (`FF_THR`) and duration (`FF_DUR`) registers on an autonomous MPU6050 accelerometer.
+  - The MPU6050 physical INT pin is tied directly to the Arduino's INT0 hardware interrupt line (Pin 3).
+  - Because INT0 holds structural priority over the 1 kHz matrix scanning loop, any $0g$ state instant-trips an isolated ISR. The Arduino bypasses all standard software state validation loops and drops Pin 4 LOW in **< 10 ms**.
+  - Pin 4 interfaces with a high-current **TC4420 gate driver** switching an **IRLZ44N N-Channel Power MOSFET**, instantly cutting all power to the 14.8V stepper rail to stop physical travel prior to an impact drop.
+- **Battery & Thermal Management**:
+  - An LTC2944 gas gauge monitors a 4S Lithium battery pack (regulated via a 5V/5A TPS5430 synchronous buck module, distributed via dual-row 15A terminal blocks) over I2C.
+  - If capacity cross-evaluates below **5%**, the telemetry daemon blocks further motion, instantly flushes active RAM text caches to permanent `.brf` file layouts, triggers a specific structural shutdown haptic notification via a **DRV2605L driver** pulsing a **10 mm LRA motor**, and executes a graceful Linux command shutdown.
+  - Boundary tracking is verified via a **TCRT5000 reflective infrared sensor** (paper edge limit) and localized Y-axis homing via a **TCST2103 optical slot sensor**.
+
+## 4. Architectural Rules & Guardrails
+1. **Protocol Isolation**: Any structural updates to serial communication variables, binary packet framing, or command enums must be edited inside the `shared/` directory *before* modifying code inside the firmware or daemon runtimes.
+2. **Deterministic ISR Hygiene**: Keep all code inside `firmware-arduino/` lean. Never use the standard C++ `String` object or any mechanism that relies on dynamic allocation to ensure memory safety on the ATmega32U4.
+3. **Transactional RO Write Hygiene**: Code writing down to storage must follow transactional atomic write patterns (`write -> flush -> sync`) to handle accidental power losses gracefully without impacting the integrity of the read-only filesystem.
+4. **Environment Isolation**: No hardware specific paths, local configurations, or serial interface assignments should be hard-coded inside execution daemons. Keep all execution settings separated inside system parameters in `daemon-dietpi/config/`.
