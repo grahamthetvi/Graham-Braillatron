@@ -29,10 +29,36 @@ void on_speech_ptt_gate(bool open)
     }
 }
 
+bool menu_overlay_open()
+{
+    return g_output_hub != nullptr && g_output_hub->menu_overlay().is_open();
+}
+
 void on_menu_overlay(bool open)
 {
     if (g_output_hub != nullptr) {
         g_output_hub->on_menu_overlay(open);
+    }
+}
+
+void on_menu_move(bool up)
+{
+    if (g_output_hub != nullptr) {
+        g_output_hub->on_menu_move(up);
+    }
+}
+
+void on_menu_activate()
+{
+    if (g_output_hub != nullptr) {
+        g_output_hub->on_menu_activate();
+    }
+}
+
+void on_safety_broadcast(uint8_t fault_code, uint8_t severity, uint16_t detail)
+{
+    if (g_output_hub != nullptr) {
+        g_output_hub->announce_safety_fault(fault_code, severity, detail);
     }
 }
 

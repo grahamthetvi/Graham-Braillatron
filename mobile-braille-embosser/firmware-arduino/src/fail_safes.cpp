@@ -10,7 +10,12 @@ void fail_safes_init(void)
     digitalWrite(PIN_STEPPER_CUT, HIGH);
 }
 
-void fail_safes_poll(void)
+void fail_safes_cut_rail(void)
 {
-    /* Stepper rail is cut in INT0 ISR; no main-loop recovery in prototype. */
+    digitalWrite(PIN_STEPPER_CUT, LOW);
+}
+
+void fail_safes_restore_rail(void)
+{
+    digitalWrite(PIN_STEPPER_CUT, HIGH);
 }

@@ -1,6 +1,7 @@
 /*
- * Graham Brailler — Arduino Micro (skeleton_v4).
+ * Graham Brailler — Arduino Micro (skeleton_v5, direct-pin keyboard).
  * Logic is in src/*.cpp; this file only wires setup/loop (no src/ includes).
+ * src/protocol.{h,c} are symlinks to ../shared/ — the single protocol source.
  */
 
 void braillatron_setup(void);

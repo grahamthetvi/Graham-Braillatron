@@ -7,6 +7,7 @@
 
 #include "../telemetry/telemetry_config.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -28,6 +29,10 @@ public:
     void on_shift_tts_toggle(bool pressed);
     void on_speech_ptt_gate(bool open);
     void on_menu_overlay(bool open);
+    void on_menu_move(bool up);
+    void on_menu_activate();
+
+    void announce_safety_fault(uint8_t fault_code, uint8_t severity, uint16_t detail);
 
     MenuOverlay &menu_overlay();
 

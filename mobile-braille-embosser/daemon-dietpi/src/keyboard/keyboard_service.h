@@ -8,7 +8,6 @@
 #include "serial_listener.h"
 
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <vector>
@@ -32,10 +31,12 @@ public:
     bool try_serial_reconnect();
 
 private:
-    void enqueue_matrix_state(uint16_t key_state);
-    void drain_matrix_queue(uint64_t now_ms);
+    void enqueue_frame(const SerialFrame &frame);
+    void drain_frame_queue();
+    void handle_key_state(uint16_t key_state);
+    void handle_chord(uint8_t dot_mask);
+    void handle_safety(const braillatron_safety_broadcast_t &payload);
     void handle_control_edge(const ControlEdge &edge);
-    static uint64_t now_ms();
 
     KeyboardConfig config_;
     MatrixMap matrix_map_;
@@ -44,7 +45,10 @@ private:
     FocusNavigator focus_;
 
     std::mutex queue_mutex_;
-    std::vector<uint16_t> pending_states_;
+    std::vector<SerialFrame> pending_frames_;
+
+    uint8_t last_announced_fault_ = 0;
+    uint8_t last_announced_severity_ = 0;
 
     std::atomic<bool> running_ {false};
     std::atomic<bool> serial_started_ {false};

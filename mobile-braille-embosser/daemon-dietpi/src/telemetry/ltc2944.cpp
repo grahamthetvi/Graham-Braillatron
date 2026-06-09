@@ -40,12 +40,11 @@ FuelGaugeReading Ltc2944::read()
     uint16_t raw_temp = 0;
     uint16_t raw_charge = 0;
 
-    if (!bus_.read_register16(REG_VOLT_MSB, raw_voltage)) {
+    if (!bus_.read_register16(REG_VOLT_MSB, raw_voltage) ||
+        !bus_.read_register16(REG_TEMP_MSB, raw_temp) ||
+        !bus_.read_register16(REG_CHARGE_MSB, raw_charge)) {
         return reading;
     }
-
-    bus_.read_register16(REG_TEMP_MSB, raw_temp);
-    bus_.read_register16(REG_CHARGE_MSB, raw_charge);
 
     reading.battery_mv =
         static_cast<uint16_t>(raw_voltage * config_.ltc2944_mv_per_lsb / 1000.0);

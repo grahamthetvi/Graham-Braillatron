@@ -2,7 +2,7 @@
 
 **Target:** Orange Pi 3B (RK3566, aarch64)  
 **OS:** DietPi (Debian 13 Trixie, vendor kernel 6.1.115)  
-**Goal:** Flash a micro SD card, run one bootstrap pass, reboot, and have Braillatron services start automatically — even with no Arduino, I2C, or keyboard hardware attached.
+**Goal:** Flash a micro SD card, run one bootstrap pass, reboot, and have Braillatron services start automatically — even with no Arduino co-processor or Pi-side I2C/GPIO peripherals attached.
 
 This guide covers **software only**. For wiring, power, and peripheral pinouts, see [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md).
 
@@ -19,6 +19,7 @@ After bootstrap, the SD card provides:
 | Document sync (rsync timer) | `/usr/local/bin/braillatron-sync` → `braillatron-sync.timer` |
 | Config | `/etc/braillatron/*.conf` |
 | Persistent documents | `/data/braillatron/documents/` |
+| Settings overrides (RO root) | `/data/braillatron/settings/` |
 | Vosk STT model | `/data/braillatron/vosk-models/vosk-model-small-en-us-0.15/` |
 | RAM document layers | `/var/lib/braillatron/ram/` |
 
@@ -66,7 +67,10 @@ rsync -av --exclude '.git' mobile-braille-embosser/ pi@<pi-ip>:~/braillatron/mob
 1. Download the Orange Pi 3B DietPi image.
 2. Flash it to the micro SD card.
 3. If your DietPi build supports it, pre-configure hostname, SSH, and network in `dietpi.txt` on the boot partition before first insert.
-4. Insert the SD card and power on the Pi.
+4. **Reserve tail space for `/data`.** Bootstrap creates a ~768 MB ext4 partition at the end of the SD card. DietPi normally auto-expands the root partition to fill the card on first boot, which leaves no room for `/data` and causes bootstrap to fail. Before the Pi's first power-on, either:
+   - Disable root-partition auto-expand in DietPi config (preferred), **or**
+   - Leave at least **768 MB unallocated** at the end of the disk when you flash or resize the image.
+5. Insert the SD card and power on the Pi.
 
 ---
 
@@ -75,6 +79,14 @@ rsync -av --exclude '.git' mobile-braille-embosser/ pi@<pi-ip>:~/braillatron/mob
 1. Log in (default DietPi credentials depend on image version — check DietPi docs).
 2. Confirm network: `ping -c1 deb.debian.org`
 3. Confirm architecture: `uname -m` → must show `aarch64`.
+4. Confirm free tail space (must be ≥ 768 MB before bootstrap):
+
+```bash
+DISK="$(findmnt -n -o SOURCE / | sed 's/p[0-9]*$//')"
+sudo parted -ms "${DISK}" unit MB print free
+```
+
+Look for a `free` region at the end of the disk. If root already fills the card, shrink the root partition or re-flash with auto-expand disabled before continuing.
 
 ---
 
@@ -90,8 +102,8 @@ sudo bash deploy/bootstrap-dietpi.sh
 This script runs, in order:
 
 1. **`apt install`** — packages from `deploy/packages.txt` (build tools, Speech Dispatcher, BRLTTY, PipeWire, gpiod, parted, rsync, etc.)
-2. **I2S overlay** — appends `overlays=rk3566-i2s1-overlay` to `/boot/dietpiEnv.txt` (MAX98357A audio; see Skeleton Build Guide)
-3. **`/data` partition** — `deploy/os/setup-data-partition.sh` shrinks free space and creates an ext4 partition labeled `braillatron-data`
+2. **I2S overlay** — adds `rk3566-i2s1-overlay` to the `overlays=` line in `/boot/dietpiEnv.txt` (MAX98357A audio; see Skeleton Build Guide)
+3. **`/data` partition** — `deploy/os/setup-data-partition.sh` creates an ext4 partition labeled `braillatron-data` in unallocated tail space (requires ≥ 768 MB free at the disk end; does not shrink root)
 4. **libvosk** — `deploy/install-vosk-lib.sh` installs the prebuilt aarch64 Vosk library (not in Debian apt)
 5. **Build + install** — `deploy/install.sh` compiles with `BRAILLATRON_A11Y=1`, installs binaries, configs, and systemd units
 6. **Vosk model** — downloads `vosk-model-small-en-us-0.15` (~40 MB) to `/data/braillatron/vosk-models/`
@@ -137,7 +149,7 @@ ls /data/braillatron/
 
 With default `allow_missing_arduino=true` in `hardware.conf`, the UI daemon **stays running** when:
 
-- `/dev/ttyACM0` (Arduino) is absent
+- `/dev/ttyACM0` (Arduino co-processor) is absent — chord keys and freefall interlock live on the Arduino; without it there is no keyboard input, but the Pi stack still boots
 - I2C devices (LTC2944, DRV2605L) are absent
 - GPIO limit sensors are unconfigured
 
@@ -189,10 +201,12 @@ make ui-test && ./braillatron-ui-test
 
 | File | Purpose |
 |------|---------|
-| `/etc/braillatron/hardware.conf` | Arduino serial path, `allow_missing_arduino`, motion enable |
+| `/etc/braillatron/braillatron.conf` | Master config directory pointer |
+| `/etc/braillatron/hardware.conf` | Arduino serial path, `allow_missing_arduino`, motion enable, board profile |
 | `/etc/braillatron/ui.conf` | TTS, braille, STT, haptics; Vosk model path |
 | `/etc/braillatron/telemetry.conf` | I2C, GPIO limit sensors, persistence paths |
-| `/etc/braillatron/keyboard.conf` | Chord timing, focus navigation |
+| `/etc/braillatron/keyboard.conf` | Pi-side keyboard service (focus navigation; chord assembly runs on Arduino) |
+| `/etc/braillatron/matrix_map.conf` | Maps Arduino key-state bits to logical key names (identity map for skeleton V5 firmware) |
 | `/etc/braillatron/kinematics.conf` | Motion (disabled on skeleton: `motion_enabled=false`) |
 
 Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/etc/braillatron` persist on RW root; on RO root, copy overrides to `/data/braillatron/settings/` and adjust unit `Environment=` if you relocate config (production pattern).
@@ -207,6 +221,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | Build fails on `-lvosk` | Re-run `sudo bash deploy/install-vosk-lib.sh`; confirm `aarch64` |
 | No speech | `systemctl status speech-dispatcher`; `spd-say test`; I2S overlay in `/boot/dietpiEnv.txt` |
 | No audio on speaker | `aplay -l`; `/etc/asound.conf`; wiring per Skeleton Guide (I2S1 pins 35/38/40) |
+| Bootstrap fails: "Not enough unallocated space" | DietPi filled the card; disable auto-expand and re-flash, or shrink root to leave ≥ 768 MB at disk end, then re-run bootstrap |
 | `/data` missing | Re-run `sudo bash deploy/os/setup-data-partition.sh` (review disk layout first) |
 | Arduino not detected | `ls -l /dev/ttyACM*`; USB cable; `arduino_device=` in `hardware.conf` |
 | STT unavailable | Model dir: `ls /data/braillatron/vosk-models/`; path in `ui.conf` |

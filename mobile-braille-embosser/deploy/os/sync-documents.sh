@@ -35,6 +35,4 @@ for layer in "${layers[@]}"; do
   index=$((index + 1))
 done
 
-rsync -a --delete "${DEST_DIR}/" "${DEST_DIR}/"
-
 echo "braillatron-sync: persisted ${index} layer(s) to ${DEST_DIR}"

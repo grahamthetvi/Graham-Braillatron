@@ -46,8 +46,9 @@ typedef enum {
     BRAILLATRON_OP_KEYBOARD_MATRIX = 0x01u, /* Arduino -> Pi; edge-triggered */
     BRAILLATRON_OP_TELEMETRY       = 0x02u, /* Pi -> Arduino; periodic/alert */
     BRAILLATRON_OP_SAFETY          = 0x03u, /* Bidirectional fault broadcast */
-    BRAILLATRON_OP_HEARTBEAT       = 0x04u, /* Reserved; no v1 payload struct */
+    BRAILLATRON_OP_HEARTBEAT       = 0x04u, /* Pi -> Arduino; zero payload */
     BRAILLATRON_OP_ACK_NACK        = 0x05u, /* Reserved; no v1 payload struct */
+    BRAILLATRON_OP_CHORD           = 0x06u, /* Arduino -> Pi; assembled chord */
 } braillatron_opcode_t;
 
 /* -------------------------------------------------------------------------- */
@@ -63,12 +64,15 @@ typedef struct __attribute__((packed)) {
 } braillatron_frame_header_t;
 
 /* -------------------------------------------------------------------------- */
-/* Keyboard matrix payload (2 bytes)                                          */
+/* Keyboard state payload (2 bytes)                                           */
 /* -------------------------------------------------------------------------- */
 /*
- * 4x4 NKRO matrix. key_state bit N = row (N/4), col (N%4), 1 = pressed.
- * Arduino transmits BRAILLATRON_OP_KEYBOARD_MATRIX only on debounced edge
- * change (8 ms integrator). Pi applies a 40 ms chord integration window.
+ * Direct-pin keyboard (V5.1 topology). key_state uses the logical
+ * BRAILLATRON_KEY_* bit positions below; the Arduino maps physical pins to
+ * these bits on-device. Arduino transmits BRAILLATRON_OP_KEYBOARD_MATRIX
+ * only on debounced edge change (15 ms integrator). Braille dot chords are
+ * assembled on the Arduino (40 ms window) and arrive via BRAILLATRON_OP_CHORD;
+ * dot bits in key_state are informational only.
  */
 
 #define BRAILLATRON_KEY_DOT_1      (1u << 0)
@@ -89,6 +93,18 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint16_t key_state;
 } braillatron_keyboard_matrix_t;
+
+/* -------------------------------------------------------------------------- */
+/* Chord event payload (1 byte)                                               */
+/* -------------------------------------------------------------------------- */
+/*
+ * Arduino-assembled braille chord. dot_mask bit N = dot N+1 (bits 0-5),
+ * locked after the 40 ms integration window. Bits 6-7 reserved; must be 0.
+ */
+
+typedef struct __attribute__((packed)) {
+    uint8_t dot_mask;
+} braillatron_chord_event_t;
 
 /* -------------------------------------------------------------------------- */
 /* Telemetry payload (3 bytes)                                                  */
@@ -128,6 +144,7 @@ typedef enum {
     BRAILLATRON_FAULT_THERMAL          = 0x05u,
     BRAILLATRON_FAULT_ESTOP            = 0x06u,
     BRAILLATRON_FAULT_MOTION_BLOCKED   = 0x07u,
+    BRAILLATRON_FAULT_SENSOR_FAILURE   = 0x08u, /* MPU6050 init/comm failure */
 } braillatron_fault_code_t;
 
 typedef enum {
@@ -156,6 +173,8 @@ _Static_assert(sizeof(braillatron_frame_header_t) == 5,
                "braillatron_frame_header_t must be 5 bytes");
 _Static_assert(sizeof(braillatron_keyboard_matrix_t) == 2,
                "braillatron_keyboard_matrix_t must be 2 bytes");
+_Static_assert(sizeof(braillatron_chord_event_t) == 1,
+               "braillatron_chord_event_t must be 1 byte");
 _Static_assert(sizeof(braillatron_telemetry_t) == 3,
                "braillatron_telemetry_t must be 3 bytes");
 _Static_assert(sizeof(braillatron_safety_broadcast_t) == 5,

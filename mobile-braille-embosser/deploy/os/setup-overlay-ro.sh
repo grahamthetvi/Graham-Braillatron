@@ -12,8 +12,11 @@ fi
 OVERLAY_DIR="/opt/braillatron-overlay"
 mkdir -p "${OVERLAY_DIR}"/{upper,work,var/log,var/tmp,tmp}
 
-if ! grep -q 'braillatron-overlay' /etc/fstab; then
+# Guard string must match a line actually written below, or re-runs append
+# duplicate tmpfs entries forever.
+if ! grep -q '^# braillatron volatile tmpfs' /etc/fstab; then
   cat >> /etc/fstab <<'EOF'
+# braillatron volatile tmpfs (setup-overlay-ro.sh)
 tmpfs /tmp tmpfs defaults,noatime,mode=1777 0 0
 tmpfs /var/tmp tmpfs defaults,noatime,mode=1777 0 0
 tmpfs /var/log tmpfs defaults,noatime,mode=0755 0 0

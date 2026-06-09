@@ -5,7 +5,6 @@ extern "C" {
 }
 
 #include <array>
-#include <vector>
 
 namespace braillatron::keyboard {
 
@@ -40,10 +39,11 @@ struct BrailleEntry {
     char character;
 };
 
+/* Grade 1 braille, dot mask bit N = dot N+1. */
 constexpr std::array<BrailleEntry, 26> kBrailleAlphabet = {{
     {0x01, 'a'}, {0x03, 'b'}, {0x09, 'c'}, {0x19, 'd'}, {0x11, 'e'}, {0x0B, 'f'},
     {0x1B, 'g'}, {0x13, 'h'}, {0x0A, 'i'}, {0x1A, 'j'}, {0x05, 'k'}, {0x07, 'l'},
-    {0x0D, 'm'}, {0x1D, 'n'}, {0x15, 'o'}, {0x17, 'p'}, {0x1F, 'q'}, {0x17, 'r'},
+    {0x0D, 'm'}, {0x1D, 'n'}, {0x15, 'o'}, {0x0F, 'p'}, {0x1F, 'q'}, {0x17, 'r'},
     {0x0E, 's'}, {0x1E, 't'}, {0x25, 'u'}, {0x27, 'v'}, {0x3A, 'w'}, {0x2D, 'x'},
     {0x3D, 'y'}, {0x35, 'z'},
 }};
@@ -60,12 +60,7 @@ std::optional<char> braille_dots_to_char(uint8_t dot_mask)
     return std::nullopt;
 }
 
-ChordEngine::ChordEngine(uint32_t window_ms)
-    : window_ms_(window_ms)
-{
-}
-
-void ChordEngine::on_matrix_state(uint16_t key_state, uint64_t now_ms)
+void ChordEngine::on_key_state(uint16_t key_state)
 {
     const uint16_t previous = current_state_;
     current_state_ = key_state;
@@ -86,31 +81,6 @@ void ChordEngine::on_matrix_state(uint16_t key_state, uint64_t now_ms)
             (key_state & bit) != 0,
         });
     }
-
-    const uint16_t dot_changes = static_cast<uint16_t>(changed & BRAILLE_DOT_MASK);
-    if (dot_changes != 0) {
-        chord_accumulator_ =
-            static_cast<uint8_t>(chord_accumulator_ | (key_state & BRAILLE_DOT_MASK));
-        last_dot_activity_ms_ = now_ms;
-        chord_pending_ = chord_accumulator_ != 0;
-    }
-}
-
-std::optional<char> ChordEngine::poll(uint64_t now_ms)
-{
-    if (!chord_pending_) {
-        return std::nullopt;
-    }
-
-    if (now_ms - last_dot_activity_ms_ < window_ms_) {
-        return std::nullopt;
-    }
-
-    const uint8_t dots = chord_accumulator_;
-    chord_accumulator_ = 0;
-    chord_pending_ = false;
-
-    return braille_dots_to_char(dots);
 }
 
 std::optional<ControlEdge> ChordEngine::poll_control_edge()

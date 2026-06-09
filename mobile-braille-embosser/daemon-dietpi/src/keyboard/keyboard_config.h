@@ -11,7 +11,6 @@ struct KeyboardConfig {
     std::string board_profile = "skeleton_v4";
     std::string serial_device = "/dev/ttyACM0";
     uint32_t baud_rate = 115200;
-    uint32_t chord_window_ms = 40;
     bool allow_missing_arduino = true;
 };
 

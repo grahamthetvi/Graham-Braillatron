@@ -15,7 +15,13 @@ apt-get install -y "${packages[@]}"
 
 echo "Configuring I2S overlay..."
 if ! grep -q 'rk3566-i2s1-overlay' /boot/dietpiEnv.txt 2>/dev/null; then
-  echo 'overlays=rk3566-i2s1-overlay' >> /boot/dietpiEnv.txt
+  if grep -q '^overlays=' /boot/dietpiEnv.txt 2>/dev/null; then
+    # Merge into the existing overlays= line; a duplicate key would override
+    # or drop the overlays already configured there.
+    sed -i 's/^overlays=.*/& rk3566-i2s1-overlay/' /boot/dietpiEnv.txt
+  else
+    echo 'overlays=rk3566-i2s1-overlay' >> /boot/dietpiEnv.txt
+  fi
 fi
 
 bash "${ROOT}/deploy/os/setup-data-partition.sh"
@@ -26,7 +32,7 @@ MODEL_DIR="/data/braillatron/vosk-models/vosk-model-small-en-us-0.15"
 if [[ ! -d "${MODEL_DIR}" ]]; then
   echo "Downloading Vosk model..."
   tmp="$(mktemp -d)"
-  curl -L -o "${tmp}/vosk-model.zip" \
+  curl -fsSL -o "${tmp}/vosk-model.zip" \
     https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
   unzip -q "${tmp}/vosk-model.zip" -d /data/braillatron/vosk-models/
   rm -rf "${tmp}"
@@ -36,7 +42,8 @@ systemctl enable --now speech-dispatcher || true
 systemctl enable --now brltty || true
 systemctl enable --now pipewire wireplumber || true
 
-if [[ -f "${ROOT}/deploy/os/asound.conf.snippet" ]]; then
+if [[ -f "${ROOT}/deploy/os/asound.conf.snippet" ]] &&
+   ! grep -qF 'pcm.!default' /etc/asound.conf 2>/dev/null; then
   install -d /etc/alsa
   cat "${ROOT}/deploy/os/asound.conf.snippet" >> /etc/asound.conf
 fi

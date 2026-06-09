@@ -29,13 +29,13 @@ Users can utilize multiple input methods simultaneously without locking out othe
 * **Peripheral Keyboards:** Standard USB or Bluetooth QWERTY keyboards can be connected. System key mappings mirror desktop standards (e.g., Windows/Super Key \= Menu, Win \+ H \= Dictation).  
 * **Refreshable Braille Displays:** Seamless integration via USB/Bluetooth (e.g., Mantis Q40) utilizing BRLTTY or a custom direct driver socket.
 
-### **1.2 Production Keyboard Matrix Driver Specification**
+### **1.2 Production Keyboard Driver Specification (Direct Pin Topology)**
 
-To support fluent Braille chording—where multiple character keys are pressed simultaneously to formulate a single Braille character—the built-in keyboard is wired as an electrical matrix with steering diodes in series with each switch. This guarantees complete N-Key Rollover (NKRO) and eliminates phantom key ghosting:
+The traditional 4x4 switch matrix, steering diodes, and external 10kΩ pull-up resistors have been completely abandoned in favor of a Direct Pin Wiring topology (see Skeleton Prototype V5.1 Build Guide, Part 3.1). One side of every Cherry MX switch ties to a common ground bus; the other side routes to its own dedicated Arduino Micro input pin using the internal pull-up (INPUT\_PULLUP, active LOW). Because every key has its own pin, complete N-Key Rollover is inherent and phantom key ghosting is physically impossible — no diodes required:
 
-1. **Scanning Routine:** A dedicated background service in DietPi scans the matrix at high frequency, driving each Row low sequentially and polling the active Columns.  
-2. **Debounce Logic:** A sliding software integrator window is applied per key intersection to eliminate switch bounce noise.  
-3. **Chord Assembly Window:** When a keypress is detected, the driver opens a temporal integration window. All switch transitions occurring within this window are aggregated into a single discrete multi-finger chord event.
+1. **Scanning Routine:** The Arduino Micro samples all key pins once per millisecond from a non-blocking main loop (no delay() calls, no heavy ISR work that could starve the freefall interrupt).  
+2. **Debounce Logic:** A per-key software integrator (15 ms threshold, tailored for Cherry MX switches) charges while a pin reads pressed and discharges while released; the debounced state flips only at the rails.  
+3. **Chord Assembly Window:** When a Braille dot keypress is detected, the firmware opens a 40 ms temporal integration window. All dot presses occurring within this window are aggregated into a single discrete multi-finger chord event.
 
 ### **1.3 Universal Outputs (The Distribution Hub)**
 
@@ -51,12 +51,12 @@ Whenever the UI state changes or a word is focused, the "UI Output Hub" distribu
 
 To ensure maximum operating system responsiveness and protect real-time processing tasks from OS scheduling jitter, all low-level, high-frequency physical I/O tasks are offloaded to the Arduino Micro co-processor.
 
-\[4x4 Tactile Keyboard Matrix\]     \[MPU6050 Accelerometer\]  
+\[13 Direct-Pin Tactile Keys\]      \[MPU6050 Accelerometer\]  
             │                               │  
-            ▼ (1 kHz Polling Loop)           ▼ (INT0 Hardware Interrupt)  
+            ▼ (1 kHz Polling Loop)           ▼ (Hardware Interrupt, Pin 7\)  
   ┌─────────────────────────────────────────────────────────────┐  
   │                 ARDUINO MICRO CO-PROCESSOR                  │  
-  │ \- 8-ms Sliding Window Software Debounce                     │  
+  │ \- 15-ms Integrator Software Debounce                        │  
   │ \- 40-ms Temporal Chord Integration                          │  
   │ \- Real-time Freefall Protection (Interlock \<10ms)           │  
   └──────────────────────────────┬──────────────────────────────┘  
@@ -64,21 +64,21 @@ To ensure maximum operating system responsiveness and protect real-time processi
                                  ▼ (USB Virtual Serial CDC @ 115200 bps)  
                        \[Orange Pi 3B (SBC)\]
 
-### **2.1 Microcontroller Matrix Scanning & Debounce State Machine**
+### **2.1 Microcontroller Direct-Pin Scanning & Debounce State Machine**
 
-The Arduino Micro runs a bare-metal execution environment. A dedicated hardware timer interrupt (Timer1) is configured to fire exactly every 1 millisecond (1 kHz frequency) to scan the keyboard matrix.
+The Arduino Micro runs a bare-metal execution environment. The main loop samples all 13 key pins once per millisecond (1 kHz) without blocking; interrupt service routines are reserved exclusively for the freefall interlock so its sub-10 ms budget can never be starved by keyboard work.
 
-* **The Scan Phase:** The matrix is configured as a 4x4 matrix (4 output rows, 4 input columns) with fast-switching axial diodes at each node to eliminate ghosting during simultaneous multi-key presses (chords).  
-* **The Debounce Phase:** The Arduino maintains an independent 16-bit sliding history state-register for each of the 16 physical key intersections. On each 1-ms tick, the current logic state of the node is shifted into the LSB of its history register. A key transition is validated as a stabilized state change only when the history register contains a clean, consecutive sequence of either eight 1s (fully released) or eight 0s (fully pressed). This implements a bulletproof, non-blocking 8-ms sliding debounce window.
+* **The Scan Phase:** Each of the 13 keys (6 Braille dots, D-pad Up/Down, Backspace, Enter, Shift/TTS, Speech, Menu) is read directly from its dedicated pin (INPUT\_PULLUP, active LOW). With one pin per key there is no row strobing, no diode network, and no possibility of ghosting.  
+* **The Debounce Phase:** The Arduino maintains an independent integrator counter per key. On each 1-ms tick the counter charges toward 15 while the raw pin reads pressed and discharges toward 0 while released; the debounced state changes only when a counter reaches a rail. This implements a non-blocking 15 ms debounce threshold tailored for Cherry MX switches.
 
 ### **2.2 Temporal Chord Assembly Loop**
 
 Once individual key presses are debounced, they must be parsed as a unified Braille chord:
 
-* When the first debounced key-down event is registered, a 40-ms temporal integration window timer is started.  
-* During this 40-ms window, any other keys transitioning to a pressed state are aggregated into a single raw chord buffer.  
-* Once the 40-ms integration window expires, the accumulated chord (e.g., Dots 1+3+5) is locked. The Arduino translates the physical bitmask of the chord to its corresponding standard ASCII character value (e.g., the letter "O") using an onboard flash-mapped lookup table.  
-* The mapped character is then packaged and placed directly into the serial transmission buffer.
+* When the first debounced dot key-down event is registered, a 40-ms temporal integration window timer is started.  
+* During this 40-ms window, any other dot keys transitioning to a pressed state are aggregated into a single raw chord buffer.  
+* Once the 40-ms integration window expires, the accumulated chord (e.g., Dots 1+3+5) is locked and transmitted to the Orange Pi as a CHORD frame carrying the raw dot bitmask. The Pi-side driver translates the dot mask to its character value, keeping the translation table host-side so Grade 2 / liblouis support can be added without reflashing firmware.  
+* Function keys bypass the chord window entirely and are transmitted immediately as edge-triggered key-state frames.
 
 ## **3\. Bi-Directional CDC Serial Packet Protocol**
 

@@ -21,6 +21,12 @@ TelemetrySentinel::TelemetrySentinel(TelemetryConfig config)
     }
 }
 
+TelemetrySentinel::~TelemetrySentinel()
+{
+    /* Joins the worker; without this a joinable thread would std::terminate. */
+    stop();
+}
+
 void TelemetrySentinel::start(TelemetryCallback callback)
 {
     if (running_.load()) {

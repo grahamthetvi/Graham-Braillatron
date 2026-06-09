@@ -11,6 +11,10 @@ static uint8_t g_sequence_id = 0u;
 
 static void protocol_tx_frame(uint8_t opcode, const void *payload, uint8_t payload_len)
 {
+    if (payload_len > BRAILLATRON_FRAME_MAX_PAYLOAD) {
+        return;
+    }
+
     uint8_t frame[BRAILLATRON_FRAME_MAX_SIZE];
     const size_t frame_len = BRAILLATRON_FRAME_TOTAL_SIZE(payload_len);
 
@@ -44,6 +48,16 @@ void protocol_tx_keyboard_matrix(uint16_t key_state)
     payload.key_state = key_state;
     protocol_tx_frame(
         (uint8_t)BRAILLATRON_OP_KEYBOARD_MATRIX,
+        &payload,
+        (uint8_t)sizeof(payload));
+}
+
+void protocol_tx_chord(uint8_t dot_mask)
+{
+    braillatron_chord_event_t payload;
+    payload.dot_mask = dot_mask;
+    protocol_tx_frame(
+        (uint8_t)BRAILLATRON_OP_CHORD,
         &payload,
         (uint8_t)sizeof(payload));
 }

@@ -70,8 +70,6 @@ KeyboardConfig load_keyboard_config(const std::string &path)
             config.serial_device = value;
         } else if (key == "baud_rate") {
             config.baud_rate = static_cast<uint32_t>(std::stoul(value));
-        } else if (key == "chord_window_ms") {
-            config.chord_window_ms = static_cast<uint32_t>(std::stoul(value));
         }
     }
 

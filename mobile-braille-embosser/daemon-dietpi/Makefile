@@ -2,7 +2,7 @@ CXX ?= g++
 CC ?= gcc
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -pedantic -O2
 CFLAGS ?= -std=c11 -Wall -Wextra -pedantic -O2
-CPPFLAGS += -I../shared -Isrc
+CPPFLAGS += -I../shared -Isrc -MMD -MP
 LDFLAGS ?=
 
 # Set BRAILLATRON_A11Y=1 to link Speech Dispatcher, BRLTTY, and Vosk backends.
@@ -20,6 +20,7 @@ PLATFORM_OBJS := \
 UI_OBJS := \
 	$(PLATFORM_OBJS) \
 	../shared/protocol.o \
+	src/motion_gate.o \
 	src/hardware/hardware_config.o \
 	src/telemetry/drv2605l.o \
 	src/telemetry/i2c_device.o \
@@ -135,6 +136,10 @@ src/ui/%.o: src/ui/%.cpp
 src/ui/backends/%.o: src/ui/backends/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
 
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(TELEMETRY_OBJS))
+
 clean:
-	rm -f $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(TELEMETRY_OBJS) \
+	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \
 		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-sentinel
+
+-include $(ALL_OBJS:.o=.d)

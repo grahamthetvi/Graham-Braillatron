@@ -36,20 +36,20 @@ struct ControlEdge {
 
 std::optional<char> braille_dots_to_char(uint8_t dot_mask);
 
+/*
+ * Chord assembly (40 ms integration window) now runs on the Arduino, which
+ * delivers locked chords via BRAILLATRON_OP_CHORD. This class only extracts
+ * control-key edges from BRAILLATRON_OP_KEYBOARD_MATRIX state frames.
+ */
 class ChordEngine {
 public:
-    explicit ChordEngine(uint32_t window_ms);
+    ChordEngine() = default;
 
-    void on_matrix_state(uint16_t key_state, uint64_t now_ms);
-    std::optional<char> poll(uint64_t now_ms);
+    void on_key_state(uint16_t key_state);
     std::optional<ControlEdge> poll_control_edge();
 
 private:
-    uint32_t window_ms_;
     uint16_t current_state_ = 0;
-    uint8_t chord_accumulator_ = 0;
-    uint64_t last_dot_activity_ms_ = 0;
-    bool chord_pending_ = false;
     std::vector<ControlEdge> pending_controls_;
 };
 

@@ -30,6 +30,10 @@ using TelemetryCallback = std::function<void(const TelemetrySnapshot &)>;
 class TelemetrySentinel {
 public:
     explicit TelemetrySentinel(TelemetryConfig config);
+    ~TelemetrySentinel();
+
+    TelemetrySentinel(const TelemetrySentinel &) = delete;
+    TelemetrySentinel &operator=(const TelemetrySentinel &) = delete;
 
     void start(TelemetryCallback callback = nullptr);
     void stop();

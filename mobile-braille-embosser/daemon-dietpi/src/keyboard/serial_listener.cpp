@@ -66,6 +66,20 @@ bool configure_serial_port(int fd, uint32_t baud_rate)
     return tcsetattr(fd, TCSANOW, &tty) == 0;
 }
 
+bool opcode_accepted(uint8_t opcode, size_t payload_size)
+{
+    switch (opcode) {
+    case BRAILLATRON_OP_KEYBOARD_MATRIX:
+        return payload_size == sizeof(braillatron_keyboard_matrix_t);
+    case BRAILLATRON_OP_CHORD:
+        return payload_size == sizeof(braillatron_chord_event_t);
+    case BRAILLATRON_OP_SAFETY:
+        return payload_size == sizeof(braillatron_safety_broadcast_t);
+    default:
+        return false;
+    }
+}
+
 class FrameParser {
 public:
     void reset()
@@ -76,7 +90,7 @@ public:
         expected_payload_ = 0;
     }
 
-    std::optional<uint16_t> push_byte(uint8_t byte)
+    std::optional<SerialFrame> push_byte(uint8_t byte)
     {
         switch (state_) {
         case ParseState::Sync:
@@ -124,7 +138,7 @@ public:
     }
 
 private:
-    std::optional<uint16_t> finalize_frame()
+    std::optional<SerialFrame> finalize_frame()
     {
         const size_t frame_len =
             BRAILLATRON_FRAME_HEADER_SIZE + expected_payload_ + BRAILLATRON_FRAME_CRC_SIZE;
@@ -142,14 +156,16 @@ private:
             return std::nullopt;
         }
 
-        if (opcode != BRAILLATRON_OP_KEYBOARD_MATRIX ||
-            payload_size != sizeof(braillatron_keyboard_matrix_t)) {
+        if (!opcode_accepted(opcode, payload_size)) {
             return std::nullopt;
         }
 
-        braillatron_keyboard_matrix_t payload {};
-        std::memcpy(&payload, buffer_ + BRAILLATRON_FRAME_HEADER_SIZE, sizeof(payload));
-        return static_cast<uint16_t>(payload.key_state);
+        SerialFrame frame;
+        frame.opcode = opcode;
+        frame.payload_len = payload_size;
+        std::memcpy(frame.payload.data(), buffer_ + BRAILLATRON_FRAME_HEADER_SIZE,
+                    payload_size);
+        return frame;
     }
 
     ParseState state_ = ParseState::Sync;
@@ -182,7 +198,7 @@ void SerialListener::set_disconnect_handler(SerialDisconnectHandler handler)
     disconnect_handler_ = std::move(handler);
 }
 
-bool SerialListener::start(MatrixStateHandler handler)
+bool SerialListener::start(FrameHandler handler)
 {
     if (running_.load()) {
         return connected_.load();
@@ -238,9 +254,9 @@ bool SerialListener::start(MatrixStateHandler handler)
             }
 
             for (ssize_t i = 0; i < nbytes; ++i) {
-                if (auto key_state = parser.push_byte(chunk[static_cast<size_t>(i)])) {
+                if (auto frame = parser.push_byte(chunk[static_cast<size_t>(i)])) {
                     if (handler_) {
-                        handler_(*key_state);
+                        handler_(*frame);
                     }
                 }
             }
