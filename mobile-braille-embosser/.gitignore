@@ -1,0 +1,6 @@
+# Compiler outputs (Makefile -MMD)
+*.o
+*.d
+
+# Built daemons (daemon-dietpi/)
+daemon-dietpi/braillatron-*
