@@ -3,7 +3,7 @@ CC ?= gcc
 CXXFLAGS ?= -std=c++17 -Wall -Wextra -pedantic -O2
 CFLAGS ?= -std=c11 -Wall -Wextra -pedantic -O2
 CPPFLAGS += -I../shared -Isrc -MMD -MP
-LDFLAGS ?= -levdev
+LDFLAGS ?=
 
 # Set BRAILLATRON_A11Y=1 to link Speech Dispatcher, BRLTTY, and Vosk backends.
 A11Y_LIBS :=

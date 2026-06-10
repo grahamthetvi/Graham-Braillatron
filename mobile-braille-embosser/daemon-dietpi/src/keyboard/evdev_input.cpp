@@ -4,8 +4,8 @@
 #include <cstring>
 #include <fcntl.h>
 #include <iostream>
-#include <libevdev/libevdev.h>
 #include <linux/input-event-codes.h>
+#include <linux/input.h>
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -14,6 +14,21 @@ namespace braillatron::keyboard {
 
 namespace {
 
+constexpr unsigned long kBitsPerLong = static_cast<unsigned long>(sizeof(unsigned long) * 8);
+
+bool device_has_key_code(int fd, unsigned code)
+{
+    unsigned long key_bits[(KEY_MAX + static_cast<int>(kBitsPerLong)) /
+                           static_cast<int>(kBitsPerLong)];
+    std::memset(key_bits, 0, sizeof(key_bits));
+
+    if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(key_bits)), key_bits) < 0) {
+        return false;
+    }
+
+    return (key_bits[code / kBitsPerLong] & (1UL << (code % kBitsPerLong))) != 0;
+}
+
 bool device_has_bench_keyboard(const std::string &path)
 {
     const int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
@@ -21,19 +36,29 @@ bool device_has_bench_keyboard(const std::string &path)
         return false;
     }
 
-    libevdev *dev = nullptr;
-    const int rc = libevdev_new_from_fd(fd, &dev);
-    if (rc < 0) {
-        close(fd);
-        return false;
-    }
-
     const bool has_perkins_row =
-        libevdev_has_event_code(dev, EV_KEY, KEY_F) == 1 &&
-        libevdev_has_event_code(dev, EV_KEY, KEY_J) == 1;
-    libevdev_free(dev);
+        device_has_key_code(fd, KEY_F) && device_has_key_code(fd, KEY_J);
     close(fd);
     return has_perkins_row;
+}
+
+void enqueue_key_event(EvdevKeymap &keymap, std::vector<EvdevKeyEvent> &pending_events,
+                       std::mutex &queue_mutex, const input_event &ev)
+{
+    if (ev.type != EV_KEY || (ev.value != 0 && ev.value != 1)) {
+        return;
+    }
+
+    if (!keymap.has_mapping(static_cast<unsigned>(ev.code))) {
+        return;
+    }
+
+    EvdevKeyEvent event {};
+    event.code = static_cast<unsigned>(ev.code);
+    event.pressed = ev.value == 1;
+
+    std::lock_guard<std::mutex> lock(queue_mutex);
+    pending_events.push_back(event);
 }
 
 } // namespace
@@ -86,14 +111,6 @@ bool EvdevInput::start(const EvdevKeymap &keymap)
         return false;
     }
 
-    if (libevdev_new_from_fd(fd_, &dev_) < 0) {
-        std::cerr << "evdev: libevdev init failed for " << device_path_ << "\n";
-        close(fd_);
-        fd_ = -1;
-        connected_ = false;
-        return false;
-    }
-
     if (grab_device_) {
         if (ioctl(fd_, EVIOCGRAB, 1) < 0) {
             std::cerr << "evdev: EVIOCGRAB failed on " << device_path_ << ": "
@@ -120,26 +137,18 @@ bool EvdevInput::start(const EvdevKeymap &keymap)
                 continue;
             }
 
-            input_event ev {};
-            int rc = 0;
-            do {
-                rc = libevdev_next_event(dev_, LIBEVDEV_READ_FLAG_NORMAL, &ev);
-                if (rc == LIBEVDEV_READ_STATUS_SUCCESS && ev.type == EV_KEY) {
-                    if (ev.value != 0 && ev.value != 1) {
-                        continue;
-                    }
-                    if (!keymap_.has_mapping(static_cast<unsigned>(ev.code))) {
-                        continue;
-                    }
-
-                    EvdevKeyEvent event {};
-                    event.code = static_cast<unsigned>(ev.code);
-                    event.pressed = ev.value == 1;
-
-                    std::lock_guard<std::mutex> lock(queue_mutex_);
-                    pending_events_.push_back(event);
+            while (running_.load()) {
+                input_event ev {};
+                const ssize_t nbytes = read(fd_, &ev, sizeof(ev));
+                if (nbytes == static_cast<ssize_t>(sizeof(ev))) {
+                    enqueue_key_event(keymap_, pending_events_, queue_mutex_, ev);
+                    continue;
                 }
-            } while (rc == LIBEVDEV_READ_STATUS_SUCCESS || rc == LIBEVDEV_READ_STATUS_SYNC);
+                if (nbytes < 0 && (errno == EAGAIN || errno == EINTR)) {
+                    break;
+                }
+                break;
+            }
         }
 
         connected_ = false;
@@ -161,11 +170,6 @@ void EvdevInput::stop()
 
     if (grab_device_ && fd_ >= 0) {
         ioctl(fd_, EVIOCGRAB, 0);
-    }
-
-    if (dev_ != nullptr) {
-        libevdev_free(dev_);
-        dev_ = nullptr;
     }
 
     if (fd_ >= 0) {

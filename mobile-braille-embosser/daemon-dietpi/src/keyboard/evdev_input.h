@@ -9,8 +9,6 @@
 #include <thread>
 #include <vector>
 
-struct libevdev;
-
 namespace braillatron::keyboard {
 
 struct EvdevKeyEvent {
@@ -42,7 +40,6 @@ private:
     EvdevKeymap keymap_;
 
     int fd_ = -1;
-    libevdev *dev_ = nullptr;
 
     std::mutex queue_mutex_;
     std::vector<EvdevKeyEvent> pending_events_;
