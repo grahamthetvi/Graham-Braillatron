@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
+#include <string>
 
 extern "C" {
 #include "protocol.h"
@@ -33,8 +34,6 @@ struct ControlEdge {
     ControlKey key;
     bool pressed;
 };
-
-#include <string>
 
 std::optional<std::string> braille_dots_to_string(uint8_t dot_mask);
 /*
