@@ -44,7 +44,7 @@ else
   fi
 
   echo "Creating 768MB /data partition ${NEXT_PART} on ${DISK}..."
-  parted "${DISK}" --script mkpart primary ext4 -768MB 100%
+  parted "${DISK}" --script -- mkpart primary ext4 -768MB 100%
   partprobe "${DISK}" || true
   sleep 2
 
