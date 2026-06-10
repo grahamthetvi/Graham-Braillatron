@@ -47,8 +47,8 @@ if [[ -f /etc/speech-dispatcher/speechd.conf ]]; then
   sed -i 's/^#* *AudioOutputMethod.*/AudioOutputMethod "alsa"/' /etc/speech-dispatcher/speechd.conf || true
 fi
 
-systemctl enable --now speech-dispatcher || true
-systemctl enable --now brltty || true
+systemctl enable speech-dispatcher || true
+systemctl enable brltty || true
 
 if [[ -f "${ROOT}/deploy/os/asound.conf.snippet" ]] &&
    ! grep -qF 'pcm.!default' /etc/asound.conf 2>/dev/null; then
