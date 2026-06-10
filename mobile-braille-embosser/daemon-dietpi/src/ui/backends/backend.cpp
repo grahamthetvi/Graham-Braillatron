@@ -38,7 +38,7 @@ public:
     {
         connection_ = spd_open("braillatron", "Braillatron UI", nullptr, SPD_MODE_THREADED);
         if (connection_ != nullptr && !voice_.empty()) {
-            spd_set_voice_type(connection_, voice_.c_str());
+            spd_set_synthesis_voice(connection_, voice_.c_str());
         }
     }
 
@@ -109,7 +109,7 @@ class BrlapiBackend final : public BrailleBackend {
 public:
     BrlapiBackend()
     {
-        if (brlapi__openConnection(&handle_, nullptr) == 0) {
+        if (brlapi_openConnection(nullptr, nullptr) >= 0) {
             open_ = true;
         }
     }
@@ -117,7 +117,7 @@ public:
     ~BrlapiBackend() override
     {
         if (open_) {
-            brlapi__closeConnection(handle_);
+            brlapi_closeConnection();
         }
     }
 
@@ -129,11 +129,10 @@ public:
             std::cerr << "[braille] " << text << "\n";
             return;
         }
-        brlapi__writeText(handle_, text.c_str());
+        brlapi_writeText(BRLAPI_CURSOR_OFF, text.c_str());
     }
 
 private:
-    brlapi_handle_t handle_ {};
     bool open_ = false;
 };
 #endif
