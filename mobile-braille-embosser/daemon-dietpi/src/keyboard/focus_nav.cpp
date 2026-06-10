@@ -47,9 +47,9 @@ void FocusNavigator::on_enter()
     }
 }
 
-void FocusNavigator::on_character(char ch)
+void FocusNavigator::on_text(const std::string &text)
 {
-    input_buffer_.push_back(ch);
+    input_buffer_ += text;
 }
 
 size_t FocusNavigator::focus_index() const

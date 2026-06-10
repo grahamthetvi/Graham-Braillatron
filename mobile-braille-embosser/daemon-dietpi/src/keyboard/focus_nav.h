@@ -17,7 +17,7 @@ public:
     void on_dpad_down();
     void on_backspace();
     void on_enter();
-    void on_character(char ch);
+    void on_text(const std::string &text);
 
     size_t focus_index() const;
     const std::string &focused_label() const;

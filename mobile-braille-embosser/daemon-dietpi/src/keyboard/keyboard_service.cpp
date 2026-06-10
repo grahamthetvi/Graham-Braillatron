@@ -161,8 +161,8 @@ void KeyboardService::handle_key_state(uint16_t key_state)
 
 void KeyboardService::handle_chord(uint8_t dot_mask)
 {
-    if (auto character = braille_dots_to_char(dot_mask)) {
-        focus_.on_character(*character);
+    if (auto text = braille_dots_to_string(dot_mask)) {
+        focus_.on_text(*text);
     }
 }
 

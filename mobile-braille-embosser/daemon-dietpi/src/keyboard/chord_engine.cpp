@@ -34,29 +34,36 @@ static_assert(sizeof(kControlBits) / sizeof(kControlBits[0]) ==
                   sizeof(kControlKeys) / sizeof(kControlKeys[0]),
               "control key tables must match");
 
-struct BrailleEntry {
-    uint8_t dots;
-    char character;
-};
-
-/* Grade 1 braille, dot mask bit N = dot N+1. */
-constexpr std::array<BrailleEntry, 26> kBrailleAlphabet = {{
-    {0x01, 'a'}, {0x03, 'b'}, {0x09, 'c'}, {0x19, 'd'}, {0x11, 'e'}, {0x0B, 'f'},
-    {0x1B, 'g'}, {0x13, 'h'}, {0x0A, 'i'}, {0x1A, 'j'}, {0x05, 'k'}, {0x07, 'l'},
-    {0x0D, 'm'}, {0x1D, 'n'}, {0x15, 'o'}, {0x0F, 'p'}, {0x1F, 'q'}, {0x17, 'r'},
-    {0x0E, 's'}, {0x1E, 't'}, {0x25, 'u'}, {0x27, 'v'}, {0x3A, 'w'}, {0x2D, 'x'},
-    {0x3D, 'y'}, {0x35, 'z'},
-}};
+#include <liblouis/liblouis.h>
 
 } // namespace
 
-std::optional<char> braille_dots_to_char(uint8_t dot_mask)
+std::optional<std::string> braille_dots_to_string(uint8_t dot_mask)
 {
-    for (const BrailleEntry &entry : kBrailleAlphabet) {
-        if (entry.dots == dot_mask) {
-            return entry.character;
+    if (dot_mask == 0) {
+        return std::string(" ");
+    }
+
+    widechar inbuf[2] = { static_cast<widechar>(0x2800 | dot_mask), 0 };
+    int inlen = 1;
+    
+    // Grade 2 contractions can return multiple characters
+    widechar outbuf[16] = {0};
+    int outlen = 15;
+    
+    // Using standard US English Grade 2 table
+    const char* table = "en-us-g2.ctb";
+    
+    if (lou_backTranslateString(table, inbuf, &inlen, outbuf, &outlen, nullptr, nullptr, 0)) {
+        if (outlen > 0) {
+            std::string result;
+            for (int i = 0; i < outlen; ++i) {
+                result.push_back(static_cast<char>(outbuf[i]));
+            }
+            return result;
         }
     }
+    
     return std::nullopt;
 }
 

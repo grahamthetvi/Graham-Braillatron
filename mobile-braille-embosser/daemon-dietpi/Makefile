@@ -10,7 +10,7 @@ A11Y_LIBS :=
 A11Y_CXXFLAGS :=
 ifeq ($(BRAILLATRON_A11Y),1)
 A11Y_CXXFLAGS += -DBRAILLATRON_A11Y
-A11Y_LIBS += -lspeechd -lbrlapi -lvosk
+A11Y_LIBS += -lspeechd -lbrlapi -lvosk -llouis
 endif
 
 PLATFORM_OBJS := \

@@ -34,8 +34,9 @@ struct ControlEdge {
     bool pressed;
 };
 
-std::optional<char> braille_dots_to_char(uint8_t dot_mask);
+#include <string>
 
+std::optional<std::string> braille_dots_to_string(uint8_t dot_mask);
 /*
  * Chord assembly (40 ms integration window) now runs on the Arduino, which
  * delivers locked chords via BRAILLATRON_OP_CHORD. This class only extracts
