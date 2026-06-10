@@ -173,6 +173,40 @@ With default `allow\_missing\_arduino=true` in `hardware.conf`, the UI daemon **
 Status is logged to the journal and announced through the Output Hub (TTS/braille when those backends are available).
 
 
+### Bench testing with a USB keyboard (no wired buttons)
+
+To exercise focus navigation, menu overlay, and braille chord input without the Arduino co-processor or built-in key matrix:
+
+1. Plug in a standard USB keyboard.
+2. Edit `/etc/braillatron/keyboard.conf` and set `evdev_enabled=true` (other defaults are fine: `evdev_device=auto`, `evdev_grab=true`).
+3. Restart the UI daemon: `sudo systemctl restart braillatron-ui`
+4. Watch the log: `journalctl -u braillatron-ui -f`
+
+You should see `keyboard: evdev listening on /dev/input/eventN (bench mode)`.
+
+Default key map (`/etc/braillatron/evdev_map.conf`):
+
+| USB key | Action |
+| - | - |
+| Up / Down arrows | Move focus (or menu overlay when open) |
+| Enter | Activate focused item / menu entry |
+| Backspace | Delete text / back out of menu |
+| F7 | Pause/resume speech (press/release) |
+| F8 (hold) | Push-to-talk dictation |
+| F9 | Toggle global menu overlay |
+| F / D / S | Braille dots 1 / 2 / 3 (chord within 40 ms, e.g. F+D) |
+| J / K / L | Braille dots 4 / 5 / 6 |
+
+When the real button matrix is wired, set `evdev_enabled=false` or leave both enabled for concurrent bench + hardware testing.
+
+Host-side unit tests (no USB keyboard required):
+
+```
+cd mobile-braille-embosser/daemon-dietpi
+make host-chord-test && ./braillatron-host-chord-test
+```
+
+
 ## Step 6 (optional): Read-only root
 
 For field deployment and SD wear protection, enable the RO overlay **after** you have verified bootstrap on a read-write root:
@@ -209,6 +243,7 @@ Host-side dev builds (no Pi hardware libs) use stub backends:
 ```
 make all              \# no BRAILLATRON\_A11Y  
 make ui-test && ./braillatron-ui-test
+make host-chord-test && ./braillatron-host-chord-test
 ```
 
 
@@ -220,8 +255,9 @@ make ui-test && ./braillatron-ui-test
 | `/etc/braillatron/hardware.conf` | Arduino serial path, `allow\_missing\_arduino`, motion enable, board profile |
 | `/etc/braillatron/ui.conf` | TTS, braille, STT, haptics; Vosk model path |
 | `/etc/braillatron/telemetry.conf` | I2C, GPIO limit sensors, persistence paths |
-| `/etc/braillatron/keyboard.conf` | Pi-side keyboard service (focus navigation; chord assembly runs on Arduino) |
+| `/etc/braillatron/keyboard.conf` | Pi-side keyboard service; `evdev_enabled` for USB bench input |
 | `/etc/braillatron/matrix\_map.conf` | Maps Arduino key-state bits to logical key names (identity map for skeleton V5 firmware) |
+| `/etc/braillatron/evdev\_map.conf` | Maps Linux `KEY\_\*` names to logical Braillatron keys for USB bench input |
 | `/etc/braillatron/kinematics.conf` | Motion (disabled on skeleton: `motion\_enabled=false`) |
 
 
@@ -240,6 +276,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | `/data` missing | Re-run `sudo bash deploy/os/setup-data-partition.sh` (review disk layout first) |
 | Arduino not detected | `ls -l /dev/ttyACM\*`; USB cable; `arduino\_device=` in `hardware.conf` |
 | STT unavailable | Model dir: `ls /data/braillatron/vosk-models/`; path in `ui.conf` |
+| USB keyboard ignored | `evdev_enabled=true` in `keyboard.conf`; `ls /dev/input/event*`; user in `input` group (`SupplementaryGroups=input` in unit); restart `braillatron-ui` |
 
 
 

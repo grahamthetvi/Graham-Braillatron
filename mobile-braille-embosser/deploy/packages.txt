@@ -16,3 +16,4 @@ libspeechd-dev
 libbrlapi-dev
 liblouis-dev
 liblouis-data
+libevdev-dev

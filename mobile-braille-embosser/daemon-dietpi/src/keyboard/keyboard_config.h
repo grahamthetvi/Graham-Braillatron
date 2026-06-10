@@ -12,6 +12,11 @@ struct KeyboardConfig {
     std::string serial_device = "/dev/ttyACM0";
     uint32_t baud_rate = 115200;
     bool allow_missing_arduino = true;
+
+    bool evdev_enabled = false;
+    std::string evdev_device = "auto";
+    std::string evdev_map_config = "config/evdev_map.conf";
+    bool evdev_grab = true;
 };
 
 KeyboardConfig load_keyboard_config(const std::string &path);

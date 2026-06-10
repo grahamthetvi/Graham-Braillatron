@@ -6,8 +6,11 @@ src/ui/ui_app.o: src/ui/ui_app.cpp src/ui/ui_app.h \
  src/ui/../ui/backends/backend.h src/ui/../ui/menu_overlay.h \
  src/ui/../keyboard/keyboard_config.h \
  src/ui/../keyboard/keyboard_service.h src/ui/../keyboard/chord_engine.h \
+ src/ui/../keyboard/evdev_input.h src/ui/../keyboard/evdev_keymap.h \
  src/ui/../keyboard/focus_nav.h src/ui/../keyboard/global_hooks.h \
- src/ui/../keyboard/matrix_map.h src/ui/../keyboard/serial_listener.h
+ src/ui/../keyboard/host_chord_assembler.h \
+ src/ui/../keyboard/key_debouncer.h src/ui/../keyboard/matrix_map.h \
+ src/ui/../keyboard/serial_listener.h
 src/ui/ui_app.h:
 src/ui/../hardware/hardware_config.h:
 src/ui/../platform/device_status.h:
@@ -21,7 +24,11 @@ src/ui/../ui/menu_overlay.h:
 src/ui/../keyboard/keyboard_config.h:
 src/ui/../keyboard/keyboard_service.h:
 src/ui/../keyboard/chord_engine.h:
+src/ui/../keyboard/evdev_input.h:
+src/ui/../keyboard/evdev_keymap.h:
 src/ui/../keyboard/focus_nav.h:
 src/ui/../keyboard/global_hooks.h:
+src/ui/../keyboard/host_chord_assembler.h:
+src/ui/../keyboard/key_debouncer.h:
 src/ui/../keyboard/matrix_map.h:
 src/ui/../keyboard/serial_listener.h:

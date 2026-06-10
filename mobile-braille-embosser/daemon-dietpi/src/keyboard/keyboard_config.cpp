@@ -70,6 +70,14 @@ KeyboardConfig load_keyboard_config(const std::string &path)
             config.serial_device = value;
         } else if (key == "baud_rate") {
             config.baud_rate = static_cast<uint32_t>(std::stoul(value));
+        } else if (key == "evdev_enabled") {
+            config.evdev_enabled = (value == "1" || value == "true" || value == "yes");
+        } else if (key == "evdev_device") {
+            config.evdev_device = value;
+        } else if (key == "evdev_map_config") {
+            config.evdev_map_config = value;
+        } else if (key == "evdev_grab") {
+            config.evdev_grab = (value == "1" || value == "true" || value == "yes");
         }
     }
 

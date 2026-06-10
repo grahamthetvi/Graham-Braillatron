@@ -1,0 +1,191 @@
+#include "evdev_input.h"
+
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <iostream>
+#include <libevdev/libevdev.h>
+#include <linux/input-event-codes.h>
+#include <poll.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+namespace braillatron::keyboard {
+
+namespace {
+
+bool device_has_bench_keyboard(const std::string &path)
+{
+    const int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
+    if (fd < 0) {
+        return false;
+    }
+
+    libevdev *dev = nullptr;
+    const int rc = libevdev_new_from_fd(fd, &dev);
+    if (rc < 0) {
+        close(fd);
+        return false;
+    }
+
+    const bool has_perkins_row =
+        libevdev_has_event_code(dev, EV_KEY, KEY_F) == 1 &&
+        libevdev_has_event_code(dev, EV_KEY, KEY_J) == 1;
+    libevdev_free(dev);
+    close(fd);
+    return has_perkins_row;
+}
+
+} // namespace
+
+EvdevInput::EvdevInput(std::string device_path, bool grab_device)
+    : device_path_(std::move(device_path))
+    , grab_device_(grab_device)
+{
+}
+
+EvdevInput::~EvdevInput()
+{
+    stop();
+}
+
+std::string EvdevInput::resolve_device_path(const std::string &configured_path)
+{
+    if (!configured_path.empty() && configured_path != "auto") {
+        return configured_path;
+    }
+
+    for (int index = 0; index < 32; ++index) {
+        const std::string candidate = "/dev/input/event" + std::to_string(index);
+        if (device_has_bench_keyboard(candidate)) {
+            return candidate;
+        }
+    }
+
+    return {};
+}
+
+bool EvdevInput::start(const EvdevKeymap &keymap)
+{
+    if (running_.load()) {
+        return connected_.load();
+    }
+
+    if (device_path_.empty()) {
+        connected_ = false;
+        return false;
+    }
+
+    keymap_ = keymap;
+
+    fd_ = open(device_path_.c_str(), O_RDONLY | O_NONBLOCK);
+    if (fd_ < 0) {
+        std::cerr << "evdev: unable to open " << device_path_ << ": " << std::strerror(errno)
+                  << "\n";
+        connected_ = false;
+        return false;
+    }
+
+    if (libevdev_new_from_fd(fd_, &dev_) < 0) {
+        std::cerr << "evdev: libevdev init failed for " << device_path_ << "\n";
+        close(fd_);
+        fd_ = -1;
+        connected_ = false;
+        return false;
+    }
+
+    if (grab_device_) {
+        if (ioctl(fd_, EVIOCGRAB, 1) < 0) {
+            std::cerr << "evdev: EVIOCGRAB failed on " << device_path_ << ": "
+                      << std::strerror(errno) << "\n";
+        }
+    }
+
+    running_ = true;
+    connected_ = true;
+    worker_ = std::thread([this]() {
+        while (running_.load()) {
+            pollfd pfd {};
+            pfd.fd = fd_;
+            pfd.events = POLLIN;
+
+            const int poll_result = poll(&pfd, 1, 100);
+            if (poll_result < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+            if (poll_result == 0) {
+                continue;
+            }
+
+            input_event ev {};
+            int rc = 0;
+            do {
+                rc = libevdev_next_event(dev_, LIBEVDEV_READ_FLAG_NORMAL, &ev);
+                if (rc == LIBEVDEV_READ_STATUS_SUCCESS && ev.type == EV_KEY) {
+                    if (ev.value != 0 && ev.value != 1) {
+                        continue;
+                    }
+                    if (!keymap_.has_mapping(static_cast<unsigned>(ev.code))) {
+                        continue;
+                    }
+
+                    EvdevKeyEvent event {};
+                    event.code = static_cast<unsigned>(ev.code);
+                    event.pressed = ev.value == 1;
+
+                    std::lock_guard<std::mutex> lock(queue_mutex_);
+                    pending_events_.push_back(event);
+                }
+            } while (rc == LIBEVDEV_READ_STATUS_SUCCESS || rc == LIBEVDEV_READ_STATUS_SYNC);
+        }
+
+        connected_ = false;
+    });
+
+    return true;
+}
+
+void EvdevInput::stop()
+{
+    if (!running_.load() && fd_ < 0) {
+        return;
+    }
+
+    running_ = false;
+    if (worker_.joinable()) {
+        worker_.join();
+    }
+
+    if (grab_device_ && fd_ >= 0) {
+        ioctl(fd_, EVIOCGRAB, 0);
+    }
+
+    if (dev_ != nullptr) {
+        libevdev_free(dev_);
+        dev_ = nullptr;
+    }
+
+    if (fd_ >= 0) {
+        close(fd_);
+        fd_ = -1;
+    }
+
+    connected_ = false;
+}
+
+bool EvdevInput::is_connected() const
+{
+    return connected_.load();
+}
+
+void EvdevInput::drain_events(std::vector<EvdevKeyEvent> &out)
+{
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    out.insert(out.end(), pending_events_.begin(), pending_events_.end());
+    pending_events_.clear();
+}
+
+} // namespace braillatron::keyboard
