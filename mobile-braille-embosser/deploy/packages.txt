@@ -3,6 +3,7 @@ espeak-ng
 espeak-ng-data
 brltty
 rsync
+alsa-utils
 parted
 e2fsprogs
 gpiod
