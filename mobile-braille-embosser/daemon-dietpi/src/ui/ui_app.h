@@ -20,7 +20,8 @@ public:
     UiApp(hardware::HardwareConfig hardware,
           keyboard::KeyboardConfig keyboard_config,
           telemetry::TelemetryConfig telemetry_config,
-          UiConfig ui_config);
+          UiConfig ui_config,
+          std::string ui_config_path);
 
     void start();
     void stop();
@@ -36,6 +37,7 @@ private:
     keyboard::KeyboardConfig keyboard_config_;
     telemetry::TelemetryConfig telemetry_config_;
     UiConfig ui_config_;
+    std::string ui_config_path_;
 
     platform::DeviceStatus device_status_;
     platform::DeviceStatusReport status_report_;

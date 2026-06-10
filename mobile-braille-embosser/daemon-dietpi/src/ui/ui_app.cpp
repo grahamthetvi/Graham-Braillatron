@@ -10,16 +10,22 @@ namespace braillatron::ui {
 UiApp::UiApp(hardware::HardwareConfig hardware,
              keyboard::KeyboardConfig keyboard_config,
              telemetry::TelemetryConfig telemetry_config,
-             UiConfig ui_config)
+             UiConfig ui_config,
+             std::string ui_config_path)
     : hardware_(std::move(hardware))
     , keyboard_config_(std::move(keyboard_config))
     , telemetry_config_(std::move(telemetry_config))
     , ui_config_(std::move(ui_config))
+    , ui_config_path_(std::move(ui_config_path))
     , serial_link_(hardware_.arduino_device, hardware_.baud_rate)
-    , output_hub_(ui_config_, telemetry_config_)
+    , output_hub_(ui_config_, telemetry_config_, ui_config_path_)
     , keyboard_(keyboard_config_)
 {
     hooks::set_output_hub(&output_hub_);
+
+    output_hub_.set_status_report_provider([this] {
+        output_hub_.announce_status_report(status_report_);
+    });
 
     keyboard_.focus_nav().set_entries(
         {"Document", "Settings", "System Status", "Emboss", "Power"});

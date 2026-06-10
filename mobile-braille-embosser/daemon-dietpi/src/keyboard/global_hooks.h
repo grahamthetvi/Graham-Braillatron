@@ -17,6 +17,7 @@ bool menu_overlay_open();
 void on_menu_overlay(bool open);
 void on_menu_move(bool up);
 void on_menu_activate();
+void on_menu_back();
 
 void on_safety_broadcast(uint8_t fault_code, uint8_t severity, uint16_t detail);
 

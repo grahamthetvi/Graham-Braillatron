@@ -212,7 +212,7 @@ void KeyboardService::handle_control_edge(const ControlEdge &edge)
     case ControlKey::Backspace:
         if (edge.pressed) {
             if (menu_open) {
-                hooks::on_menu_overlay(false);
+                hooks::on_menu_back();
             } else {
                 focus_.on_backspace();
             }

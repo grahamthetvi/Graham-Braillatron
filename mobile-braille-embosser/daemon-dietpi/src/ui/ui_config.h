@@ -19,5 +19,6 @@ struct UiConfig {
 };
 
 UiConfig load_ui_config(const std::string &path);
+void save_ui_config(const std::string &path, const UiConfig &config);
 
 } // namespace braillatron::ui

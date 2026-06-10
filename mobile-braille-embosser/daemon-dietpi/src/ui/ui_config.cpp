@@ -1,7 +1,9 @@
 #include "ui_config.h"
 
 #include <cctype>
+#include <cstdio>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 
 namespace braillatron::ui {
@@ -76,6 +78,40 @@ UiConfig load_ui_config(const std::string &path)
     }
 
     return config;
+}
+
+void save_ui_config(const std::string &path, const UiConfig &config)
+{
+    std::ostringstream stream;
+    stream << "# UI output hub — accessibility backends and probe timing\n";
+    stream << "tts_enabled=" << (config.tts_enabled ? "true" : "false") << "\n";
+    stream << "braille_enabled=" << (config.braille_enabled ? "true" : "false") << "\n";
+    stream << "stt_enabled=" << (config.stt_enabled ? "true" : "false") << "\n";
+    stream << "haptics_enabled=" << (config.haptics_enabled ? "true" : "false") << "\n";
+    stream << "\n";
+    stream << "spd_voice=" << config.spd_voice << "\n";
+    stream << "vosk_model_path=" << config.vosk_model_path << "\n";
+    stream << "boundary_haptic_effect=" << static_cast<unsigned>(config.boundary_haptic_effect)
+           << "\n";
+    stream << "status_probe_interval_ms=" << config.status_probe_interval_ms << "\n";
+    stream << "heartbeat_interval_ms=" << config.heartbeat_interval_ms << "\n";
+
+    const std::string tmp_path = path + ".tmp";
+    {
+        std::ofstream file(tmp_path, std::ios::trunc);
+        if (!file.is_open()) {
+            throw std::runtime_error("failed to open ui config for writing: " + tmp_path);
+        }
+        file << stream.str();
+        file.flush();
+        if (!file.good()) {
+            throw std::runtime_error("failed to write ui config: " + tmp_path);
+        }
+    }
+
+    if (std::rename(tmp_path.c_str(), path.c_str()) != 0) {
+        throw std::runtime_error("failed to rename ui config: " + tmp_path + " -> " + path);
+    }
 }
 
 } // namespace braillatron::ui

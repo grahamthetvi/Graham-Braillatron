@@ -69,11 +69,12 @@ int main(int argc, char *argv[])
         const braillatron::telemetry::TelemetryConfig telemetry_config =
             braillatron::telemetry::load_telemetry_config(resolved_hardware.telemetry_config);
 
+        const std::string ui_config_path = resolve_config_path(base, "ui.conf");
         const braillatron::ui::UiConfig ui_config =
-            braillatron::ui::load_ui_config(resolve_config_path(base, "ui.conf"));
+            braillatron::ui::load_ui_config(ui_config_path);
 
         braillatron::ui::UiApp app(resolved_hardware, keyboard_config, telemetry_config,
-                                   ui_config);
+                                   ui_config, ui_config_path);
         app.start();
 
         std::cerr << "braillatron-ui profile=" << resolved_hardware.board_profile << "\n";

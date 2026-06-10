@@ -20,7 +20,7 @@ int main()
 
     status.log_report(report, true);
 
-    braillatron::ui::OutputHub hub(ui_config, telemetry);
+    braillatron::ui::OutputHub hub(ui_config, telemetry, "");
     hub.announce_startup(report);
     hub.announce_focus("Document", false);
     hub.announce_status_report(report);
