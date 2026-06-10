@@ -38,9 +38,17 @@ if [[ ! -d "${MODEL_DIR}" ]]; then
   rm -rf "${tmp}"
 fi
 
+# Configure speech-dispatcher to run system-wide using ALSA instead of pulse
+if [[ -f /etc/default/speech-dispatcher ]]; then
+  sed -i 's/^RUN=no/RUN=yes/' /etc/default/speech-dispatcher || true
+fi
+if [[ -f /etc/speech-dispatcher/speechd.conf ]]; then
+  # Force AudioOutputMethod to alsa (often defaults to pulse which fails headless)
+  sed -i 's/^#* *AudioOutputMethod.*/AudioOutputMethod "alsa"/' /etc/speech-dispatcher/speechd.conf || true
+fi
+
 systemctl enable --now speech-dispatcher || true
 systemctl enable --now brltty || true
-systemctl enable --now pipewire wireplumber || true
 
 if [[ -f "${ROOT}/deploy/os/asound.conf.snippet" ]] &&
    ! grep -qF 'pcm.!default' /etc/asound.conf 2>/dev/null; then
