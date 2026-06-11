@@ -27,6 +27,7 @@ fi
 bash "${ROOT}/deploy/os/setup-data-partition.sh"
 bash "${ROOT}/deploy/install-vosk-lib.sh"
 bash "${ROOT}/deploy/install.sh"
+bash "${ROOT}/deploy/install-signal-cli.sh" || echo "signal-cli install skipped (optional)"
 
 MODEL_DIR="/data/braillatron/vosk-models/vosk-model-small-en-us-0.15"
 if [[ ! -d "${MODEL_DIR}" ]]; then

@@ -13,6 +13,8 @@
 #include "../ui/apps/app_registry.h"
 #include "../ui/apps/ui_context.h"
 #include "../ui/output_hub.h"
+#include "../connect/connect_client.h"
+#include "../connect/connect_defaults.h"
 #include "../ui/ui_config.h"
 #include "../keyboard/keyboard_config.h"
 #include "../keyboard/keyboard_service.h"
@@ -59,6 +61,7 @@ private:
     documents::PaperSeparator paper_separator_;
 
     OutputHub output_hub_;
+    connect::ConnectClient connect_client_;
     AppRegistry app_registry_;
     UiContext ui_context_;
     keyboard::KeyboardService keyboard_;

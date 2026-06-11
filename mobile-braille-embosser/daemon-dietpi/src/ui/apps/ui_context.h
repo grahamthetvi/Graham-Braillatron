@@ -8,6 +8,10 @@
 
 #include <string>
 
+namespace braillatron::connect {
+class ConnectClient;
+}
+
 namespace braillatron::ui {
 
 class AppRegistry;
@@ -21,6 +25,7 @@ struct UiContext {
     documents::EditSession *edit = nullptr;
     documents::PaperSeparator *paper_sep = nullptr;
     AppRegistry *registry = nullptr;
+    connect::ConnectClient *connect = nullptr;
 };
 
 } // namespace braillatron::ui
