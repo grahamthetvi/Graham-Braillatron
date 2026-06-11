@@ -178,9 +178,14 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 | Transcriber pipeline | Implemented | `transcriber_app.cpp`, Vosk backend |
 | Morse learning / output | Implemented | `morse_encoder.cpp`, inline + standalone apps |
 | Network Wi-Fi | Implemented | `network_app.cpp` |
+| connectd sidecar | Implemented (needs device validation) | `connect/`, `braillatron-connectd.service` |
+| YouTube audio app | Implemented (needs device validation) | `youtube_app.cpp`, `youtube_backend.cpp` |
+| Signal messaging app | Implemented (needs device validation) | `messages_app.cpp`, `signal_backend.cpp` |
 | Library / LocalSend | Scaffold | `library_app.cpp`, `localsend_app.cpp` |
 | Telemetry JSON bridge | Implemented | `telemetry_bridge.cpp` |
 | 20% battery warning | Implemented | `telemetry_sentinel.cpp`, UI poll |
 | Crash reporter | Implemented (optional build) | `crash_reporter.cpp` |
 | OTA A/B | **Not addressed** | — |
 | Piper TTS | **Excluded** | — |
+
+**Connectivity follow-up:** See [Connectivity Follow-Up Checklist](Connectivity%20Follow-Up%20Checklist.md).
