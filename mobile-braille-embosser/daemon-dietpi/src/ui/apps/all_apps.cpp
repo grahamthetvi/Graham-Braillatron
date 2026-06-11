@@ -6,8 +6,8 @@
 
 #include "../../documents/edit_session.h"
 #include "../../motion/motion_service.h"
+#include "../../platform/shell_util.h"
 
-#include <array>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -260,21 +260,6 @@ private:
     size_t lesson_index_ = 0;
 };
 
-std::string run_command(const std::string &cmd)
-{
-    std::array<char, 256> buffer {};
-    std::string result;
-    FILE *pipe = popen(cmd.c_str(), "r");
-    if (pipe == nullptr) {
-        return result;
-    }
-    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
-        result += buffer.data();
-    }
-    pclose(pipe);
-    return result;
-}
-
 class NetworkApp final : public AppSession {
 public:
     std::string id() const override { return "network"; }
@@ -284,7 +269,8 @@ public:
     void on_enter(UiContext &ctx) override
     {
         announce(ctx, "Scanning Wi-Fi networks");
-        const std::string scan = run_command("nmcli -t -f SSID dev wifi list 2>/dev/null");
+        const std::string scan =
+            platform::run_command("nmcli -t -f SSID dev wifi list 2>/dev/null");
         std::istringstream stream(scan);
         std::string line;
         int count = 0;
@@ -295,7 +281,8 @@ public:
             announce(ctx, line);
             ++count;
         }
-        const std::string bt = run_command("nmcli -t -f NAME,TYPE dev status 2>/dev/null | grep bluetooth");
+        const std::string bt =
+            platform::run_command("nmcli -t -f NAME,TYPE dev status 2>/dev/null | grep bluetooth");
         if (!bt.empty()) {
             announce(ctx, "Bluetooth devices listed in log");
         }
@@ -327,7 +314,7 @@ public:
         }
         const std::string cmd = "nmcli dev wifi connect \"" + pending_ssid_ + "\" password \"" +
                                 pending_password_ + "\" 2>&1";
-        const std::string result = run_command(cmd);
+        const std::string result = platform::run_command(cmd);
         announce(ctx, result.empty() ? "Connection attempted" : result);
     }
 

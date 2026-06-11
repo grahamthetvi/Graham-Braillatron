@@ -317,6 +317,8 @@ void KeyboardService::handle_control_edge(const ControlEdge &edge)
         if (edge.pressed) {
             if (menu_open) {
                 hooks::on_menu_back();
+            } else if (hooks::standalone_app_active()) {
+                hooks::on_app_control(edge.key, edge.pressed);
             } else {
                 focus_.on_backspace();
             }

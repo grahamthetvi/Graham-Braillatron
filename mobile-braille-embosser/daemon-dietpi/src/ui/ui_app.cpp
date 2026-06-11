@@ -52,7 +52,7 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     });
 
     keyboard_.focus_nav().set_entries(
-        {"Document", "Calculator", "Transcriber", "Network", "Settings", "Power"});
+        {"Document", "Calculator", "Transcriber", "Wikipedia", "Network", "Settings", "Power"});
 
     keyboard_.focus_nav().set_focus_changed_handler(
         [this](const std::string &label, bool at_boundary) {
@@ -181,6 +181,10 @@ void UiApp::handle_activate(size_t index, const std::string &label)
     }
     if (label == "Network") {
         app_registry_.enter("network");
+        return;
+    }
+    if (label == "Wikipedia") {
+        app_registry_.enter("wikipedia");
         return;
     }
 

@@ -13,6 +13,7 @@ std::unique_ptr<AppSession> make_morse_learn_app();
 std::unique_ptr<AppSession> make_network_app();
 std::unique_ptr<AppSession> make_library_app();
 std::unique_ptr<AppSession> make_localsend_app();
+std::unique_ptr<AppSession> make_wikipedia_app();
 std::unique_ptr<AppSession> make_quick_status_inline();
 std::unique_ptr<AppSession> make_morse_output_inline();
 std::unique_ptr<AppSession> make_paper_nav_inline();

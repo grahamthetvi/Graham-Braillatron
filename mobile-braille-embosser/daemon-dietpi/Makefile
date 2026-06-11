@@ -15,7 +15,11 @@ endif
 
 PLATFORM_OBJS := \
 	src/platform/device_status.o \
-	src/platform/serial_link.o
+	src/platform/serial_link.o \
+	src/platform/shell_util.o
+
+NET_OBJS := \
+	src/net/wikipedia_client.o
 
 KINEMATICS_OBJS := \
 	src/kinematics/emboss_scheduler.o \
@@ -40,10 +44,12 @@ HAPTICS_OBJS := \
 
 APP_OBJS := \
 	src/ui/apps/all_apps.o \
-	src/ui/apps/app_registry.o
+	src/ui/apps/app_registry.o \
+	src/ui/apps/wikipedia_app.o
 
 UI_OBJS := \
 	$(PLATFORM_OBJS) \
+	$(NET_OBJS) \
 	$(KINEMATICS_OBJS) \
 	$(DOCUMENT_OBJS) \
 	$(MOTION_OBJS) \
@@ -78,6 +84,7 @@ UI_OBJS := \
 
 UI_TEST_OBJS := \
 	$(PLATFORM_OBJS) \
+	$(NET_OBJS) \
 	$(KINEMATICS_OBJS) \
 	$(DOCUMENT_OBJS) \
 	$(MOTION_OBJS) \
@@ -103,6 +110,11 @@ HOST_CHORD_TEST_OBJS := \
 	src/keyboard/host_chord_assembler.o \
 	src/keyboard/host_chord_self_test.o
 
+WIKIPEDIA_TEST_OBJS := \
+	src/platform/shell_util.o \
+	src/net/wikipedia_client.o \
+	src/net/wikipedia_self_test.o
+
 TELEMETRY_OBJS := \
 	../shared/protocol.o \
 	src/hardware/hardware_config.o \
@@ -120,9 +132,9 @@ TELEMETRY_OBJS := \
 	src/telemetry/telemetry_sentinel.o \
 	src/sentinel_main.o
 
-.PHONY: all clean keyboard ui motion-test host-chord-test sentinel ui-test install a11y
+.PHONY: all clean keyboard ui motion-test host-chord-test wikipedia-test sentinel ui-test install a11y
 
-all: braillatron-ui braillatron-motion-test braillatron-host-chord-test braillatron-sentinel braillatron-ui-test
+all: braillatron-ui braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-sentinel braillatron-ui-test
 
 keyboard: braillatron-ui
 
@@ -134,6 +146,8 @@ a11y:
 motion-test: braillatron-motion-test
 
 host-chord-test: braillatron-host-chord-test
+
+wikipedia-test: braillatron-wikipedia-test
 
 sentinel: braillatron-sentinel
 
@@ -153,6 +167,9 @@ braillatron-motion-test: $(MOTION_TEST_OBJS)
 
 braillatron-host-chord-test: $(HOST_CHORD_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(HOST_CHORD_TEST_OBJS) -o $@
+
+braillatron-wikipedia-test: $(WIKIPEDIA_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(WIKIPEDIA_TEST_OBJS) -o $@
 
 braillatron-sentinel: $(TELEMETRY_OBJS)
 	$(CXX) $(CXXFLAGS) $(TELEMETRY_OBJS) -o $@
@@ -187,6 +204,9 @@ src/telemetry/%.o: src/telemetry/%.cpp
 src/platform/%.o: src/platform/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
+src/net/%.o: src/net/%.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
 src/ui/%.o: src/ui/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
 
@@ -196,10 +216,10 @@ src/ui/apps/%.o: src/ui/apps/%.cpp
 src/ui/backends/%.o: src/ui/backends/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(TELEMETRY_OBJS))
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(TELEMETRY_OBJS))
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \
-		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-host-chord-test braillatron-sentinel
+		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-sentinel
 
 -include $(ALL_OBJS:.o=.d)
