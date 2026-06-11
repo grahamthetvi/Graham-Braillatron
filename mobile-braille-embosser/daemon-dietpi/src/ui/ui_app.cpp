@@ -23,6 +23,8 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     , brf_store_("/var/lib/braillatron/ram/layer1.brf")
     , coord_store_("/var/lib/braillatron/ram/coords.json")
     , output_hub_(ui_config_, telemetry_config_, ui_config_path_, &motion_service_)
+    , connect_client_(braillatron::connect::default_connect_config().socket_path,
+                      braillatron::connect::default_connect_config().event_path)
     , keyboard_(keyboard_config_)
 {
     coord_store_.load();
@@ -37,9 +39,11 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     ui_context_.edit = &edit_session_;
     ui_context_.paper_sep = &paper_separator_;
     ui_context_.registry = &app_registry_;
+    ui_context_.connect = &connect_client_;
 
     app_registry_.set_context(ui_context_);
     output_hub_.set_app_registry(&app_registry_);
+    output_hub_.set_connect_client(&connect_client_);
 
     hooks::set_output_hub(&output_hub_);
     hooks::set_app_registry(&app_registry_);
@@ -51,8 +55,8 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
         output_hub_.announce_status_report(status_report_);
     });
 
-    keyboard_.focus_nav().set_entries(
-        {"Document", "Calculator", "Transcriber", "Network", "Settings", "Power"});
+    keyboard_.focus_nav().set_entries({"Document", "Calculator", "Transcriber", "Network",
+                                       "YouTube", "Messages", "Settings", "Power"});
 
     keyboard_.focus_nav().set_focus_changed_handler(
         [this](const std::string &label, bool at_boundary) {
@@ -181,6 +185,14 @@ void UiApp::handle_activate(size_t index, const std::string &label)
     }
     if (label == "Network") {
         app_registry_.enter("network");
+        return;
+    }
+    if (label == "YouTube") {
+        app_registry_.enter("youtube");
+        return;
+    }
+    if (label == "Messages") {
+        app_registry_.enter("messages");
         return;
     }
 

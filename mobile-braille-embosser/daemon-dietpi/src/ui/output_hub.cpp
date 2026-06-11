@@ -4,6 +4,8 @@
 #include "../motion/motion_service.h"
 #include "../telemetry/system_shutdown.h"
 #include "../telemetry/telemetry_bridge.h"
+#include "../connect/connect_client.h"
+#include "../connect/json_utils.h"
 #include "apps/app_registry.h"
 
 extern "C" {
@@ -39,6 +41,10 @@ OutputHub::~OutputHub() = default;
 void OutputHub::emit(const std::string &message)
 {
     std::cerr << "[ui] " << message << "\n";
+
+    if (media_playing_ && ui_config_.tts_enabled) {
+        return;
+    }
 
     if (ui_config_.tts_enabled && tts_ != nullptr) {
         tts_->speak(message);
@@ -149,6 +155,12 @@ void OutputHub::check_battery_warning()
 
 void OutputHub::on_shift_tts_toggle(bool pressed)
 {
+    if (media_playing_ && connect_client_ != nullptr) {
+        connect_client_->request("youtube.pause");
+        emit(pressed ? "Playback paused" : "Playback resumed");
+        return;
+    }
+
     if (!ui_config_.tts_enabled || tts_ == nullptr) {
         return;
     }
@@ -295,6 +307,16 @@ void OutputHub::set_app_registry(AppRegistry *registry)
     rebuild_root_menu();
 }
 
+void OutputHub::set_connect_client(connect::ConnectClient *client)
+{
+    connect_client_ = client;
+}
+
+void OutputHub::set_media_playing(bool playing)
+{
+    media_playing_ = playing;
+}
+
 void OutputHub::set_stt_transcript_handler(SttBackend::TranscriptHandler handler)
 {
     if (stt_ != nullptr) {
@@ -366,6 +388,11 @@ void OutputHub::toggle_bool(bool &field, const char *name)
 std::vector<MenuItem> OutputHub::build_settings_menu()
 {
     return {
+        MenuItem {
+            "Accounts",
+            {},
+            [this](MenuOverlay &mo) { mo.push_level(build_accounts_menu()); },
+        },
         MenuItem {
             "TTS",
             [this]() { return ui_config_.tts_enabled ? "TTS: On" : "TTS: Off"; },
@@ -451,6 +478,89 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                     tts_->set_rate(ui_config_.tts_rate);
                 }
                 emit("TTS rate: " + std::to_string(ui_config_.tts_rate));
+            },
+        },
+    };
+}
+
+std::vector<MenuItem> OutputHub::build_accounts_menu()
+{
+    return {
+        MenuItem {
+            "Connectivity status",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                const bool online = connect_client_->ping();
+                emit(online ? "Connectd online" : "Connectd offline");
+            },
+        },
+        MenuItem {
+            "YouTube cookies",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                const std::string status = connect_client_->request("accounts.status");
+                const bool cookies = connect::json_get_bool(status, "youtube_cookies", false);
+                emit(cookies ? "YouTube cookies present" : "YouTube cookies missing");
+            },
+        },
+        MenuItem {
+            "Import YouTube cookies",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                connect_client_->request("youtube.import_cookies");
+                emit("Checking incoming cookie folder");
+            },
+        },
+        MenuItem {
+            "Link Signal",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                const std::string start = connect_client_->request("signal.start_link");
+                const std::string uri = connect::json_get_string(start, "uri");
+                emit("Open Signal on your phone. Linked Devices. Link New Device.");
+                if (!uri.empty()) {
+                    emit(uri);
+                }
+                const std::string finish = connect_client_->request("signal.finish_link");
+                if (connect::json_get_bool(finish, "ok", false)) {
+                    emit("Signal link check complete");
+                } else {
+                    emit("Signal link pending. Try again after approving on phone.");
+                }
+            },
+        },
+        MenuItem {
+            "Signal status",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                const std::string status = connect_client_->request("accounts.status");
+                const bool linked = connect::json_get_bool(status, "signal_linked", false);
+                emit(linked ? "Signal linked" : "Signal not linked");
             },
         },
     };

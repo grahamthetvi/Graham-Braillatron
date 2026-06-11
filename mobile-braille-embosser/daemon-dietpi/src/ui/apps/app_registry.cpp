@@ -12,6 +12,8 @@ AppRegistry::AppRegistry()
     register_app(make_transcriber_app());
     register_app(make_morse_learn_app());
     register_app(make_network_app());
+    register_app(make_youtube_app());
+    register_app(make_messages_app());
     register_app(make_library_app());
     register_app(make_localsend_app());
     register_app(make_quick_status_inline());

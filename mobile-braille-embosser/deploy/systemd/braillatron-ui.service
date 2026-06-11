@@ -1,6 +1,6 @@
 [Unit]
 Description=Braillatron ScreenReader UI
-After=network.target sound.target speech-dispatcher.service brltty.service
+After=network.target braillatron-connectd.service sound.target speech-dispatcher.service brltty.service
 Wants=speech-dispatcher.service
 
 [Service]

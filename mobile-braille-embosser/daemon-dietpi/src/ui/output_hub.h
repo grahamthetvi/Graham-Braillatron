@@ -17,6 +17,10 @@ namespace braillatron::motion {
 class MotionService;
 }
 
+namespace braillatron::connect {
+class ConnectClient;
+}
+
 namespace braillatron::ui {
 
 class AppRegistry;
@@ -48,8 +52,10 @@ public:
 
     void set_status_report_provider(std::function<void()> provider);
     void set_app_registry(AppRegistry *registry);
+    void set_connect_client(connect::ConnectClient *client);
     void set_stt_transcript_handler(SttBackend::TranscriptHandler handler);
     void set_morse_passive(bool enabled);
+    void set_media_playing(bool playing);
     void play_morse(const std::string &text);
     void play_boundary_haptic();
     void request_shutdown();
@@ -65,14 +71,17 @@ private:
     void persist_ui_config();
     void toggle_bool(bool &field, const char *name);
     std::vector<MenuItem> build_root_menu();
+    std::vector<MenuItem> build_accounts_menu();
 
     UiConfig ui_config_;
     telemetry::TelemetryConfig telemetry_config_;
     std::string ui_config_path_;
     MenuOverlay menu_overlay_;
     AppRegistry *app_registry_ = nullptr;
+    connect::ConnectClient *connect_client_ = nullptr;
     std::function<void()> status_report_provider_;
     bool morse_passive_ = false;
+    bool media_playing_ = false;
     bool low_battery_announced_ = false;
 
     motion::MotionService *motion_ = nullptr;
