@@ -57,7 +57,7 @@ public:
 
     void on_chord(uint8_t, UiContext &) override {}
 
-    void on_text(const std::string &text, UiContext &ctx) override
+    void on_text(const std::string &text, UiContext &) override
     {
         if (phase_ != Phase::Search || text.empty()) {
             return;

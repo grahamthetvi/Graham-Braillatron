@@ -69,7 +69,7 @@ public:
         }
     }
 
-    void on_text(const std::string &text, UiContext &ctx) override
+    void on_text(const std::string &text, UiContext &) override
     {
         if (state_ == MessagesState::Compose) {
             compose_ += text;

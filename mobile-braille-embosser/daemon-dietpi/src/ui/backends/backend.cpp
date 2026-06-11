@@ -81,7 +81,14 @@ public:
     void set_rate(int rate) override
     {
         if (connection_ != nullptr) {
-            spd_set_rate(connection_, rate);
+            // ui.conf tts_rate is espeak WPM (~150 default); SPD voice rate is -100..100 (0 = normal).
+            int spd_rate = (rate - 150) * 100 / 250;
+            if (spd_rate < -100) {
+                spd_rate = -100;
+            } else if (spd_rate > 100) {
+                spd_rate = 100;
+            }
+            spd_set_voice_rate(connection_, spd_rate);
         }
     }
 
