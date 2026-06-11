@@ -11,6 +11,8 @@ std::unique_ptr<AppSession> make_calculator_app();
 std::unique_ptr<AppSession> make_transcriber_app();
 std::unique_ptr<AppSession> make_morse_learn_app();
 std::unique_ptr<AppSession> make_network_app();
+std::unique_ptr<AppSession> make_youtube_app();
+std::unique_ptr<AppSession> make_messages_app();
 std::unique_ptr<AppSession> make_library_app();
 std::unique_ptr<AppSession> make_localsend_app();
 std::unique_ptr<AppSession> make_wikipedia_app();
