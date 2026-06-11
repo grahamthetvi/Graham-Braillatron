@@ -1,9 +1,17 @@
 #include "output_hub.h"
 
+#include "../documents/liblouis_bridge.h"
+#include "../motion/motion_service.h"
+#include "../telemetry/system_shutdown.h"
+#include "../telemetry/telemetry_bridge.h"
+#include "apps/app_registry.h"
+
 extern "C" {
 #include "protocol.h"
 }
 
+#include <chrono>
+#include <ctime>
 #include <iostream>
 #include <sstream>
 #include <utility>
@@ -11,14 +19,17 @@ extern "C" {
 namespace braillatron::ui {
 
 OutputHub::OutputHub(UiConfig ui_config, telemetry::TelemetryConfig telemetry_config,
-                     std::string ui_config_path)
+                     std::string ui_config_path, motion::MotionService *motion)
     : ui_config_(std::move(ui_config))
     , telemetry_config_(std::move(telemetry_config))
     , ui_config_path_(std::move(ui_config_path))
+    , motion_(motion)
     , tts_(create_tts_backend(ui_config_))
     , braille_(create_braille_backend(ui_config_))
     , stt_(create_stt_backend(ui_config_))
     , haptics_(create_haptic_backend(ui_config_, telemetry_config_))
+    , embosser_(create_embosser_backend(ui_config_, motion_))
+    , morse_(create_morse_backend(ui_config_, telemetry_config_))
 {
     menu_overlay_.set_root_items(build_root_menu());
 }
@@ -28,11 +39,23 @@ OutputHub::~OutputHub() = default;
 void OutputHub::emit(const std::string &message)
 {
     std::cerr << "[ui] " << message << "\n";
+
     if (ui_config_.tts_enabled && tts_ != nullptr) {
         tts_->speak(message);
     }
+
     if (ui_config_.braille_enabled && braille_ != nullptr) {
         braille_->write(message);
+    }
+
+    const bool emboss_for_deaf_blind =
+        ui_config_.deaf_blind_menu_parity && !ui_config_.tts_enabled && ui_config_.embosser_enabled;
+    if (emboss_for_deaf_blind && embosser_ != nullptr) {
+        embosser_->enqueue_text(message);
+    }
+
+    if (morse_passive_ && morse_ != nullptr) {
+        morse_->play_text(message);
     }
 }
 
@@ -76,6 +99,54 @@ void OutputHub::announce_status_report(const platform::DeviceStatusReport &repor
     emit(stream.str());
 }
 
+void OutputHub::announce_quick_status()
+{
+    const telemetry::TelemetrySnapshot snapshot =
+        telemetry::read_telemetry_json(telemetry::kTelemetryJsonPath);
+
+    std::ostringstream stream;
+    stream << "Quick status. ";
+    if (snapshot.battery_percent != BRAILLATRON_TELEMETRY_UNKNOWN) {
+        stream << "Battery " << static_cast<unsigned>(snapshot.battery_percent) << " percent. ";
+    }
+
+    FILE *wifi = popen("nmcli -t -f ACTIVE,SSID dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2",
+                       "r");
+    if (wifi != nullptr) {
+        char buffer[128] = {0};
+        if (fgets(buffer, sizeof(buffer), wifi) != nullptr) {
+            stream << "Network " << buffer;
+        }
+        pclose(wifi);
+    }
+
+    const std::time_t now = std::time(nullptr);
+    char time_buf[64] = {0};
+    if (std::strftime(time_buf, sizeof(time_buf), "%A %B %d %H:%M", std::localtime(&now)) > 0) {
+        stream << "Time " << time_buf << ". ";
+    }
+
+    emit(stream.str());
+}
+
+void OutputHub::check_battery_warning()
+{
+    if (low_battery_announced_) {
+        return;
+    }
+
+    const telemetry::TelemetrySnapshot snapshot =
+        telemetry::read_telemetry_json(telemetry::kTelemetryJsonPath);
+    if (snapshot.battery_percent == BRAILLATRON_TELEMETRY_UNKNOWN ||
+        snapshot.battery_percent > 20) {
+        return;
+    }
+
+    low_battery_announced_ = true;
+    emit("Battery low. Twenty percent remaining.");
+    play_boundary_haptic();
+}
+
 void OutputHub::on_shift_tts_toggle(bool pressed)
 {
     if (!ui_config_.tts_enabled || tts_ == nullptr) {
@@ -114,6 +185,14 @@ void OutputHub::on_menu_overlay(bool open)
             emit("Menu closed");
         }
         return;
+    }
+
+    if (app_registry_ != nullptr && app_registry_->active() != nullptr) {
+        menu_overlay_.set_root_items(app_registry_->build_inline_menu());
+    } else if (app_registry_ != nullptr) {
+        menu_overlay_.set_root_items(app_registry_->build_launcher_menu());
+    } else {
+        menu_overlay_.set_root_items(build_root_menu());
     }
 
     menu_overlay_.open();
@@ -202,9 +281,7 @@ void OutputHub::announce_safety_fault(uint8_t fault_code, uint8_t severity, uint
     }
 
     emit(message);
-    if (ui_config_.haptics_enabled && haptics_ != nullptr) {
-        haptics_->play_effect(ui_config_.boundary_haptic_effect);
-    }
+    play_boundary_haptic();
 }
 
 void OutputHub::set_status_report_provider(std::function<void()> provider)
@@ -212,9 +289,56 @@ void OutputHub::set_status_report_provider(std::function<void()> provider)
     status_report_provider_ = std::move(provider);
 }
 
+void OutputHub::set_app_registry(AppRegistry *registry)
+{
+    app_registry_ = registry;
+    rebuild_root_menu();
+}
+
+void OutputHub::set_stt_transcript_handler(SttBackend::TranscriptHandler handler)
+{
+    if (stt_ != nullptr) {
+        stt_->set_transcript_handler(std::move(handler));
+    }
+}
+
+void OutputHub::set_morse_passive(bool enabled)
+{
+    morse_passive_ = enabled;
+}
+
+void OutputHub::play_morse(const std::string &text)
+{
+    if (morse_ != nullptr) {
+        morse_->play_text(text);
+    }
+}
+
+void OutputHub::play_boundary_haptic()
+{
+    if (ui_config_.haptics_enabled && haptics_ != nullptr) {
+        haptics_->play_effect(ui_config_.boundary_haptic_effect);
+    }
+}
+
+void OutputHub::request_shutdown()
+{
+    emit("Shutting down");
+    telemetry::request_clean_shutdown();
+}
+
 MenuOverlay &OutputHub::menu_overlay()
 {
     return menu_overlay_;
+}
+
+void OutputHub::rebuild_root_menu()
+{
+    if (app_registry_ != nullptr) {
+        menu_overlay_.set_root_items(app_registry_->build_launcher_menu());
+    } else {
+        menu_overlay_.set_root_items(build_root_menu());
+    }
 }
 
 void OutputHub::persist_ui_config()
@@ -259,6 +383,27 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             },
         },
         MenuItem {
+            "Embosser",
+            [this]() {
+                return ui_config_.embosser_enabled ? "Embosser: On" : "Embosser: Off";
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                toggle_bool(ui_config_.embosser_enabled, "Embosser");
+            },
+        },
+        MenuItem {
+            "Deaf-blind parity",
+            [this]() {
+                return ui_config_.deaf_blind_menu_parity ? "Deaf-blind parity: On"
+                                                          : "Deaf-blind parity: Off";
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                toggle_bool(ui_config_.deaf_blind_menu_parity, "Deaf-blind parity");
+            },
+        },
+        MenuItem {
             "Speech to Text",
             [this]() {
                 return ui_config_.stt_enabled ? "Speech to Text: On" : "Speech to Text: Off";
@@ -276,6 +421,38 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 toggle_bool(ui_config_.haptics_enabled, "Haptics");
             },
         },
+        MenuItem {
+            "Braille grade",
+            [this]() { return "Grade: " + ui_config_.braille_table; },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (ui_config_.braille_table == "ueb_g2") {
+                    ui_config_.braille_table = "ueb_g1";
+                } else if (ui_config_.braille_table == "ueb_g1") {
+                    ui_config_.braille_table = "nemeth";
+                } else {
+                    ui_config_.braille_table = "ueb_g2";
+                }
+                persist_ui_config();
+                emit("Braille grade: " + ui_config_.braille_table);
+            },
+        },
+        MenuItem {
+            "TTS rate",
+            [this]() { return "TTS rate: " + std::to_string(ui_config_.tts_rate); },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                ui_config_.tts_rate += 10;
+                if (ui_config_.tts_rate > 400) {
+                    ui_config_.tts_rate = 80;
+                }
+                persist_ui_config();
+                if (tts_ != nullptr) {
+                    tts_->set_rate(ui_config_.tts_rate);
+                }
+                emit("TTS rate: " + std::to_string(ui_config_.tts_rate));
+            },
+        },
     };
 }
 
@@ -287,7 +464,9 @@ std::vector<MenuItem> OutputHub::build_root_menu()
             {},
             [this](MenuOverlay &mo) {
                 (void)mo;
-                emit("Document selected");
+                if (app_registry_ != nullptr) {
+                    app_registry_->enter("brailler");
+                }
                 menu_overlay_.close();
             },
         },
@@ -307,21 +486,11 @@ std::vector<MenuItem> OutputHub::build_root_menu()
             },
         },
         MenuItem {
-            "Emboss",
-            {},
-            [this](MenuOverlay &mo) {
-                (void)mo;
-                emit("Emboss selected");
-                menu_overlay_.close();
-            },
-        },
-        MenuItem {
             "Power",
             {},
             [this](MenuOverlay &mo) {
                 (void)mo;
-                emit("Power selected");
-                menu_overlay_.close();
+                request_shutdown();
             },
         },
     };

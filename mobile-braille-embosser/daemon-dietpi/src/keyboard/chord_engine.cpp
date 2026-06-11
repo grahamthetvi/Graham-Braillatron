@@ -1,5 +1,7 @@
 #include "chord_engine.h"
 
+#include "../documents/liblouis_bridge.h"
+
 extern "C" {
 #include "protocol.h"
 }
@@ -34,37 +36,16 @@ static_assert(sizeof(kControlBits) / sizeof(kControlBits[0]) ==
                   sizeof(kControlKeys) / sizeof(kControlKeys[0]),
               "control key tables must match");
 
-#include <liblouis/liblouis.h>
-
 } // namespace
 
 std::optional<std::string> braille_dots_to_string(uint8_t dot_mask)
 {
-    if (dot_mask == 0) {
-        return std::string(" ");
+    const std::string result =
+        documents::translate_backward_dots(dot_mask, documents::BrailleTable::UebG2);
+    if (result.empty() && dot_mask != 0) {
+        return std::nullopt;
     }
-
-    widechar inbuf[2] = { static_cast<widechar>(0x2800 | dot_mask), 0 };
-    int inlen = 1;
-    
-    // Grade 2 contractions can return multiple characters
-    widechar outbuf[16] = {0};
-    int outlen = 15;
-    
-    // Using standard US English Grade 2 table
-    const char* table = "en-us-g2.ctb";
-    
-    if (lou_backTranslateString(table, inbuf, &inlen, outbuf, &outlen, nullptr, nullptr, 0)) {
-        if (outlen > 0) {
-            std::string result;
-            for (int i = 0; i < outlen; ++i) {
-                result.push_back(static_cast<char>(outbuf[i]));
-            }
-            return result;
-        }
-    }
-    
-    return std::nullopt;
+    return result;
 }
 
 void ChordEngine::on_key_state(uint16_t key_state)

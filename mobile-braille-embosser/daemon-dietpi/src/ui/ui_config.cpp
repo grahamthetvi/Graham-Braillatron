@@ -64,16 +64,36 @@ UiConfig load_ui_config(const std::string &path)
             config.stt_enabled = parse_bool(value);
         } else if (key == "haptics_enabled") {
             config.haptics_enabled = parse_bool(value);
+        } else if (key == "embosser_enabled") {
+            config.embosser_enabled = parse_bool(value);
+        } else if (key == "deaf_blind_menu_parity") {
+            config.deaf_blind_menu_parity = parse_bool(value);
+        } else if (key == "morse_output_enabled") {
+            config.morse_output_enabled = parse_bool(value);
         } else if (key == "spd_voice") {
             config.spd_voice = value;
         } else if (key == "vosk_model_path") {
             config.vosk_model_path = value;
+        } else if (key == "braille_table") {
+            config.braille_table = value;
+        } else if (key == "language") {
+            config.language = value;
+        } else if (key == "tts_rate") {
+            config.tts_rate = std::stoi(value);
+        } else if (key == "tts_volume") {
+            config.tts_volume = std::stoi(value);
+        } else if (key == "haptic_intensity") {
+            config.haptic_intensity = static_cast<uint8_t>(std::stoul(value));
         } else if (key == "boundary_haptic_effect") {
             config.boundary_haptic_effect = static_cast<uint8_t>(std::stoul(value));
+        } else if (key == "morse_wpm") {
+            config.morse_wpm = static_cast<uint32_t>(std::stoul(value));
         } else if (key == "status_probe_interval_ms") {
             config.status_probe_interval_ms = static_cast<uint32_t>(std::stoul(value));
         } else if (key == "heartbeat_interval_ms") {
             config.heartbeat_interval_ms = static_cast<uint32_t>(std::stoul(value));
+        } else if (key == "transcriber_queue_limit") {
+            config.transcriber_queue_limit = static_cast<uint32_t>(std::stoul(value));
         }
     }
 
@@ -88,13 +108,24 @@ void save_ui_config(const std::string &path, const UiConfig &config)
     stream << "braille_enabled=" << (config.braille_enabled ? "true" : "false") << "\n";
     stream << "stt_enabled=" << (config.stt_enabled ? "true" : "false") << "\n";
     stream << "haptics_enabled=" << (config.haptics_enabled ? "true" : "false") << "\n";
+    stream << "embosser_enabled=" << (config.embosser_enabled ? "true" : "false") << "\n";
+    stream << "deaf_blind_menu_parity=" << (config.deaf_blind_menu_parity ? "true" : "false")
+           << "\n";
+    stream << "morse_output_enabled=" << (config.morse_output_enabled ? "true" : "false") << "\n";
     stream << "\n";
     stream << "spd_voice=" << config.spd_voice << "\n";
     stream << "vosk_model_path=" << config.vosk_model_path << "\n";
+    stream << "braille_table=" << config.braille_table << "\n";
+    stream << "language=" << config.language << "\n";
+    stream << "tts_rate=" << config.tts_rate << "\n";
+    stream << "tts_volume=" << config.tts_volume << "\n";
+    stream << "haptic_intensity=" << static_cast<unsigned>(config.haptic_intensity) << "\n";
     stream << "boundary_haptic_effect=" << static_cast<unsigned>(config.boundary_haptic_effect)
            << "\n";
+    stream << "morse_wpm=" << config.morse_wpm << "\n";
     stream << "status_probe_interval_ms=" << config.status_probe_interval_ms << "\n";
     stream << "heartbeat_interval_ms=" << config.heartbeat_interval_ms << "\n";
+    stream << "transcriber_queue_limit=" << config.transcriber_queue_limit << "\n";
 
     const std::string tmp_path = path + ".tmp";
     {

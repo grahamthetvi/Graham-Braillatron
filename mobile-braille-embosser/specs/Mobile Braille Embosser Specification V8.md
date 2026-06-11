@@ -1,5 +1,7 @@
 # **Master Software Architecture & Engineering Specification V8**
 
+*Superseded for product behavior by [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md); retained for co-processor, protocol, and hardware engineering detail.*
+
 **Project:** Mobile Smart Braille Notetaker & Embosser
 
 **Lead Architect:** Addison

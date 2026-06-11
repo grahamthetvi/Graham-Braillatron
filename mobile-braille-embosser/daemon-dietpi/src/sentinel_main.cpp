@@ -1,10 +1,13 @@
 #include "hardware/hardware_config.h"
 #include "motion_gate.h"
+#include "telemetry/crash_reporter.h"
+#include "telemetry/homing_service.h"
 #include "telemetry/telemetry_config.h"
 #include "telemetry/telemetry_sentinel.h"
 
-#include <csignal>
 #include <cstdlib>
+#include <csignal>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -35,6 +38,21 @@ std::string resolve_config_path(const std::string &base, const std::string &path
     return base + "/" + path;
 }
 
+int32_t read_target_y_line(const std::string &coords_path)
+{
+    std::ifstream input(coords_path);
+    if (!input.is_open()) {
+        return 0;
+    }
+    std::string content((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    const std::string key = "\"y_line_index\":";
+    const size_t pos = content.find(key);
+    if (pos == std::string::npos) {
+        return 0;
+    }
+    return static_cast<int32_t>(std::strtol(content.c_str() + pos + key.size(), nullptr, 10));
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -60,6 +78,20 @@ int main(int argc, char *argv[])
 
         braillatron::telemetry::TelemetryConfig config =
             braillatron::telemetry::load_telemetry_config(telemetry_path);
+
+        braillatron::telemetry::CrashReporterConfig crash_config;
+        crash_config.sentry_dsn = config.sentry_dsn;
+        crash_config.memfault_project_key = config.memfault_project_key;
+        crash_config.build_version = config.build_version;
+        braillatron::telemetry::install_crash_reporter(crash_config);
+
+        braillatron::telemetry::HomingService homing(config);
+        if (hardware.motion_enabled) {
+            const int32_t target_y = read_target_y_line(config.coordinate_ram_path);
+            homing.run_boot_homing(target_y);
+            homing.write_status(config.homing_status_path);
+        }
+
         braillatron::telemetry::TelemetrySentinel sentinel(config);
 
         sentinel.start([](const braillatron::telemetry::TelemetrySnapshot &snapshot) {

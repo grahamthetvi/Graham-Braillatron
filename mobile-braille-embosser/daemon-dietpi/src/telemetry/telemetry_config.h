@@ -10,8 +10,15 @@ struct TelemetryConfig {
     std::string i2c_bus = "/dev/i2c-1";
     uint8_t ltc2944_address = 0x64;
     uint8_t drv2605l_address = 0x5A;
+    uint8_t battery_low_percent = 20;
     uint8_t battery_critical_percent = 5;
     uint32_t poll_interval_ms = 500;
+
+    std::string coordinate_ram_path = "/var/lib/braillatron/ram/coords.json";
+    std::string homing_status_path = "/run/braillatron/homing.status";
+    std::string sentry_dsn;
+    std::string memfault_project_key;
+    std::string build_version = "braillatron-dev";
 
     uint16_t battery_4s_min_mv = 12000;
     uint16_t battery_4s_max_mv = 16800;

@@ -1,9 +1,17 @@
 #pragma once
 
+#include "../documents/brf_store.h"
+#include "../documents/coordinate_state.h"
+#include "../documents/edit_session.h"
+#include "../documents/paper_separator.h"
 #include "../hardware/hardware_config.h"
+#include "../kinematics/kinematics_config.h"
+#include "../motion/motion_service.h"
 #include "../platform/device_status.h"
 #include "../platform/serial_link.h"
 #include "../telemetry/telemetry_config.h"
+#include "../ui/apps/app_registry.h"
+#include "../ui/apps/ui_context.h"
 #include "../ui/output_hub.h"
 #include "../ui/ui_config.h"
 #include "../keyboard/keyboard_config.h"
@@ -20,6 +28,7 @@ public:
     UiApp(hardware::HardwareConfig hardware,
           keyboard::KeyboardConfig keyboard_config,
           telemetry::TelemetryConfig telemetry_config,
+          kinematics::KinematicsConfig kinematics_config,
           UiConfig ui_config,
           std::string ui_config_path);
 
@@ -43,7 +52,15 @@ private:
     platform::DeviceStatusReport status_report_;
     platform::SerialLink serial_link_;
 
+    motion::MotionService motion_service_;
+    documents::BrfStore brf_store_;
+    documents::CoordinateStore coord_store_;
+    documents::EditSession edit_session_;
+    documents::PaperSeparator paper_separator_;
+
     OutputHub output_hub_;
+    AppRegistry app_registry_;
+    UiContext ui_context_;
     keyboard::KeyboardService keyboard_;
 
     std::atomic<bool> running_ {false};

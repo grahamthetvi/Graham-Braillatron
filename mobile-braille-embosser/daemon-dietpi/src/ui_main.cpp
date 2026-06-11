@@ -1,4 +1,5 @@
 #include "hardware/hardware_config.h"
+#include "kinematics/kinematics_config.h"
 #include "telemetry/telemetry_config.h"
 #include "ui/ui_app.h"
 #include "ui/ui_config.h"
@@ -69,12 +70,16 @@ int main(int argc, char *argv[])
         const braillatron::telemetry::TelemetryConfig telemetry_config =
             braillatron::telemetry::load_telemetry_config(resolved_hardware.telemetry_config);
 
+        const braillatron::kinematics::KinematicsConfig kinematics_config =
+            braillatron::kinematics::load_kinematics_config(
+                resolve_config_path(base, "kinematics.conf"));
+
         const std::string ui_config_path = resolve_config_path(base, "ui.conf");
         const braillatron::ui::UiConfig ui_config =
             braillatron::ui::load_ui_config(ui_config_path);
 
         braillatron::ui::UiApp app(resolved_hardware, keyboard_config, telemetry_config,
-                                   ui_config, ui_config_path);
+                                   kinematics_config, ui_config, ui_config_path);
         app.start();
 
         std::cerr << "braillatron-ui profile=" << resolved_hardware.board_profile << "\n";

@@ -253,6 +253,14 @@ void KeyboardService::handle_key_state(uint16_t key_state)
 
 void KeyboardService::handle_chord(uint8_t dot_mask)
 {
+    if (hooks::standalone_app_active()) {
+        hooks::on_app_chord(dot_mask);
+        if (auto text = braille_dots_to_string(dot_mask)) {
+            hooks::on_app_text(*text);
+        }
+        return;
+    }
+
     if (auto text = braille_dots_to_string(dot_mask)) {
         focus_.on_text(*text);
     }
@@ -287,6 +295,8 @@ void KeyboardService::handle_control_edge(const ControlEdge &edge)
         if (edge.pressed) {
             if (menu_open) {
                 hooks::on_menu_move(true);
+            } else if (hooks::standalone_app_active()) {
+                hooks::on_app_control(edge.key, edge.pressed);
             } else {
                 focus_.on_dpad_up();
             }
@@ -296,6 +306,8 @@ void KeyboardService::handle_control_edge(const ControlEdge &edge)
         if (edge.pressed) {
             if (menu_open) {
                 hooks::on_menu_move(false);
+            } else if (hooks::standalone_app_active()) {
+                hooks::on_app_control(edge.key, edge.pressed);
             } else {
                 focus_.on_dpad_down();
             }
@@ -314,6 +326,8 @@ void KeyboardService::handle_control_edge(const ControlEdge &edge)
         if (edge.pressed) {
             if (menu_open) {
                 hooks::on_menu_activate();
+            } else if (hooks::standalone_app_active()) {
+                hooks::on_app_control(edge.key, edge.pressed);
             } else {
                 focus_.on_enter();
             }

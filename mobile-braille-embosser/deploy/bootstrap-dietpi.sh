@@ -49,6 +49,8 @@ fi
 
 systemctl enable --now speech-dispatcher || true
 systemctl enable --now brltty || true
+systemctl enable --now NetworkManager || true
+systemctl enable --now pipewire pipewire-pulse wireplumber 2>/dev/null || true
 
 if [[ -f "${ROOT}/deploy/os/asound.conf.snippet" ]] &&
    ! grep -qF 'pcm.!default' /etc/asound.conf 2>/dev/null; then

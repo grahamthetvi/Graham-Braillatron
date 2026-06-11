@@ -1,5 +1,7 @@
 # **The Graham Brailler: Engineering Blueprint & Master Lifecycle Architecture (V4.9 Consolidated)**
 
+*Superseded for product behavior by [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md); retained for historical hardware lifecycle notes.*
+
 **Lead Architect:** Addison Graham
 
 **Target Hardware:** Orange Pi 3B (SBC) \+ Custom PCB (HAT)

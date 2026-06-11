@@ -14,7 +14,7 @@
 - `firmware-arduino/`: Real-time watchdog, hardware interrupt routines, MPU6050 freefall handling, local keyboard scanning.
 - `daemon-dietpi/`: Core ScreenReader service, focus loops, asynchronous processing, spatial delay line filtration, telemetry trackers.
 - `shared/`: Single source of truth for communication schemas, binary frame packet formats, and CRC validation rules.
-- `specs/`: Houses the master `architecture_v6.md` file.
+- `specs/`: Houses the master [Master Software Architecture V9](specs/Master%20Software%20Architecture%20V9.md) file.
 
 ## 3. Subsystem Specifications & Hard Constraints
 
@@ -30,11 +30,11 @@
   - QWERTY (USB/Bluetooth): Mirror desktop access patterns (Windows Key = Menu, Win + H = Dictation).
   - Refreshable Displays (Mantis Q40): Integrated over USB/Bluetooth sockets leveraging direct BRLTTY or serial socket abstractions.
 
-### 3.2 Production Keyboard Matrix Driver
-- **Electrical Layout**: 4x4 matrix with 1N4148 fast-switching axial diodes wired in series with each switch. Guarantees true N-Key Rollover (NKRO) without ghosting.
+### 3.2 Production Keyboard Driver (Direct Pin Topology)
+- **Electrical Layout**: Direct-pin wiring — one dedicated Arduino Micro GPIO per Cherry MX switch (13 keys). Common ground bus; INPUT_PULLUP active LOW. Inherent NKRO; no diode matrix required.
 - **Processing Architecture Split**:
-  - *Arduino Micro*: Runs a non-blocking Timer1 hardware interrupt to scan rows and sample columns at exactly 1 kHz. Applies an 8-ms sliding software integrator bitwise debounce window. Transmits a packed 2-byte matrix state update over UART/SPI *only when an edge state change is detected*.
-  - *Orange Pi 3B*: Receives the 2-byte packet passively and executes a 40-ms temporal chord integration window to aggregate multiple concurrent key state transitions into a single multi-finger Braille chord character (e.g., Dots 1+3+5 = "O").
+  - *Arduino Micro*: Non-blocking 1 kHz main-loop scan (no delay()). Per-key 15 ms integrator debounce. 40 ms temporal chord assembly window for Braille dots; function keys transmit immediately as edge-triggered frames over USB CDC @ 115200 bps.
+  - *Orange Pi 3B*: Receives CHORD or KEYBOARD_MATRIX frames via `shared/protocol.h`. Host-side liblouis back-translates dot masks to ASCII (Grade 2 / Nemeth table selectable in ui.conf).
 
 ### 3.3 Y-Axis Paper Transport (Tractor Feed Kinematics)
 - **Material Constraints**: Continuous-form 100 lb cardstock paper. Perforations are spaced exactly 0.5 inches (12.7 mm) apart center-to-center.

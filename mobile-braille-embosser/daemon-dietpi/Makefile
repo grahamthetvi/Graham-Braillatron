@@ -5,7 +5,7 @@ CFLAGS ?= -std=c11 -Wall -Wextra -pedantic -O2
 CPPFLAGS += -I../shared -Isrc -MMD -MP
 LDFLAGS ?=
 
-# Set BRAILLATRON_A11Y=1 to link Speech Dispatcher, BRLTTY, and Vosk backends.
+# Set BRAILLATRON_A11Y=1 to link Speech Dispatcher, BRLTTY, Vosk, and liblouis backends.
 A11Y_LIBS :=
 A11Y_CXXFLAGS :=
 ifeq ($(BRAILLATRON_A11Y),1)
@@ -17,14 +17,46 @@ PLATFORM_OBJS := \
 	src/platform/device_status.o \
 	src/platform/serial_link.o
 
+KINEMATICS_OBJS := \
+	src/kinematics/emboss_scheduler.o \
+	src/kinematics/kinematics_config.o \
+	src/kinematics/linkage_model.o \
+	src/kinematics/motion_controller.o \
+	src/kinematics/spatial_delay_line.o \
+	src/kinematics/travel_log.o
+
+DOCUMENT_OBJS := \
+	src/documents/brf_store.o \
+	src/documents/coordinate_state.o \
+	src/documents/edit_session.o \
+	src/documents/liblouis_bridge.o \
+	src/documents/paper_separator.o
+
+MOTION_OBJS := \
+	src/motion/motion_service.o
+
+HAPTICS_OBJS := \
+	src/haptics/morse_encoder.o
+
+APP_OBJS := \
+	src/ui/apps/all_apps.o \
+	src/ui/apps/app_registry.o
+
 UI_OBJS := \
 	$(PLATFORM_OBJS) \
+	$(KINEMATICS_OBJS) \
+	$(DOCUMENT_OBJS) \
+	$(MOTION_OBJS) \
+	$(HAPTICS_OBJS) \
+	$(APP_OBJS) \
 	../shared/protocol.o \
 	src/motion_gate.o \
 	src/hardware/hardware_config.o \
 	src/telemetry/drv2605l.o \
 	src/telemetry/i2c_device.o \
 	src/telemetry/telemetry_config.o \
+	src/telemetry/system_shutdown.o \
+	src/telemetry/telemetry_bridge.o \
 	src/ui/ui_config.o \
 	src/ui/backends/backend.o \
 	src/ui/menu_overlay.o \
@@ -46,27 +78,26 @@ UI_OBJS := \
 
 UI_TEST_OBJS := \
 	$(PLATFORM_OBJS) \
+	$(KINEMATICS_OBJS) \
+	$(DOCUMENT_OBJS) \
+	$(MOTION_OBJS) \
+	$(HAPTICS_OBJS) \
+	$(APP_OBJS) \
 	../shared/protocol.o \
+	src/motion_gate.o \
 	src/hardware/hardware_config.o \
 	src/telemetry/drv2605l.o \
 	src/telemetry/i2c_device.o \
 	src/telemetry/telemetry_config.o \
+	src/telemetry/system_shutdown.o \
+	src/telemetry/telemetry_bridge.o \
 	src/ui/ui_config.o \
 	src/ui/backends/backend.o \
 	src/ui/menu_overlay.o \
 	src/ui/output_hub.o \
 	src/ui_self_test.o
 
-KINEMATICS_OBJS := \
-	src/kinematics/emboss_scheduler.o \
-	src/kinematics/kinematics_config.o \
-	src/kinematics/linkage_model.o \
-	src/kinematics/motion_controller.o \
-	src/kinematics/spatial_delay_line.o \
-	src/kinematics/travel_log.o \
-	src/motion_gate.o
-
-MOTION_TEST_OBJS := $(KINEMATICS_OBJS) src/motion_self_test.o
+MOTION_TEST_OBJS := $(KINEMATICS_OBJS) src/motion_gate.o src/motion_self_test.o
 
 HOST_CHORD_TEST_OBJS := \
 	src/keyboard/host_chord_assembler.o \
@@ -76,12 +107,15 @@ TELEMETRY_OBJS := \
 	../shared/protocol.o \
 	src/hardware/hardware_config.o \
 	src/motion_gate.o \
+	src/telemetry/crash_reporter.o \
 	src/telemetry/drv2605l.o \
+	src/telemetry/homing_service.o \
 	src/telemetry/i2c_device.o \
 	src/telemetry/limit_sensors.o \
 	src/telemetry/ltc2944.o \
 	src/telemetry/ram_text_persistence.o \
 	src/telemetry/system_shutdown.o \
+	src/telemetry/telemetry_bridge.o \
 	src/telemetry/telemetry_config.o \
 	src/telemetry/telemetry_sentinel.o \
 	src/sentinel_main.o
@@ -138,6 +172,15 @@ src/hardware/%.o: src/hardware/%.cpp
 src/kinematics/%.o: src/kinematics/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
+src/documents/%.o: src/documents/%.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+
+src/motion/%.o: src/motion/%.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+
+src/haptics/%.o: src/haptics/%.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
 src/telemetry/%.o: src/telemetry/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
@@ -145,6 +188,9 @@ src/platform/%.o: src/platform/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 src/ui/%.o: src/ui/%.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+
+src/ui/apps/%.o: src/ui/apps/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
 
 src/ui/backends/%.o: src/ui/backends/%.cpp

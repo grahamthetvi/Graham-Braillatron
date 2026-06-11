@@ -1,5 +1,6 @@
 #include "global_hooks.h"
 
+#include "../ui/apps/app_registry.h"
 #include "../ui/output_hub.h"
 
 namespace braillatron::hooks {
@@ -7,12 +8,18 @@ namespace braillatron::hooks {
 namespace {
 
 ui::OutputHub *g_output_hub = nullptr;
+ui::AppRegistry *g_app_registry = nullptr;
 
 } // namespace
 
 void set_output_hub(ui::OutputHub *hub)
 {
     g_output_hub = hub;
+}
+
+void set_app_registry(ui::AppRegistry *registry)
+{
+    g_app_registry = registry;
 }
 
 void on_shift_tts_toggle(bool pressed)
@@ -66,6 +73,32 @@ void on_safety_broadcast(uint8_t fault_code, uint8_t severity, uint16_t detail)
 {
     if (g_output_hub != nullptr) {
         g_output_hub->announce_safety_fault(fault_code, severity, detail);
+    }
+}
+
+bool standalone_app_active()
+{
+    return g_app_registry != nullptr && g_app_registry->active() != nullptr;
+}
+
+void on_app_chord(uint8_t dot_mask)
+{
+    if (g_app_registry != nullptr) {
+        g_app_registry->on_chord(dot_mask);
+    }
+}
+
+void on_app_text(const std::string &text)
+{
+    if (g_app_registry != nullptr) {
+        g_app_registry->on_text(text);
+    }
+}
+
+void on_app_control(keyboard::ControlKey key, bool pressed)
+{
+    if (g_app_registry != nullptr) {
+        g_app_registry->on_control(key, pressed);
     }
 }
 

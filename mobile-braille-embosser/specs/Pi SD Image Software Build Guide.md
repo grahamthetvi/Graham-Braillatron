@@ -21,9 +21,12 @@ After bootstrap, the SD card provides:
 | Settings overrides (RO root) | `/data/braillatron/settings/` |
 | Vosk STT model | `/data/braillatron/vosk-models/vosk-model-small-en-us-0.15/` |
 | RAM document layers | `/var/lib/braillatron/ram/` |
+| Coordinate session file | `/var/lib/braillatron/ram/coords.json` |
+| Live telemetry (sentinel → UI) | `/run/braillatron/telemetry.json` |
+| Homing status (sentinel) | `/run/braillatron/homing.status` |
 
 
-All three services are pulled in by `braillatron.target`, which is enabled for multi-user boot.
+All three services are pulled in by `braillatron.target`, which is enabled for multi-user boot. The sentinel performs boot homing when `motion_enabled=true` in `hardware.conf` and writes telemetry for Quick Status / battery warnings.
 
 
 ## Before you start

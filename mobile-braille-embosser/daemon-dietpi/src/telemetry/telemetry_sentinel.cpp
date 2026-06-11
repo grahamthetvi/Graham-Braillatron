@@ -2,8 +2,10 @@
 
 #include "../motion_gate.h"
 #include "system_shutdown.h"
+#include "telemetry_bridge.h"
 
 #include <chrono>
+#include <fstream>
 #include <iostream>
 #include <thread>
 
@@ -71,6 +73,7 @@ void TelemetrySentinel::poll_once()
     }
 
     snapshot_ = snapshot;
+    write_telemetry_json(kTelemetryJsonPath, snapshot_);
 
     if (callback_) {
         callback_(snapshot_);
@@ -108,6 +111,17 @@ void TelemetrySentinel::handle_battery_critical(uint8_t soc_percent)
 
     if (!persistence_.persist_layers_transactional()) {
         std::cerr << "[telemetry] warning: RAM text persistence failed\n";
+    }
+
+    if (!config_.coordinate_ram_path.empty()) {
+        std::ifstream coords_in(config_.coordinate_ram_path);
+        if (coords_in.good()) {
+            const std::string dest = config_.persistent_output_dir + "/coords.json";
+            std::ofstream coords_out(dest + ".tmp", std::ios::trunc);
+            coords_out << coords_in.rdbuf();
+            coords_out.close();
+            std::rename((dest + ".tmp").c_str(), dest.c_str());
+        }
     }
 
     if (!haptic_.play_shutdown_profile()) {

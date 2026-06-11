@@ -16,3 +16,7 @@ libspeechd-dev
 libbrlapi-dev
 liblouis-dev
 liblouis-data
+network-manager
+pipewire
+wireplumber
+libpipewire-0.3-0
