@@ -1,111 +1,189 @@
-# **The Graham Brailler: Engineering Blueprint & Master Lifecycle Architecture (V4.9 Consolidated)**
-
-*Superseded for product behavior by [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md); retained for historical hardware lifecycle notes.*
+# The Graham Brailler: Hardware Engineering Blueprint & PCB Lifecycle (V4.9)
 
 **Lead Architect:** Addison Graham
 
-**Target Hardware:** Orange Pi 3B (SBC) \+ Custom PCB (HAT)
+**Target Hardware:** Orange Pi 3B (SBC) + Custom PCB (HAT)
 
 **Operating System:** DietPi Linux (Debian 13 Trixie, Vendor Kernel 6.1.115)
 
-*⚠️ How to Read This Document: This is the unified master design document. It represents the final transition from breadboard concepts to custom PCB manufacturing, combining the electrical safety and compute architecture of previous versions with physical mechanical systems, paper handling, and accessibility features, updated for the Orange Pi 3B (4GB LPDDR4) compute module, eSpeak NG system-wide audio synthesis via a digital I2S Mono Amplifier, and robust A/B Partitioned firmware updates under an optimized DietPi OS.*
-
-## **1\. Core Concept & Operating Scope**
+*Hardware and PCB lifecycle companion to [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md). V9 is the canonical spec for product behavior, applications, co-processor protocol, and implementation status. This document focuses on breadboard-to-PCB transition, power topology, driver bus layout, and board-level mitigations.*
 
 ---
 
-The Graham Brailler is a portable, cost-effective, 3D-printable electromechanical Smart Braille Notetaker and Embosser. It is a fully independent, standalone machine running an ultra-lean, headless Linux OS (DietPi based on Debian 13 Trixie utilizing the stable Vendor Kernel 6.1.115 to guarantee Rockchip RK3566 hardware peripheral stability).
+## Document map
 
-Designed for robust classroom deployment, it supports a complex application suite including:
-
-* A built-in document editor & calculator  
-* BARD / Bookshare integration  
-* Offline system-wide TTS (eSpeak NG integrated with PipeWire & Speech Dispatcher)  
-* Offline STT (Vosk-API utilizing Rockchip PDM drivers)
-
-## **2\. User Interface, Audio & Accessibility (ScreenReader Paradigm)**
-
----
-
-To ensure the logic remains identical whether a user is blind, low-vision, or deaf-blind, the hardware supports a universal "ScreenReader UI Paradigm."
-
-* **Keyboard:** 6-key Braille layout using Cherry MX mechanical switches, plus a D-pad and action keys. Each switch is wired in series with a 1N4148 steering diode to establish full N-key rollover and prevent chord ghosting.  
-* **Audio Integration (I2S Class D Mono Amp):** System-wide audio is output digitally over the Rockchip I2S1 bus to the **MAX98357A I2S Class D Mono Amplifier IC**. This chip bypasses noisy analog routing entirely by performing digital-to-analog conversion and amplification on-silicon, outputting up to 3.2W directly into an integrated **4Ω 3W (or 8Ω 2W) Enclosed Micro Speaker Capsule**. Private listening is preserved via the Orange Pi 3B's stock 3.5mm analog jack.  
-* **Microphone (PDM MEMS):** Digital PDM MEMS Microphone (e.g., ICS-43432) housed inside a physically grounded copper tape "cage" on the Top UI board to eliminate capacitive coupling and EMI from the stepper motors, routed directly to the Rockchip hardware PDM bus.  
-* **Tactile Feedback:** DRV2605L I2C Haptic Motor Driver connected to a 10mm LRA (Linear Resonant Actuator) to provide rich, high-fidelity tactile feedback (such as custom click sensations, progress indicators, error alerts, and silent Morse-code learning patterns).
-
-## **3\. Compute & Power Infrastructure Block Diagram Representation**
+| Topic | Primary doc |
+|-------|-------------|
+| Applications, ScreenReader UI, edit modes, implementation status | [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md) |
+| Arduino ↔ Pi wire protocol (opcodes, frames, safety) | [V9 §4](Master%20Software%20Architecture%20V9.md#4-co-processor--inter-processor-protocol), `shared/protocol.h`, `shared/protocol.md` |
+| Prototype wiring, GPIO, I2S, UART pin assignments | [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) |
+| DietPi image, overlayfs, systemd, deploy | [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Software%20Build%20Guide.md) |
+| Power rails, thermal fuse, TMC2209 daisy chain (this doc) | §3–4 below |
 
 ---
 
-The Graham Brailler V4.9 transitions the electromechanical smart embosser from breadboard concepts to custom PCB manufacturing. The architectural schematic below maps out physical power distribution, safety isolation, logic levels, and audio filtering:
+## 1. Core concept & operating scope
 
-\[USB-C PD Power Input\]  
-         │  
-         ▼  
-\[IP2368 PD Charger\]  
-         │  
-         ▼  
-\[4S 30A BMS w/ Balancer\] (14.8V Nominal Rail)  
-         │  
-         ├─────────────────────────────────┐  
-         ▼ (15A Motor Rail Fuse)           ▼ (3A-5A Logic Rail Fuse)  
-   \[85°C Thermal Fuse\]                     ▼  
-         │                        \[5V Buck Regulator (TPS5430)\]  
-         ▼                                 │  
-   \[IRLZ44N MOSFET Switch\]                 ├─────────────────────────────────┐  
-   (Controlled by Arduino Watchdog)        ▼                                 ▼  
-         │                        \[Orange Pi 3B (SBC)\]             \[Arduino Watchdog\]  
-         ▼                                 │  
-\[15A Star Power Terminal Block\]            ▼ (Digital I2S1 Bus)  
-         │                        \[MAX98357A I2S Mono Amp\]  
-         ├──► 8x TMC2209 VMOT              │  (With local 470µF \+ 0.1µF capacitors)  
-         └──► Star Ground return           ▼  
-                                  \[4Ω 3W Enclosed Speaker\]
+The Graham Brailler is a portable, 3D-printable electromechanical Smart Braille Notetaker and Embosser: a standalone headless DietPi device (Debian 13 Trixie, vendor kernel 6.1.115 for RK3566 peripheral stability).
 
-### **3.1 Structural Safety Interlocks**
+V4.9 marks the transition from breadboard concepts to custom PCB manufacturing. Software scope (editor, calculator, BARD/Bookshare, TTS/STT pipelines, app registry) is defined in [V9 §1–3](Master%20Software%20Architecture%20V9.md).
 
-* **Off-Board High-Current Terminal Blocks:** All motor currents (VMOT and return lines) bypass the solderless prototyping board entirely. They are routed via high-current, dual-row terminal blocks with shorting jumpers to handle up to 15A without local heat or signal degradation.  
-* **Gate-Driven Thermal Fuse Cutoff:** A non-resettable 85°C thermal safety fuse is mechanically clamped to a unified aluminum cooling heatsink block spanning the 8 stepper drivers. If any driver enters a thermal runaway state, the fuse blows, isolating the main power line.  
-* **Power and Audio Filtering:** To prevent the high-frequency switching noise of the Class D MAX98357A amplifier from polluting the shared 5V logic bus, a dual-capacitor filtering array (470µF low-ESR electrolytic in parallel with a 0.1µF ceramic capacitor) is placed directly across the amplifier's VDD and GND pins. This suppresses transient voltage ripples induced by rapid stepper motor switching on the same chassis.
+**Platform dependencies (unchanged at hardware level):**
 
-## **4\. Dual-Bus Single-Wire UART Daisy-Chain Communications**
+- Offline TTS: eSpeak NG via PipeWire and Speech Dispatcher
+- Offline STT: Vosk-API with Rockchip PDM capture
+- Embosser motion: C++ daemons on Orange Pi; TMC2209 steppers on motor rail
 
 ---
 
-The RK3566 SoC contains 4 physical UART controllers, which cannot support 8 independent driver serial lines directly. The communications architecture resolves this by daisy-chaining the drivers across two separate physical UART buses, utilizing physical steering diodes (1N4148) and unique hardware node addresses established by MS1 and MS2 wiring pins:
+## 2. UI hardware layer (ScreenReader paradigm)
 
-               ┌───────► \[TMC2209 Driver 1 (Address 0)\]  
-               ├───────► \[TMC2209 Driver 2 (Address 1)\]  
-Orange Pi 3B ──┼───────► \[TMC2209 Driver 3 (Address 2)\]  
-  (UART4)      └───────► \[TMC2209 Driver 4 (Address 3)\]
+Hardware must support the universal ScreenReader paradigm described in [V9 §1](Master%20Software%20Architecture%20V9.md#1-product-vision--screenreader-paradigm). Board-level requirements:
 
-               ┌───────► \[TMC2209 Driver 5 (Address 0)\]  
-               ├───────► \[TMC2209 Driver 6 (Address 1)\]  
-Orange Pi 3B ──┼───────► \[TMC2209 Driver 7 (Address 2)\]  
-  (UART9)      └───────► \[TMC2209 Driver 8 (Address 3)\]
+### 2.1 Keyboard (direct pin — production)
 
-## **5\. Firmware Partitioning, Resiliency & Read-Only OS Layout**
+**Retired:** 4×4 switch matrix, 1N4148 steering diodes per key, external 10 kΩ pull-ups.
+
+**Production:** 13 Cherry MX switches (6 Braille dots, D-pad Up/Down, Backspace, Enter, Shift/TTS, Speech, Menu) wired direct-pin to the Arduino Micro — one GPIO per key, common ground bus, `INPUT_PULLUP`, active LOW. Scanning, debounce, and chord assembly run on the co-processor ([V9 §1.3](Master%20Software%20Architecture%20V9.md#13-production-keyboard-driver-direct-pin-topology), Build Guide Part 3.1).
+
+### 2.2 Audio (I2S Class D)
+
+System audio over Rockchip **I2S1** to **MAX98357A** Class D mono amp (on-silicon DAC + amplification, up to ~3.2 W into a **4 Ω 3 W** or **8 Ω 2 W** enclosed capsule). Private listening via Orange Pi 3.5 mm jack.
+
+Local **470 µF + 0.1 µF** at MAX98357A VDD/GND (see §3.1).
+
+### 2.3 Microphone (PDM MEMS)
+
+Digital PDM MEMS (e.g. ICS-43432) on the Top UI board inside a grounded copper-tape cage to reduce capacitive coupling and stepper EMI; routed to Rockchip PDM.
+
+### 2.4 Haptics
+
+**DRV2605L** I2C driver + **10 mm LRA** for navigation boundaries, errors, Morse patterns, and deaf-blind tactile feedback. Pi-side haptic commands and menu policy: [V9 §1.2](Master%20Software%20Architecture%20V9.md#12-universal-outputs-distribution-hub).
 
 ---
 
-To guarantee that sudden safety power-cuts do not cause flash card corruption, the operating system partition layout is split into static read-only areas and transactional user-data directories:
+## 3. Compute & power infrastructure
 
-* **Read-Only Root Partition (/):** The primary operating system, drivers, and application files reside on a locked read-only partition. Local system modifications are temporarily cached on a RAM-based overlay partition (overlayfs) in volatile memory.  
-* **Transactional Storage (/data/):** User documents, local settings, and Braille databases are written exclusively to a persistent read-write partition. Writes are executed using atomic transaction handlers to prevent database corruption during sudden interlock drops.
+Block diagram for custom PCB and HAT routing:
 
-## **6\. Key Engineering Challenges, Risks & Mitigation Strategies**
+```
+[USB-C PD Input]
+         │
+         ▼
+[IP2368 PD Charger]
+         │
+         ▼
+[4S 30A BMS w/ Balancer] (14.8 V nominal)
+         │
+         ├─────────────────────────────────┐
+         ▼ (15 A motor fuse)               ▼ (3–5 A logic fuse)
+   [85 °C thermal fuse]                     ▼
+         │                        [TPS5430 5 V buck]
+         ▼                                 │
+   [IRLZ44N MOSFET]                         ├──────────────► [Orange Pi 3B]
+   (Arduino gate control)                  └──────────────► [Arduino Micro]
+         │
+         ▼
+[15 A star power terminal block]
+         ├──► 8× TMC2209 VMOT
+         └──► star ground return
+
+Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [4 Ω 3 W speaker]
+```
+
+### 3.1 Structural safety interlocks
+
+- **High-current terminals:** VMOT and returns use dual-row terminal blocks (up to 15 A), not prototype-board traces.
+- **Thermal fuse:** Non-resettable **85 °C** fuse clamped to a unified aluminum heatsink spanning all eight TMC2209 boards; blows on driver thermal runaway.
+- **Motor rail gate:** **IRLZ44N** in series on 14.8 V VMOT; **TC4420** gate driver from Arduino GPIO. Cut on freefall, comms loss, or watchdog fault ([V9 §5.2](Master%20Software%20Architecture%20V9.md#52-real-time-hardware-interlock-mpu6050), `shared/protocol.h`).
+- **Audio filtering:** 470 µF low-ESR + 0.1 µF ceramic at MAX98357A VDD/GND to keep Class D switching noise off the 5 V logic bus.
+
+### 3.2 Battery & telemetry
+
+**LTC2944** on system I2C: capacity, current, voltage. Policy at 20% / 5% SOC: [V9 §6.2](Master%20Software%20Architecture%20V9.md#62-battery-policy). Pi relays limit flags to Arduino via `BRAILLATRON_OP_TELEMETRY`.
 
 ---
 
-The matrix below tracks physical constraints, electrical limits, and the structural mitigations integrated into the V4.9 release:
+## 4. Dual-bus TMC2209 UART daisy chain
 
-| Identified Constraint | Associated Risk | Master V4.9 Mitigation Strategy   |
-| :---- | :---- | :---- |
-| **Heavy Stepper EMI** | Inductive coupling from 8-axis motor indexing introduces humming, popping, or digital instability in analog audio lines. | Transitioned entirely to **digital I2S audio routing (MAX98357A)**; added a local **470µF \+ 0.1µF filtering array** directly on the amplifier's VDD/GND power pins. |
-| **RK3566 Pin Limits** | 8-axis step/dir/UART driver mapping exhausts hardware pins on the Orange Pi 3B. | Dual-bus single-wire UART daisy-chaining utilizing steering diodes (1N4148) and hardware node addressing. |
-| **Software Storage** | SD card or eMMC flash memory corruption due to sudden safety power cuts. | DietPi configured with a Read-Only root filesystem, RAM-backed overlayfs directories, and atomic transaction updates. |
-| **Watchdog Delay** | Accelerometer freefall detection via software I2C polling loops introduces latency, risking mechanical damage during drop. | Hardware-level register configuration of MPU6050 (FF\_THR/FF\_DUR) on boot, with a direct interrupt wire to Arduino's INT0 pin for sub-10ms power cuts. |
-| **Thermal Interface** | Inability to securely clamp a physical thermal safety fuse to individual driver heatsinks. | Unified aluminum heatsink bar spanning all 8 driver boards, serving as a single, large thermal mass to anchor the cutoff fuse. |
-| **Keyboard Inputs** | Core multi-key Braille chording (e.g., Dots 1-3-5) causes electrical ghosting. | Solder a 1N4148 steering diode in series with each of the 12 Cherry MX switches, organizing them as an isolated matrix. |
+RK3566 UART count cannot support eight independent driver serial lines. Eight **TMC2209** drivers daisy-chain on two buses with **1N4148** steering diodes and **MS1/MS2** address straps:
 
+```
+Orange Pi UART4 ──┬──► TMC2209 Driver 1 (addr 0)
+                  ├──► TMC2209 Driver 2 (addr 1)
+                  ├──► TMC2209 Driver 3 (addr 2)
+                  └──► TMC2209 Driver 4 (addr 3)
+
+Orange Pi UART9 ──┬──► TMC2209 Driver 5 (addr 0)
+                  ├──► TMC2209 Driver 6 (addr 1)
+                  ├──► TMC2209 Driver 7 (addr 2)
+                  └──► TMC2209 Driver 8 (addr 3)
+```
+
+Pin-level wiring: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Motion, homing, and staggered solenoid timing: [V9 §3.3–3.4, §5.4–5.5](Master%20Software%20Architecture%20V9.md).
+
+---
+
+## 5. Co-processor integration (board-level)
+
+The **Arduino Micro** (Tier 3) isolates real-time safety from the Orange Pi:
+
+| Function | Hardware |
+|----------|----------|
+| Keyboard scan / debounce / chords | 13 direct-pin GPIOs |
+| Freefall interlock | MPU6050 → INT0; ISR cuts IRLZ44N in <10 ms |
+| Host liveness | Pi `HEARTBEAT` over USB CDC; comms timeout cuts VMOT |
+| MCU hang recovery | AVR 500 ms hardware WDT |
+
+Protocol and opcode definitions: `shared/protocol.h`, [V9 §4](Master%20Software%20Architecture%20V9.md#4-co-processor--inter-processor-protocol).
+
+---
+
+## 6. Storage layout (hardware resilience)
+
+Sudden power cuts from the safety interlock must not corrupt the OS partition:
+
+- **Read-only root (`/`):** OS, daemons, and apps on a locked partition; volatile changes via **overlayfs** in RAM.
+- **Transactional `/data/`:** User BRF files, settings, and databases on a dedicated read-write partition.
+- **Atomic writes:** RAM buffer → `.tmp` → `fsync` → `rename`; **`braillatron-sync.timer`** mirrors RAM layers to flash.
+
+Full deploy procedure: [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Software%20Build%20Guide.md). Software policy: [V9 §6.1](Master%20Software%20Architecture%20V9.md#61-read-only-root--persistent-data).
+
+> **OTA / A/B updates:** RAUC or Mender dual-bank OTA is **not yet implemented**. Current field updates use read-only root + `/data` transactional storage (`deploy/os/setup-overlay-ro.sh`). See [V9 §6.4](Master%20Software%20Architecture%20V9.md#64-ota--ab-updates--not-yet-addressed).
+
+---
+
+## 7. Engineering constraints & mitigations
+
+| Constraint | Risk | Mitigation |
+|------------|------|------------|
+| Heavy stepper EMI | Audio hum, SoC instability | Digital I2S (MAX98357A); local 470 µF + 0.1 µF on amp |
+| RK3566 pin limits | Cannot wire 8 independent driver UARTs | Dual-bus UART daisy chain + diodes + MS1/MS2 addresses (§4) |
+| Sudden power loss | eMMC/SD corruption | Read-only root, overlayfs, atomic `/data` writes, sync timer (§6) |
+| Drop during motion | Head/solenoid damage | MPU6050 hardware INT → sub-10 ms IRLZ44N cut + SAFETY frame (§5) |
+| Driver thermal runaway | Fire / hardware damage | Unified heatsink + 85 °C thermal fuse on motor rail (§3.1) |
+| Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin keyboard** — one GPIO per key, no matrix (§2.1) |
+
+Standardized BOM: [V9 §7](Master%20Software%20Architecture%20V9.md#7-standardized-hardware-reference). Prototype breadboard part list: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) Part 1.
+
+---
+
+## 8. Retired hardware concepts
+
+| Retired | Superseded by |
+|---------|----------------|
+| Raspberry Pi 3B | Orange Pi 3B |
+| Servo-driven 6-key embosser array | Staggered solenoid head ([V9 §5.4](Master%20Software%20Architecture%20V9.md#54-staggered-embossing-head)) |
+| 18650 TBD battery pack | 4S LiPo + LTC2944 |
+| 4×4 keyboard matrix + per-key diodes | Direct-pin Arduino topology (§2.1) |
+| Piper TTS | eSpeak NG ([V9 §6.5](Master%20Software%20Architecture%20V9.md#65-dependencies)) |
+
+---
+
+## Related documentation
+
+- [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md) — canonical product and software specification
+- [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) — prototype wiring and keyboard Part 3.1
+- [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Software%20Build%20Guide.md) — DietPi image, overlayfs, systemd
+- `shared/protocol.h` / `shared/protocol.md` — inter-processor frame format
+- `deploy/` — `bootstrap-dietpi.sh`, `install.sh`, systemd units, OS scripts

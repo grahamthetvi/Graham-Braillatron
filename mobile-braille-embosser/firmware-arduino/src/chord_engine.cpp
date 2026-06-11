@@ -1,5 +1,5 @@
 /*
- * Temporal chord assembly (V8 spec 2.2, executed on-device).
+ * Temporal chord assembly (V9 spec §4.1, executed on-device).
  *
  * The first dot press while idle opens a 40 ms integration window seeded
  * with the dots currently held. Dot presses during the window are OR'd in.

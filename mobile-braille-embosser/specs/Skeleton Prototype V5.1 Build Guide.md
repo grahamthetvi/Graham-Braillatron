@@ -275,3 +275,12 @@ ctl.\!default {
 4\.  \*\*Test Playback:\*\*   
     Run \`speaker-test \-t sine \-f 440 \-c 1\` to generate a test sine wave\[cite: 1\].
 
+---
+
+## Related documentation
+
+- [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md) — product architecture, applications, co-processor protocol, implementation status
+- [Master Architecture V4.9](Master%20Architecture%20V4.9.md) — power rails, safety interlocks, TMC2209 daisy chain, PCB lifecycle
+- [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Software%20Build%20Guide.md) — DietPi image, overlayfs, deploy
+- `shared/protocol.h` / `shared/protocol.md` — Arduino ↔ Pi frame protocol
+

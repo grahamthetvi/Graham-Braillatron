@@ -1,5 +1,5 @@
 /*
- * Two-layer watchdog (V8 spec / protocol.md):
+ * Two-layer watchdog (V9 spec §4.3 / protocol.md):
  *
  *  1. AVR hardware WDT (500 ms): a hung main loop resets the MCU. The
  *     stepper rail is driven HIGH only in setup, so a reset leaves the rail

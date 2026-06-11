@@ -299,9 +299,11 @@ flowchart TD
 
 ## Related docs
 
-- [Mobile Braille Embosser Specification V8](file:///home/grahamthetvi/Projects/Graham%20Braillatron/mobile-braille-embosser/specs/Mobile%20Braille%20Embosser%20Specification%20V8.md) — OS storage and ScreenReader architecture
+- [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md) — product architecture, OS storage, co-processor protocol, and hardware reference
 
-- [Skeleton Prototype V5.1 Build Guide](file:///home/grahamthetvi/Projects/Graham%20Braillatron/mobile-braille-embosser/specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) — I2S, GPIO, UART, and Klipper wiring
+- [Master Architecture V4.9](Master%20Architecture%20V4.9.md) — power topology, TMC2209 daisy chain, PCB lifecycle, and board-level mitigations
+
+- [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) — I2S, GPIO, UART, and Klipper wiring
 
 - `deploy/` — `bootstrap-dietpi.sh`, `install.sh`, systemd units, OS scripts
 

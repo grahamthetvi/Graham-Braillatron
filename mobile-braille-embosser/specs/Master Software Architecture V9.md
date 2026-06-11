@@ -10,7 +10,7 @@
 
 **Co-Processor:** Arduino Micro (ATmega32U4, 5V Logic)
 
-*This document merges V4 product architecture with V8 engineering truth. Sections 4–5 and 7 defer to V8 for full electrical and kinematic detail.*
+*Canonical product and software specification. Hardware/PCB lifecycle detail and breadboard-to-manufacturing notes: [Master Architecture V4.9](Master%20Architecture%20V4.9.md). Wire protocol: `shared/protocol.h` and `shared/protocol.md`.*
 
 ---
 
@@ -20,12 +20,21 @@ The Graham Brailler is a portable electromechanical Smart Braille Notetaker and 
 
 ### 1.1 Universal Inputs (Concurrent)
 
-- **Built-in Braille Keyboard:** 6-key Perkins layout, D-pad (Up/Down), Backspace, Enter, Shift/TTS, Speech (PTT), Menu.
+Users can utilize multiple input methods simultaneously without locking out others:
+
+- **Built-in Braille Keyboard:** Standard 6-key Perkins layout with center D-pad (Up/Down) and action keys.
+  - **Backspace:** Left of the D-pad.
+  - **Enter:** Right of the D-pad.
+  - **Shift / TTS:** Directly beneath Enter; hardware pause/resume for speech synthesis.
+  - **Speech:** Push-to-talk for Vosk STT (menus, naming prompts, writing).
+  - **Menu:** Invokes the global system overlay.
 - **Peripheral QWERTY:** USB/Bluetooth; Windows/Super = Menu, Win+H = Dictation.
 - **Refreshable Braille Displays:** USB/Bluetooth via BRLTTY (e.g. Mantis Q40).
 - All inputs process concurrently without locking out others.
 
 ### 1.2 Universal Outputs (Distribution Hub)
+
+Whenever focus changes or a word is announced, the Output Hub distributes content to parallel channels:
 
 | Channel | Hardware / Software | Module |
 |---------|---------------------|--------|
@@ -36,9 +45,15 @@ The Graham Brailler is a portable electromechanical Smart Braille Notetaker and 
 
 **Deaf-blind menu parity:** When TTS is disabled and `deaf_blind_menu_parity` is enabled, the Output Hub embosses full menu text (no abbreviations) in addition to refreshable braille/haptics.
 
-### 1.3 Keyboard Driver (Direct Pin — V8 Truth)
+### 1.3 Production Keyboard Driver (Direct Pin Topology)
 
-Direct-pin topology on Arduino Micro: 13 keys, 1 kHz scan, 15 ms integrator debounce, 40 ms chord assembly. See V8 §1.2 and Skeleton Prototype V5.1 Build Guide Part 3.1. The legacy 4×4 diode matrix is **retired**.
+The legacy 4×4 switch matrix, steering diodes, and external 10 kΩ pull-ups are **retired**. Production uses direct-pin wiring (Skeleton Prototype V5.1 Build Guide, Part 3.1): one side of each Cherry MX switch ties to a common ground bus; the other routes to a dedicated Arduino Micro input pin (`INPUT_PULLUP`, active LOW). One pin per key gives inherent N-key rollover with no ghosting and no diodes.
+
+1. **Scanning:** The Arduino samples all 13 key pins once per millisecond from a non-blocking main loop (no `delay()`, no heavy ISR work that could starve the freefall interrupt).
+2. **Debounce:** Per-key software integrator (15 ms threshold for Cherry MX): counter charges while pressed and discharges while released; debounced state flips only at the rails.
+3. **Chord assembly:** On first debounced dot key-down, a 40 ms integration window opens; all dot presses within the window aggregate into one chord. Function keys bypass the window and transmit immediately on edge.
+
+**The 13 keys:** 6 Braille dots, D-pad Up/Down, Backspace, Enter, Shift/TTS, Speech, Menu.
 
 ---
 
@@ -104,21 +119,160 @@ Module: `homing_service.cpp` in `braillatron-sentinel`; status at `/run/braillat
 
 ### 3.4 App Switching (Forward Feed)
 
-When switching Standalone apps: reverse to paper-edge sensor, measure page, feed to fresh page. Module: `paper_separator.cpp`.
+When switching Standalone apps: reverse to paper-edge sensor (TCRT5000), measure page, feed to fresh page. Module: `paper_separator.cpp`.
 
 ---
 
-## 4. Co-Processor & CDC Serial Protocol
+## 4. Co-Processor & Inter-Processor Protocol
 
-*Unchanged from V8 §2–3.* Arduino Micro handles keys, debounce, chords, MPU6050 freefall interlock. 4-byte fixed CDC packets at 115200 bps. Protocol source: `shared/protocol.h`.
+Low-level, high-frequency physical I/O is offloaded to the Arduino Micro so OS scheduling jitter cannot affect real-time safety.
+
+```
+[13 Direct-Pin Keys]     [MPU6050 Accelerometer]
+         │                          │
+         ▼ (1 kHz polling)           ▼ (hardware interrupt, INT0)
+┌─────────────────────────────────────────────────────────────┐
+│                 ARDUINO MICRO CO-PROCESSOR                  │
+│  - 15 ms integrator debounce                                │
+│  - 40 ms temporal chord integration                         │
+│  - Sub-10 ms freefall interlock (MPU6050 → IRLZ44N gate)    │
+│  - AVR hardware WDT + host comms watchdog                   │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+                               ▼ USB CDC serial @ 115200 bps (/dev/ttyACM0)
+                     [Orange Pi 3B — braillatron-ui / daemons]
+```
+
+### 4.1 Scan, Debounce & Chord Assembly
+
+The main loop samples all 13 pins at 1 kHz. ISRs are reserved for the MPU6050 freefall interlock so keyboard work cannot starve safety.
+
+- **Scan:** Each key read from its dedicated pin (`INPUT_PULLUP`, active LOW). No row strobing or diode network.
+- **Debounce:** Independent integrator per key; 15 ms threshold at 1 ms ticks.
+- **Chords:** First debounced dot key-down starts a 40 ms window; additional dots aggregate into a raw dot bitmask (`dot_mask`, bits 0–5 = dots 1–6). When the window expires, the locked mask is sent as `BRAILLATRON_OP_CHORD`. The Pi translates the mask to characters (`chord_engine` on Pi; liblouis Grade 2 support stays host-side).
+- **Function keys:** D-pad, Backspace, Enter, Shift/TTS, Speech, Menu send edge-triggered `BRAILLATRON_OP_KEYBOARD_MATRIX` frames immediately (no chord window).
+
+### 4.2 Wire Protocol (Version 1)
+
+Authoritative definitions: `shared/protocol.h`, `shared/protocol.md`.
+
+**Physical layer:** UART 115200 bps (device configurable via `hardware.conf`), little-endian, CRC16-CCITT-FALSE over header + payload.
+
+**Frame layout:** `[sync | version | opcode | sequence_id | payload_len | payload | crc16]`
+
+- sync: `0xA5`
+- version: `1`
+- max payload: 32 bytes
+
+| Opcode | Direction | Payload | Purpose |
+|--------|-----------|---------|---------|
+| `0x01` KEYBOARD_MATRIX | Arduino → Pi | 2-byte `key_state` | Edge-triggered function keys |
+| `0x02` TELEMETRY | Pi → Arduino | 3-byte telemetry | Battery %, temperature, limit flags |
+| `0x03` SAFETY | Bidirectional | 5-byte fault broadcast | Freefall, comms loss, battery critical, etc. |
+| `0x04` HEARTBEAT | Pi → Arduino | none | Periodic liveness; disarms after boot grace |
+| `0x05` ACK_NACK | Reserved | — | Future use |
+| `0x06` CHORD | Arduino → Pi | 1-byte `dot_mask` | Assembled Braille chord |
+
+**Telemetry limit flags** (Pi → Arduino relay): `BRAILLATRON_LIMIT_PAPER_EDGE` (TCRT5000), `BRAILLATRON_LIMIT_Y_HOME` (TCST2103), `BRAILLATRON_LIMIT_MOTION_BLOCKED`, `BRAILLATRON_LIMIT_BATTERY_CRITICAL`.
+
+**Safety fault codes** include `BRAILLATRON_FAULT_FREEFALL`, `BRAILLATRON_FAULT_COMMS_LOSS`, `BRAILLATRON_FAULT_BATTERY_CRITICAL`, `BRAILLATRON_FAULT_WATCHDOG_TIMEOUT`. Severity levels range from INFO through LATCHED (requires explicit clear).
+
+Invalid CRC frames are dropped. Pi sends `HEARTBEAT` on the configured interval when the serial device is open.
+
+### 4.3 Two-Layer Watchdog
+
+1. **AVR hardware WDT (500 ms):** A hung main loop resets the MCU. Stepper rail defaults off until firmware completes a clean boot.
+2. **Host comms watchdog:** After the first Pi heartbeat, a gap longer than the comms timeout (3 s) cuts VMOT and latches `BRAILLATRON_FAULT_COMMS_LOSS` until heartbeats resume.
+
+Implementation: `firmware-arduino/src/watchdog.cpp`, `fail_safes.cpp`.
 
 ---
 
 ## 5. Hardware, Power, Safety & Kinematics
 
-*Unchanged from V8 §4–5 and Master Architecture V4.9 §3.* Orange Pi 3B, 4S LiPo 14.8V, LTC2944, IRLZ44N interlock, TMC2209, staggered solenoid head, spatial delay line.
+*Board-level power topology and TMC2209 bus layout: [Master Architecture V4.9](Master%20Architecture%20V4.9.md). Prototype pin wiring: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md).*
 
-**Retired from earlier specs:** Raspberry Pi 3B, servo-driven 6-key embosser array, 18650 TBD battery (superseded by 4S LiPo + LTC2944).
+**Retired from earlier specs:** Raspberry Pi 3B, servo-driven 6-key embosser array, 18650 TBD battery, 4×4 keyboard matrix with steering diodes.
+
+### 5.1 Power Distribution
+
+```
+[USB-C PD Input] → [IP2368 PD Charger] → [4S 30A BMS w/ Balancer] (14.8 V nominal)
+         │
+         ├─ (15 A motor fuse, 85 °C thermal fuse) ──► [IRLZ44N MOSFET] ──► [15 A star terminal]
+         │                                              ▲ Arduino gate control
+         │                                              └──► 8× TMC2209 VMOT + star ground
+         │
+         └─ (3–5 A logic fuse) ──► [TPS5430 5 V buck] ──┬──► Orange Pi 3B
+                                                          └──► Arduino Micro
+                                                                    │
+Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 4 Ω 3 W speaker
+```
+
+- **Logic rail:** TPS5430 buck from battery to filtered 5 V for Orange Pi and Arduino.
+- **Motor rail:** 14.8 V through IRLZ44N (TC4420 gate driver) to TMC2209 VMOT; Arduino controls the gate.
+- **Audio isolation:** MAX98357A powered from 5 V with local 470 µF + 0.1 µF at VDD/GND to keep Class D switching noise off the logic bus.
+- **Battery telemetry:** LTC2944 on system I2C tracks capacity, current, and voltage (see §6.2).
+- **High-current routing:** Motor VMOT and returns use off-board dual-row terminal blocks (up to 15 A), not prototype-board traces.
+- **Thermal fuse:** Non-resettable 85 °C fuse clamped to a unified aluminum heatsink spanning all eight stepper drivers.
+
+### 5.2 Real-Time Hardware Interlock (MPU6050)
+
+- **Sensor:** MPU6050 on Arduino hardware I2C (SDA/SCL); freefall thresholds configured in hardware registers (`FF_THR` / `FF_DUR`) at boot.
+- **Interrupt:** MPU6050 INT → Arduino INT0 (Pin 3), active high.
+- **Gate drive:** IRLZ44N in series on the 14.8 V stepper/solenoid rail; TC4420 drives the gate from a dedicated Arduino GPIO.
+
+**Sub-10 ms isolation loop:**
+
+1. Freefall detected → MPU6050 INT pin goes high immediately.
+2. INT0 ISR runs (bypasses keyboard polling).
+3. ISR pulls gate driver low, cutting VMOT in under 10 ms.
+4. ISR transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL` so the Pi pauses the motion queue and alerts the user.
+
+### 5.3 Dual-Bus TMC2209 UART Daisy Chain
+
+The RK3566 cannot expose eight independent driver UART lines. Eight TMC2209 drivers daisy-chain across two UART buses with 1N4148 steering diodes and MS1/MS2 address wiring:
+
+```
+Orange Pi UART4 ──┬──► TMC2209 Driver 1 (addr 0)
+                  ├──► TMC2209 Driver 2 (addr 1)
+                  ├──► TMC2209 Driver 3 (addr 2)
+                  └──► TMC2209 Driver 4 (addr 3)
+
+Orange Pi UART9 ──┬──► TMC2209 Driver 5 (addr 0)
+                  ├──► TMC2209 Driver 6 (addr 1)
+                  ├──► TMC2209 Driver 7 (addr 2)
+                  └──► TMC2209 Driver 8 (addr 3)
+```
+
+Wiring detail: Skeleton Prototype V5.1 Build Guide.
+
+### 5.4 Staggered Embossing Head
+
+Standard cells: left column dots 1–3, right column dots 4–6. Physical layout:
+
+- **Row A (top):** Solenoids for dots 1, 3, 5.
+- **Row B (bottom):** Solenoids for dots 2, 4, 6.
+- **Spatial offset:** 2.5 mm along the X-axis (carriage path).
+
+The motion controller must not fire all solenoids simultaneously. Row A fires as solenoids cross the target column; Row B data is buffered and fired after a velocity-derived delay equal to the time to travel 2.5 mm. Module: `emboss_scheduler.cpp`.
+
+### 5.5 Stepper Drivers, Homing & Paper Sensing
+
+- **Drivers:** TMC2209 SilentStepper for X (carriage) and Y (paper feed) axes.
+- **Y-axis homing:** TCST2103 optical slot sensor (transmissive photointerrupter) — reverse feed until triggered; set Y = 0.
+- **Paper edge / page boundary:** TCRT5000 reflective IR sensor on the cardstock path for page alignment and app-switch feed logic.
+
+### 5.6 Engineering Constraints & Mitigations
+
+| Constraint | Risk | Mitigation |
+|------------|------|------------|
+| Heavy stepper EMI | Audio instability, SoC noise | Digital I2S audio (MAX98357A); local 470 µF + 0.1 µF on amp VDD/GND |
+| RK3566 pin limits | Cannot wire 8 independent driver UARTs | Dual-bus single-wire UART daisy chain with diodes + MS1/MS2 addresses |
+| Sudden power loss | eMMC/SD corruption | Read-only root + overlayfs; atomic writes to `/data`; `braillatron-sync.timer` |
+| Drop during motion | Head/solenoid damage | MPU6050 hardware interrupt → sub-10 ms IRLZ44N cut + SAFETY broadcast |
+| Driver thermal runaway | Fire / hardware damage | Unified heatsink + 85 °C thermal fuse on motor rail |
+| Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin topology** — one GPIO per key, no matrix (§1.3) |
 
 ---
 
@@ -126,17 +280,17 @@ When switching Standalone apps: reverse to paper-edge sensor, measure page, feed
 
 ### 6.1 Read-Only Root & Persistent `/data`
 
-- Root `/` read-only with overlayfs for volatile paths.
+- Root `/` read-only with overlayfs for volatile paths (logs, ephemeral state).
 - User documents and settings on `/data/braillatron/`.
 - Atomic writes: RAM buffer → `.tmp` → `fsync` → `rename`.
-- `braillatron-sync.timer` mirrors RAM layers to flash.
+- `braillatron-sync.timer` mirrors RAM layers to flash so sudden interlock power cuts do not corrupt the OS partition.
 
 ### 6.2 Battery Policy
 
 | Threshold | Action |
 |-----------|--------|
 | 20% | One-time audio + haptic warning per session (UI reads `/run/braillatron/telemetry.json`) |
-| 5% | Block motion, flush RAM/coords/BRF, shutdown haptic, graceful power off |
+| 5% | Block motion, flush RAM/coords/BRF, shutdown haptic, graceful power off; LTC2944 triggers `BRAILLATRON_LIMIT_BATTERY_CRITICAL` relay |
 
 ### 6.3 Crash Reporting (Optional)
 
@@ -157,7 +311,25 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 
 ## 7. Standardized Hardware Reference
 
-*See V8 §7 table.* Orange Pi 3B, Arduino Micro, TPS5430, IRLZ44N, LTC2944, MAX98357A, DRV2605L, TCRT5000, TCST2103.
+| Subsystem | Standardized Part |
+|-----------|-------------------|
+| SBC | Orange Pi 3B (4 GB LPDDR4, RK3566, WiFi/BT) |
+| Co-processor | Arduino Micro (ATmega32U4, 5 V, native USB) |
+| PD input / charge | IP2368 USB-C PD charger |
+| Battery | 4S LiPo (14.8 V) BMS with active balancing |
+| Logic power | TPS5430 synchronous buck (5 V) |
+| Safety interlock | IRLZ44N N-channel MOSFET + TC4420 gate driver |
+| Battery gas gauge | LTC2944 (I2C coulomb counter) |
+| Audio amp | MAX98357A I2S Class D mono (Rockchip I2S1 bypass) |
+| Internal speaker | 4 Ω 3 W or 8 Ω 2 W enclosed capsule (foam-isolated) |
+| Audio filter | 470 µF low-ESR electrolytic + 0.1 µF ceramic at amp VDD/GND |
+| Haptic driver | DRV2605L I2C |
+| Haptic actuator | LRA (linear resonant actuator) |
+| Paper edge sensor | TCRT5000 reflective IR |
+| Y-axis homing | TCST2103 optical slot (transmissive) |
+| Stepper drivers | 8× TMC2209 (dual UART daisy chain, §5.3) |
+| Freefall sensor | MPU6050 (Arduino I2C + INT0) |
+| Keyboard switches | 13× Cherry MX (direct pin, §1.3) |
 
 ---
 
@@ -179,6 +351,7 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 | Morse learning / output | Implemented | `morse_encoder.cpp`, inline + standalone apps |
 | Network Wi-Fi | Implemented | `network_app.cpp` |
 | Library / LocalSend | Scaffold | `library_app.cpp`, `localsend_app.cpp` |
+| Inter-processor protocol v1 | Implemented | `shared/protocol.h`, firmware + daemon parsers |
 | Telemetry JSON bridge | Implemented | `telemetry_bridge.cpp` |
 | 20% battery warning | Implemented | `telemetry_sentinel.cpp`, UI poll |
 | Crash reporter | Implemented (optional build) | `crash_reporter.cpp` |
