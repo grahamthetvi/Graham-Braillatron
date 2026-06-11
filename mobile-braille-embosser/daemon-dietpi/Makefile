@@ -125,6 +125,8 @@ UI_TEST_OBJS := \
 	src/ui/backends/backend.o \
 	src/ui/menu_overlay.o \
 	src/ui/output_hub.o \
+	src/connect/connect_client.o \
+	src/connect/json_utils.o \
 	src/ui_self_test.o
 
 MOTION_TEST_OBJS := $(KINEMATICS_OBJS) src/motion_gate.o src/motion_self_test.o
