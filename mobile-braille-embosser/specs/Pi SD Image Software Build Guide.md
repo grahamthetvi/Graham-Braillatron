@@ -54,26 +54,7 @@ The sentinel performs boot homing when `motion_enabled=true` in `hardware.conf` 
 - [DietPi image](https://dietpi.com/) for Orange Pi 3B (Trixie / kernel 6.1.115 if available)
 - Flash tool (e.g. `dd`, Raspberry Pi Imager, or Balena Etcher)
 - SSH client
-
-### Repository on the Pi
-
-You need the `mobile-braille-embosser` tree on the Pi before running bootstrap. Pick one:
-
-**Option A — Git clone (Pi has network + git):**
-
-```bash
-git clone <your-repo-url> braillatron
-cd braillatron/mobile-braille-embosser
-```
-
-**Option B — Copy from dev machine (no git on Pi):**
-
-```bash
-# On your PC (from repo root):
-rsync -av --exclude '.git' \
-  mobile-braille-embosser/ \
-  pi@<pi-ip>:~/braillatron/mobile-braille-embosser/
-```
+- This repository (for `deploy/prepare-sd-card.py` on the PC, or rsync to the Pi in Step 3)
 
 
 ## Step 1: Flash DietPi
@@ -81,10 +62,50 @@ rsync -av --exclude '.git' \
 1. Download the Orange Pi 3B DietPi image.
 2. Flash it to the micro SD card.
 3. If your DietPi build supports it, pre-configure hostname, SSH, and network in `dietpi.txt` on the boot partition before first insert.
-4. **Reserve tail space for `/data`.** Bootstrap creates a ~768 MB ext4 partition at the end of the SD card. DietPi normally auto-expands the root partition to fill the card on first boot, which leaves no room for `/data` and causes bootstrap to fail. Before the Pi's first power-on, either:
-   - Disable root-partition auto-expand in DietPi config (preferred), **or**
-   - Leave at least **768 MB unallocated** at the end of the disk when you flash or resize the image.
+4. **Reserve tail space for `/data`** (see below) — bootstrap needs ≥ 768 MB unallocated at the end of the SD card.
 5. Insert the SD card and power on the Pi.
+
+### PC helper: `deploy/prepare-sd-card.py` (recommended)
+
+DietPi normally **auto-expands root to fill the whole card on first boot**. Bootstrap then has nowhere to create the persistent `/data` partition and fails. The repo includes a Python script that prepares the card **on your PC, after flashing and before the Pi's first power-on**:
+
+`mobile-braille-embosser/deploy/prepare-sd-card.py`
+
+It will:
+
+1. Find your removable micro SD card (never your system disk).
+2. Expand root to use the card **minus** a 768 MB tail reserved for `/data`.
+3. Write `/dietpi_skip_partition_resize` so DietPi does not re-expand root to 100% on boot.
+4. Verify the tail gap is still ≥ 768 MB.
+
+Typical workflow (from a clone of this repo on your PC):
+
+```bash
+cd mobile-braille-embosser
+
+# See removable cards; pick the right device
+sudo python3 deploy/prepare-sd-card.py --list
+
+# Prepare the flashed card (prompts unless -y)
+sudo python3 deploy/prepare-sd-card.py --disk /dev/sdX
+
+# Or let the script auto-select a ~32 GB removable card
+sudo python3 deploy/prepare-sd-card.py -y
+```
+
+Useful flags (full list: `python3 deploy/prepare-sd-card.py --help`):
+
+| Flag | Purpose |
+| --- | --- |
+| `--list` | List candidate SD cards and exit |
+| `--disk PATH` | Target a specific block device (e.g. `/dev/mmcblk0`) |
+| `--dry-run` | Show planned changes without writing |
+| `--shrink-if-needed` | Repair a card whose root already expanded to fill the disk |
+| `-y` / `--yes` | Skip confirmation prompt |
+
+**Requirements on the PC:** Python 3, `sudo`, and standard partition tools (`parted`, `e2fsprogs`, `util-linux` — usually already present on Linux).
+
+If you skip this script, you can instead manually create `/dietpi_skip_partition_resize` on the flashed root partition and confirm ≥ 768 MB tail space, or leave at least **768 MB unallocated** at the end of the disk when you flash or resize the image. If the Pi already booted once and root filled the card, re-flash or run the script with `--shrink-if-needed` from your PC (see troubleshooting).
 
 
 ## Step 2: First boot and SSH
@@ -92,17 +113,62 @@ rsync -av --exclude '.git' \
 1. Log in (default DietPi credentials depend on image version — check DietPi docs).
 2. Confirm network: `ping -c1 deb.debian.org`
 3. Confirm architecture: `uname -m` → must show `aarch64`.
-4. Confirm free tail space (must be ≥ 768 MB before bootstrap):
+4. Confirm root has room for DietPi-Upgrade and bootstrap, and that tail space remains for `/data`:
 
 ```bash
+df -h /
 DISK="$(findmnt -n -o SOURCE / | sed 's/p[0-9]*$//')"
 sudo parted -ms "${DISK}" unit MB print free
 ```
 
-Look for a `free` region at the end of the disk. If root already fills the card, shrink the root partition or re-flash with auto-expand disabled before continuing.
+`/` should show most of the card free (roughly 30+ GB on a 32 GB card). Look for a `free` region at the end of the disk (≥ 768 MB). Example of a good layout on a 32 GB card (800 MB tail — proceed to Step 3):
+
+```
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/mmcblk1p1   28G  764M   26G   3% /
+...
+1:30500MB:31300MB:800MB:free;
+```
+
+If `/` is only a few GB while tens of GB are unallocated, expand root before upgrading or bootstrapping:
+
+```bash
+sudo bash deploy/os/expand-root-reserve-data.sh
+```
+
+If root already fills the card with no tail gap, re-flash and run `sudo python3 deploy/prepare-sd-card.py --shrink-if-needed` on your PC (see **PC helper** in Step 1).
 
 
-## Step 3: One-shot bootstrap
+## Step 3: Get the repository on the Pi
+
+You need the `mobile-braille-embosser` tree on the Pi before bootstrap. Fresh DietPi images do **not** include `git` — install it first if you use Option A, or use Option B and skip git entirely.
+
+**Option A — Git clone on the Pi:**
+
+```bash
+sudo apt update
+sudo apt install -y git
+git clone https://github.com/grahamthetvi/Graham-Braillatron.git braillatron
+cd braillatron/mobile-braille-embosser
+```
+
+**Option B — Copy from your dev machine (no git on the Pi):**
+
+```bash
+# On your PC (from repo root). Use the SSH user you log in with (root, dietpi, etc.):
+rsync -av --exclude '.git' \
+  mobile-braille-embosser/ \
+  root@<pi-ip>:~/braillatron/mobile-braille-embosser/
+```
+
+Then on the Pi:
+
+```bash
+cd ~/braillatron/mobile-braille-embosser
+```
+
+
+## Step 4: One-shot bootstrap
 
 From the `mobile-braille-embosser` directory on the Pi:
 
@@ -126,7 +192,7 @@ This script runs, in order:
 Bootstrap takes several minutes on first run (apt + compile + model download).
 
 
-## Step 4: Reboot
+## Step 5: Reboot
 
 ```bash
 sudo reboot
@@ -135,7 +201,7 @@ sudo reboot
 After reboot, `braillatron.target` should start automatically. No login or manual command is required for normal operation.
 
 
-## Step 5: Verify
+## Step 6: Verify
 
 ```bash
 # Services
@@ -246,7 +312,7 @@ make host-chord-test && ./braillatron-host-chord-test
 
 ## Updating after code changes
 
-When you have new source on the Pi (git pull or rsync from your dev machine):
+When you have new source on the Pi (`git pull` — requires git from Step 3 Option A — or rsync from your dev machine as in Step 3 Option B):
 
 ```bash
 cd ~/braillatron/mobile-braille-embosser/daemon-dietpi
@@ -284,7 +350,7 @@ sudo braillatron-remount-ro
 You do **not** need to re-run full bootstrap for routine code changes — only when `deploy/packages.txt`, vosk install scripts, or OS bootstrap steps change.
 
 
-## Step 6 (optional): Read-only root
+## Step 7 (optional): Read-only root
 
 For field deployment and SD wear protection, enable the RO overlay **after** you have verified bootstrap on a read-write root:
 
@@ -350,7 +416,9 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | Build fails on `-lvosk` | Re-run `sudo bash deploy/install-vosk-lib.sh`; confirm `aarch64` |
 | No speech | `systemctl status speech-dispatcher`; `spd-say test`; I2S overlay in `/boot/dietpiEnv.txt` |
 | No audio on speaker | `aplay -l`; `/etc/asound.conf`; wiring per Skeleton Guide (I2S1 pins 35/38/40) |
-| Bootstrap fails: "Not enough unallocated space" | DietPi filled the card; disable auto-expand and re-flash, or shrink root to leave ≥ 768 MB at disk end |
+| DietPi-Upgrade fails: "No space left on device" | Root stayed at the small flashed size; run `sudo bash deploy/os/expand-root-reserve-data.sh`, then `sudo apt-get clean && sudo dpkg --configure -a` |
+| `git: command not found` on fresh DietPi | Install git: `sudo apt update && sudo apt install -y git`, or use Step 3 Option B (rsync) |
+| Bootstrap fails: "Not enough unallocated space" | DietPi filled the card; re-flash and run `sudo python3 deploy/prepare-sd-card.py --shrink-if-needed` on your PC (Step 1) |
 | `/data` missing | Re-run `sudo bash deploy/os/setup-data-partition.sh` (review disk layout first) |
 | Arduino not detected | `ls -l /dev/ttyACM*`; USB cable; `arduino_device=` in `hardware.conf` |
 | STT unavailable | Model dir: `ls /data/braillatron/vosk-models/`; path in `ui.conf` |
@@ -381,4 +449,4 @@ flowchart TD
 - [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md) — product architecture, OS storage, co-processor protocol
 - [Master Architecture V4.9](Master%20Architecture%20V4.9.md) — power topology, TMC2209 daisy chain, PCB lifecycle
 - [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) — I2S, GPIO, UART, and Klipper wiring
-- `deploy/` — `bootstrap-dietpi.sh`, `install.sh`, systemd units, OS scripts
+- `deploy/` — `prepare-sd-card.py` (PC SD prep), `bootstrap-dietpi.sh`, `install.sh`, systemd units, OS scripts
