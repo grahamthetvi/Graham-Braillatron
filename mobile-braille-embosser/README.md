@@ -153,7 +153,7 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 | `evdev_map.conf` | USB key → logical key map (edit for non-QWERTY layouts) |
 | `ui.conf` | TTS, braille, STT, haptics toggles |
 
-Production paths on the Pi are under `/etc/braillatron/`; bench testing steps are documented in the Pi SD guide § *Bench testing with a USB keyboard*.
+Production paths on the Pi are under `/etc/braillatron/`. See the [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) for deployment, **testing on the Pi** (no GUI, journal + TTS), bench keyboard setup, and rebuild/update steps.
 
 ## Troubleshooting
 
