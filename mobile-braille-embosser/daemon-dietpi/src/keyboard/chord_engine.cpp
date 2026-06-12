@@ -1,7 +1,5 @@
 #include "chord_engine.h"
 
-#include "../documents/liblouis_bridge.h"
-
 extern "C" {
 #include "protocol.h"
 }
@@ -37,16 +35,6 @@ static_assert(sizeof(kControlBits) / sizeof(kControlBits[0]) ==
               "control key tables must match");
 
 } // namespace
-
-std::optional<std::string> braille_dots_to_string(uint8_t dot_mask)
-{
-    const std::string result =
-        documents::translate_backward_dots(dot_mask, documents::BrailleTable::UebG2);
-    if (result.empty() && dot_mask != 0) {
-        return std::nullopt;
-    }
-    return result;
-}
 
 void ChordEngine::on_key_state(uint16_t key_state)
 {

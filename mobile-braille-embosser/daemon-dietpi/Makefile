@@ -5,13 +5,26 @@ CFLAGS ?= -std=c11 -Wall -Wextra -pedantic -O2
 CPPFLAGS += -I../shared -Isrc -MMD -MP
 LDFLAGS ?=
 
-# Set BRAILLATRON_A11Y=1 to link Speech Dispatcher, BRLTTY, Vosk, and liblouis backends.
+# BRAILLATRON_LIBLOUIS=1 links liblouis for braille input/emboss translation.
+# BRAILLATRON_A11Y=1 also links Speech Dispatcher, BRLTTY, and Vosk (implies liblouis).
+LOUIS_LIBS :=
+LOUIS_CXXFLAGS :=
+ifeq ($(BRAILLATRON_LIBLOUIS),1)
+LOUIS_CXXFLAGS += -DBRAILLATRON_LIBLOUIS
+LOUIS_LIBS += -llouis
+endif
+
 A11Y_LIBS :=
 A11Y_CXXFLAGS :=
 ifeq ($(BRAILLATRON_A11Y),1)
-A11Y_CXXFLAGS += -DBRAILLATRON_A11Y
-A11Y_LIBS += -lspeechd -lbrlapi -lvosk -llouis
+A11Y_CXXFLAGS += -DBRAILLATRON_A11Y -DBRAILLATRON_LIBLOUIS
+A11Y_LIBS += -lspeechd -lbrlapi -lvosk
+LOUIS_CXXFLAGS += -DBRAILLATRON_LIBLOUIS
+LOUIS_LIBS += -llouis
 endif
+
+BACKEND_CXXFLAGS := $(LOUIS_CXXFLAGS) $(A11Y_CXXFLAGS)
+BACKEND_LIBS := $(LOUIS_LIBS) $(A11Y_LIBS)
 
 PLATFORM_OBJS := \
 	src/platform/device_status.o \
@@ -157,7 +170,11 @@ TELEMETRY_OBJS := \
 	src/telemetry/telemetry_sentinel.o \
 	src/sentinel_main.o
 
-.PHONY: all clean keyboard ui motion-test host-chord-test wikipedia-test sentinel connectd ui-test install a11y
+LIBLOUIS_TEST_OBJS := \
+	src/documents/liblouis_bridge_louis.o \
+	src/documents/liblouis_self_test.o
+
+.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test liblouis-test sentinel connectd ui-test install a11y liblouis
 
 all: braillatron-ui braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-sentinel braillatron-connectd braillatron-ui-test
 
@@ -167,6 +184,11 @@ ui: braillatron-ui
 
 a11y:
 	$(MAKE) BRAILLATRON_A11Y=1 all
+
+liblouis:
+	$(MAKE) BRAILLATRON_LIBLOUIS=1 braillatron-ui braillatron-liblouis-test
+
+liblouis-test: braillatron-liblouis-test
 
 motion-test: braillatron-motion-test
 
@@ -180,14 +202,31 @@ connectd: braillatron-connectd
 
 ui-test: braillatron-ui-test
 
+check: all
+	./braillatron-motion-test
+	./braillatron-host-chord-test
+	./braillatron-wikipedia-test
+	./braillatron-ui-test
+
+check-liblouis:
+	$(MAKE) BRAILLATRON_LIBLOUIS=1 braillatron-liblouis-test
+	./braillatron-liblouis-test
+
 install:
 	../deploy/install.sh
 
 braillatron-ui: $(UI_OBJS)
-	$(CXX) $(CXXFLAGS) $(UI_OBJS) $(LDFLAGS) $(A11Y_LIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(UI_OBJS) $(LDFLAGS) $(BACKEND_LIBS) -o $@
 
 braillatron-ui-test: $(UI_TEST_OBJS)
-	$(CXX) $(CXXFLAGS) $(UI_TEST_OBJS) $(LDFLAGS) $(A11Y_LIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(UI_TEST_OBJS) $(LDFLAGS) $(BACKEND_LIBS) -o $@
+
+braillatron-liblouis-test: $(LIBLOUIS_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(LIBLOUIS_TEST_OBJS) $(LDFLAGS) $(LOUIS_LIBS) -o $@
+
+# Dedicated object so check-liblouis never reuses liblouis_bridge.o from a stub build.
+src/documents/liblouis_bridge_louis.o: src/documents/liblouis_bridge.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DBRAILLATRON_LIBLOUIS -c $< -o $@
 
 braillatron-motion-test: $(MOTION_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(MOTION_TEST_OBJS) -o $@
@@ -208,22 +247,22 @@ braillatron-connectd: $(CONNECTD_OBJS)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c ../shared/protocol.c -o $@
 
 src/%.o: src/%.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
 src/keyboard/%.o: src/keyboard/%.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
 src/hardware/%.o: src/hardware/%.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
 src/kinematics/%.o: src/kinematics/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 src/documents/%.o: src/documents/%.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
 src/motion/%.o: src/motion/%.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
 src/haptics/%.o: src/haptics/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -238,21 +277,21 @@ src/net/%.o: src/net/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 src/ui/%.o: src/ui/%.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
 src/ui/apps/%.o: src/ui/apps/%.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
 src/ui/backends/%.o: src/ui/backends/%.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
 src/connect/%.o: src/connect/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \
-		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-sentinel braillatron-connectd
+		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-liblouis-test braillatron-sentinel braillatron-connectd
 
 -include $(ALL_OBJS:.o=.d)

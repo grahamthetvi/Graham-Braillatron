@@ -143,6 +143,11 @@ FocusNavigator &KeyboardService::focus_nav()
     return focus_;
 }
 
+void KeyboardService::set_braille_service(documents::BrailleTranslationService *service)
+{
+    braille_service_ = service;
+}
+
 bool KeyboardService::serial_connected() const
 {
     return serial_started_.load() && serial_.is_connected();
@@ -253,15 +258,20 @@ void KeyboardService::handle_key_state(uint16_t key_state)
 
 void KeyboardService::handle_chord(uint8_t dot_mask)
 {
+    std::optional<std::string> text;
+    if (braille_service_ != nullptr) {
+        text = braille_service_->translate_backward_dots(dot_mask);
+    }
+
     if (hooks::standalone_app_active()) {
         hooks::on_app_chord(dot_mask);
-        if (auto text = braille_dots_to_string(dot_mask)) {
+        if (text.has_value()) {
             hooks::on_app_text(*text);
         }
         return;
     }
 
-    if (auto text = braille_dots_to_string(dot_mask)) {
+    if (text.has_value()) {
         focus_.on_text(*text);
     }
 }

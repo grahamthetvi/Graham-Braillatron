@@ -1,5 +1,7 @@
 # Mobile Braille Embosser (Braillatron)
 
+Repository overview: [../README.md](../README.md)
+
 Software for the Braillatron portable braille embosser: Pi-side UI daemon, motion/telemetry services, and Arduino co-processor firmware.
 
 This guide gets you from a fresh clone to a working UI on a Linux dev machine using **only a standard USB keyboard** — no Orange Pi, Arduino, or mechanical key matrix required.
@@ -37,8 +39,15 @@ make braillatron-ui
 This produces `braillatron-ui` with stub accessibility backends. Other useful targets:
 
 ```bash
+make check                                              # build + run all host self-tests
 make host-chord-test && ./braillatron-host-chord-test   # chord window logic, no keyboard
 make motion-test && ./braillatron-motion-test           # kinematics math only
+```
+
+Optional liblouis self-test (requires `liblouis-dev` / `liblouis-devel`):
+
+```bash
+make check-liblouis
 ```
 
 ## Enable USB keyboard bench input
@@ -125,20 +134,32 @@ When a chord resolves, the translated character is appended to the focus navigat
 
 ## Braille text input on the host
 
-The default `make braillatron-ui` build links **stub** backends. Navigation and menus work; `braille_dots_to_string()` returns nothing without liblouis.
+The default `make braillatron-ui` build links **stub** backends. Navigation and menus work; chord back-translation is disabled without liblouis.
 
-To enable translation on a dev machine:
+To enable braille translation on a dev machine (liblouis only — no BRLTTY/Vosk required):
 
 ```bash
 # Fedora example
-sudo dnf install liblouis-devel speech-dispatcher-devel brltty-devel vosk-devel
+sudo dnf install liblouis-devel liblouis
 
 cd mobile-braille-embosser/daemon-dietpi
+make BRAILLATRON_LIBLOUIS=1 clean braillatron-ui braillatron-liblouis-test
+./braillatron-liblouis-test
+BRAILLATRON_CONFIG=config ./braillatron-ui
+```
+
+For the full accessibility stack (TTS via Speech Dispatcher, refreshable braille via BRLTTY, STT via Vosk):
+
+```bash
+sudo dnf install liblouis-devel speech-dispatcher-devel brltty-devel vosk-devel
+
 make BRAILLATRON_A11Y=1 clean braillatron-ui
 BRAILLATRON_CONFIG=config ./braillatron-ui
 ```
 
-Speech Dispatcher, BRLTTY, and Vosk can still be absent — the UI falls back to stderr logging for those backends while liblouis handles dot translation.
+Speech Dispatcher, BRLTTY, and Vosk can still be absent at runtime — the UI falls back to stderr logging for those backends while liblouis handles dot translation.
+
+**Braille grade** (`ui.conf` → `braille_table`) is a global preset cycling through UEB G1/G2 combined with UEB Math or Nemeth: `ueb_g1_math`, `ueb_g1_nemeth`, `ueb_g2_math`, `ueb_g2_nemeth`. Change it from Settings → Braille grade; input, embosser, and refreshable braille all follow the same preset. On systems where the literary+Nemeth composite table fails to compile, Nemeth presets fall back to the matching UEB literary table (override the Nemeth overlay with `LOUIS_NEMETH_TABLE`, default `en-us-mathtext.ctb`).
 
 On a fully provisioned Pi image, bootstrap installs these libraries automatically; see [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md).
 
@@ -164,12 +185,25 @@ Production paths on the Pi are under `/etc/braillatron/`. See the [Pi SD Image S
 | `evdev: unable to open … Permission denied` | Add your user to the `input` group and re-login, or run from a session with input access |
 | `EVIOCGRAB failed` | Set `evdev_grab=false`, or run on a console without a competing grab |
 | Chords do nothing | Verify timing (release within ~40 ms of press); run `./braillatron-host-chord-test` |
-| Chords fire but no letters | Rebuild with `BRAILLATRON_A11Y=1` and install `liblouis-devel` |
+| Chords fire but no letters | Rebuild with `BRAILLATRON_LIBLOUIS=1` and install `liblouis-devel`; run `./braillatron-liblouis-test` |
 | Arduino messages on startup | Expected; `allow_missing_arduino=true` keeps the daemon running |
+
+## Firmware (Arduino Micro)
+
+Build and flash the co-processor firmware with [arduino-cli](https://arduino.github.io/arduino-cli/). Full steps: [firmware-arduino/README.md](firmware-arduino/README.md).
+
+```bash
+arduino-cli core update-index
+arduino-cli core install arduino:avr
+make -C firmware-arduino compile
+make -C firmware-arduino upload PORT=/dev/ttyACM1
+```
+
+Protocol definitions are shared with the Pi daemons in [shared/](shared/) — edit `shared/protocol.h` before changing firmware or daemon parsers.
 
 ## Next steps
 
 - **Pi deployment** — [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md)
 - **Architecture** — [Master Software Architecture V9](specs/Master%20Software%20Architecture%20V9.md)
 - **Serial protocol** — [shared/protocol.md](shared/protocol.md)
-- **Firmware** — `firmware-arduino/` (Arduino Micro keyboard scan and chord assembly)
+- **Firmware** — [firmware-arduino/README.md](firmware-arduino/README.md) (compile and flash with arduino-cli)

@@ -134,8 +134,8 @@ public:
 #ifdef BRAILLATRON_A11Y
 class BrlapiBackend final : public BrailleBackend {
 public:
-    explicit BrlapiBackend(documents::BrailleTable table)
-        : table_(table)
+    explicit BrlapiBackend(documents::BrailleTranslationService *braille)
+        : braille_(braille)
     {
         if (brlapi_openConnection(nullptr, nullptr) >= 0) {
             open_ = true;
@@ -157,15 +157,14 @@ public:
             std::cerr << "[braille] " << text << "\n";
             return;
         }
-        const std::string translated = documents::translate_forward(text, table_);
+        const std::string translated =
+            braille_ != nullptr ? braille_->translate_forward(text) : text;
         brlapi_writeText(BRLAPI_CURSOR_OFF, translated.c_str());
     }
 
-    void set_table(documents::BrailleTable table) { table_ = table; }
-
 private:
     bool open_ = false;
-    documents::BrailleTable table_;
+    documents::BrailleTranslationService *braille_ = nullptr;
 };
 #endif
 
@@ -328,9 +327,10 @@ public:
 
 class MotionEmbosserBackend final : public EmbosserBackend {
 public:
-    MotionEmbosserBackend(motion::MotionService *motion, documents::BrailleTable table)
+    MotionEmbosserBackend(motion::MotionService *motion,
+                          documents::BrailleTranslationService *braille)
         : motion_(motion)
-        , table_(table)
+        , braille_(braille)
     {
     }
 
@@ -338,8 +338,8 @@ public:
 
     void enqueue_text(const std::string &plain) override
     {
-        if (motion_ != nullptr) {
-            motion_->emboss_text(plain, table_);
+        if (motion_ != nullptr && braille_ != nullptr) {
+            motion_->emboss_text(plain, *braille_);
         }
     }
 
@@ -352,7 +352,7 @@ public:
 
 private:
     motion::MotionService *motion_ = nullptr;
-    documents::BrailleTable table_;
+    documents::BrailleTranslationService *braille_ = nullptr;
 };
 
 class StubEmbosserBackend final : public EmbosserBackend {
@@ -424,11 +424,12 @@ TtsBackend *create_tts_backend(const UiConfig &config)
     return new StubTtsBackend();
 }
 
-BrailleBackend *create_braille_backend(const UiConfig &config)
+BrailleBackend *create_braille_backend(const UiConfig &config,
+                                       documents::BrailleTranslationService *braille)
 {
 #ifdef BRAILLATRON_A11Y
     if (config.braille_enabled) {
-        auto *brl = new BrlapiBackend(documents::braille_table_from_string(config.braille_table));
+        auto *brl = new BrlapiBackend(braille);
         if (brl->available()) {
             return brl;
         }
@@ -436,6 +437,7 @@ BrailleBackend *create_braille_backend(const UiConfig &config)
     }
 #endif
     (void)config;
+    (void)braille;
     return new StubBrailleBackend();
 }
 
@@ -460,12 +462,13 @@ HapticBackend *create_haptic_backend(const UiConfig &ui_config,
     return new StubHapticBackend();
 }
 
-EmbosserBackend *create_embosser_backend(const UiConfig &config, motion::MotionService *motion)
+EmbosserBackend *create_embosser_backend(const UiConfig &config, motion::MotionService *motion,
+                                         documents::BrailleTranslationService *braille)
 {
     if (config.embosser_enabled && motion != nullptr) {
-        return new MotionEmbosserBackend(motion,
-                                         documents::braille_table_from_string(config.braille_table));
+        return new MotionEmbosserBackend(motion, braille);
     }
+    (void)braille;
     (void)motion;
     return new StubEmbosserBackend();
 }

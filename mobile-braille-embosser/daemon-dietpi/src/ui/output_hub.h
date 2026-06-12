@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../documents/liblouis_bridge.h"
 #include "../platform/device_status.h"
 #include "backends/backend.h"
 #include "menu_overlay.h"
@@ -27,8 +28,9 @@ class AppRegistry;
 
 class OutputHub {
 public:
-    OutputHub(UiConfig ui_config, telemetry::TelemetryConfig telemetry_config,
-              std::string ui_config_path, motion::MotionService *motion);
+    OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_config,
+              std::string ui_config_path, motion::MotionService *motion,
+              documents::BrailleTranslationService *braille);
     ~OutputHub();
 
     OutputHub(const OutputHub &) = delete;
@@ -66,6 +68,8 @@ public:
 
     UiConfig &ui_config() { return ui_config_; }
 
+    void apply_braille_grade_preset(documents::BrailleGradePreset preset);
+
 private:
     void emit(const std::string &message);
     void persist_ui_config();
@@ -73,7 +77,7 @@ private:
     std::vector<MenuItem> build_root_menu();
     std::vector<MenuItem> build_accounts_menu();
 
-    UiConfig ui_config_;
+    UiConfig &ui_config_;
     telemetry::TelemetryConfig telemetry_config_;
     std::string ui_config_path_;
     MenuOverlay menu_overlay_;
@@ -85,6 +89,7 @@ private:
     bool low_battery_announced_ = false;
 
     motion::MotionService *motion_ = nullptr;
+    documents::BrailleTranslationService *braille_service_ = nullptr;
 
     std::unique_ptr<TtsBackend> tts_;
     std::unique_ptr<BrailleBackend> braille_;

@@ -18,11 +18,13 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     , telemetry_config_(std::move(telemetry_config))
     , ui_config_(std::move(ui_config))
     , ui_config_path_(std::move(ui_config_path))
+    , braille_service_(documents::braille_grade_preset_from_string(ui_config_.braille_table))
     , serial_link_(hardware_.arduino_device, hardware_.baud_rate)
     , motion_service_(std::move(kinematics_config))
     , brf_store_("/var/lib/braillatron/ram/layer1.brf")
     , coord_store_("/var/lib/braillatron/ram/coords.json")
-    , output_hub_(ui_config_, telemetry_config_, ui_config_path_, &motion_service_)
+    , output_hub_(ui_config_, telemetry_config_, ui_config_path_, &motion_service_,
+                  &braille_service_)
     , connect_client_(braillatron::connect::default_connect_config().socket_path,
                       braillatron::connect::default_connect_config().event_path)
     , keyboard_(keyboard_config_)
@@ -38,6 +40,7 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     ui_context_.coords = &coord_store_;
     ui_context_.edit = &edit_session_;
     ui_context_.paper_sep = &paper_separator_;
+    ui_context_.braille = &braille_service_;
     ui_context_.registry = &app_registry_;
     ui_context_.connect = &connect_client_;
 
@@ -47,6 +50,8 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
 
     hooks::set_output_hub(&output_hub_);
     hooks::set_app_registry(&app_registry_);
+
+    keyboard_.set_braille_service(&braille_service_);
 
     motion_service_.reset_from_coordinate(coord_store_.state().x_microsteps,
                                           coord_store_.state().y_line_index);

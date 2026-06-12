@@ -16,7 +16,7 @@ struct UiConfig {
 
     std::string spd_voice = "default";
     std::string vosk_model_path = "/data/braillatron/vosk-models/vosk-model-small-en-us-0.15";
-    std::string braille_table = "ueb_g2";
+    std::string braille_table = "ueb_g2_math";
     std::string language = "en-US";
 
     int tts_rate = 150;

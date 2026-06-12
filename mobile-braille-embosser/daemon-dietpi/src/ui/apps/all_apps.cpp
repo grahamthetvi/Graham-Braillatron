@@ -119,7 +119,7 @@ public:
     void on_enter(UiContext &ctx) override
     {
         buffer_.clear();
-        announce(ctx, "Calculator ready. Nemeth mode.");
+        announce(ctx, "Calculator ready.");
     }
 
     void on_exit(UiContext &ctx) override { announce(ctx, "Calculator closed"); }
@@ -134,8 +134,9 @@ public:
                 if (mode_ != CalcAudioMode::Silent) {
                     announce(ctx, "Equation: " + buffer_);
                 }
-                if (ctx.motion != nullptr && mode_ == CalcAudioMode::SpaceAffirm) {
-                    ctx.motion->emboss_text(buffer_, documents::BrailleTable::Nemeth);
+                if (ctx.motion != nullptr && ctx.braille != nullptr &&
+                    mode_ == CalcAudioMode::SpaceAffirm) {
+                    ctx.motion->emboss_text(buffer_, *ctx.braille);
                 }
                 buffer_.push_back(ch);
                 continue;
@@ -166,6 +167,7 @@ public:
         motion_ = ctx.motion;
         brf_ = ctx.brf;
         output_ = ctx.output;
+        braille_ = ctx.braille;
         if (output_ != nullptr) {
             output_->set_stt_transcript_handler(
                 [this](const std::string &text, bool is_final) {
@@ -180,8 +182,8 @@ public:
                         }
                         return;
                     }
-                    if (motion_ != nullptr) {
-                        motion_->emboss_text(text, documents::BrailleTable::UebG2);
+                    if (motion_ != nullptr && braille_ != nullptr) {
+                        motion_->emboss_text(text, *braille_);
                     }
                     if (brf_ != nullptr) {
                         brf_->append_line(text);
@@ -201,6 +203,7 @@ public:
         motion_ = nullptr;
         brf_ = nullptr;
         output_ = nullptr;
+        braille_ = nullptr;
         announce(ctx, "Transcriber closed");
     }
 
@@ -213,6 +216,7 @@ private:
     uint32_t queue_depth_ = 0;
     motion::MotionService *motion_ = nullptr;
     documents::BrfStore *brf_ = nullptr;
+    documents::BrailleTranslationService *braille_ = nullptr;
     OutputHub *output_ = nullptr;
 };
 

@@ -1,6 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+
 # Compiler outputs (Makefile -MMD)
 *.o
 *.d
 
 # Built daemons (daemon-dietpi/)
 daemon-dietpi/braillatron-*
+
+# arduino-cli build output
+firmware-arduino/build/

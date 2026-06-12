@@ -204,8 +204,8 @@ private:
         if (key != keyboard::ControlKey::Enter || lines_.empty()) {
             return;
         }
-        if (ctx.motion != nullptr) {
-            ctx.motion->emboss_text(lines_[line_index_], documents::BrailleTable::UebG2);
+        if (ctx.motion != nullptr && ctx.braille != nullptr) {
+            ctx.motion->emboss_text(lines_[line_index_], *ctx.braille);
         }
     }
 

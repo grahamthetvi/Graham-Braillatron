@@ -20,20 +20,32 @@ extern "C" {
 
 namespace braillatron::ui {
 
-OutputHub::OutputHub(UiConfig ui_config, telemetry::TelemetryConfig telemetry_config,
-                     std::string ui_config_path, motion::MotionService *motion)
-    : ui_config_(std::move(ui_config))
+OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_config,
+                     std::string ui_config_path, motion::MotionService *motion,
+                     documents::BrailleTranslationService *braille)
+    : ui_config_(ui_config)
     , telemetry_config_(std::move(telemetry_config))
     , ui_config_path_(std::move(ui_config_path))
     , motion_(motion)
+    , braille_service_(braille)
     , tts_(create_tts_backend(ui_config_))
-    , braille_(create_braille_backend(ui_config_))
+    , braille_(create_braille_backend(ui_config_, braille_service_))
     , stt_(create_stt_backend(ui_config_))
     , haptics_(create_haptic_backend(ui_config_, telemetry_config_))
-    , embosser_(create_embosser_backend(ui_config_, motion_))
+    , embosser_(create_embosser_backend(ui_config_, motion_, braille_service_))
     , morse_(create_morse_backend(ui_config_, telemetry_config_))
 {
     menu_overlay_.set_root_items(build_root_menu());
+}
+
+void OutputHub::apply_braille_grade_preset(documents::BrailleGradePreset preset)
+{
+    if (braille_service_ != nullptr) {
+        braille_service_->set_grade_preset(preset);
+    }
+    ui_config_.braille_table = documents::braille_grade_preset_config_value(preset);
+    persist_ui_config();
+    emit(std::string("Braille grade: ") + documents::braille_grade_preset_display_label(preset));
 }
 
 OutputHub::~OutputHub() = default;
@@ -450,18 +462,20 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
         },
         MenuItem {
             "Braille grade",
-            [this]() { return "Grade: " + ui_config_.braille_table; },
+            [this]() {
+                if (braille_service_ != nullptr) {
+                    return std::string("Grade: ") + braille_service_->display_label();
+                }
+                return std::string("Grade: ") + ui_config_.braille_table;
+            },
             [this](MenuOverlay &mo) {
                 (void)mo;
-                if (ui_config_.braille_table == "ueb_g2") {
-                    ui_config_.braille_table = "ueb_g1";
-                } else if (ui_config_.braille_table == "ueb_g1") {
-                    ui_config_.braille_table = "nemeth";
-                } else {
-                    ui_config_.braille_table = "ueb_g2";
+                if (braille_service_ == nullptr) {
+                    return;
                 }
-                persist_ui_config();
-                emit("Braille grade: " + ui_config_.braille_table);
+                const documents::BrailleGradePreset next =
+                    documents::next_braille_grade_preset(braille_service_->current_preset());
+                apply_braille_grade_preset(next);
             },
         },
         MenuItem {

@@ -1,3 +1,4 @@
+#include "documents/liblouis_bridge.h"
 #include "hardware/hardware_config.h"
 #include "platform/device_status.h"
 #include "telemetry/telemetry_config.h"
@@ -20,7 +21,10 @@ int main()
 
     status.log_report(report, true);
 
-    braillatron::ui::OutputHub hub(ui_config, telemetry, "", nullptr);
+    braillatron::documents::BrailleTranslationService braille_service(
+        braillatron::documents::braille_grade_preset_from_string(ui_config.braille_table));
+
+    braillatron::ui::OutputHub hub(ui_config, telemetry, "", nullptr, &braille_service);
     hub.announce_startup(report);
     hub.announce_focus("Document", false);
     hub.announce_status_report(report);

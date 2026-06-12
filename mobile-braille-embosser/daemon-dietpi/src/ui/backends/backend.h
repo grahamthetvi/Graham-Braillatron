@@ -4,6 +4,10 @@
 #include <functional>
 #include <string>
 
+namespace braillatron::documents {
+class BrailleTranslationService;
+}
+
 namespace braillatron::telemetry {
 struct TelemetryConfig;
 }
@@ -73,11 +77,13 @@ public:
 };
 
 TtsBackend *create_tts_backend(const UiConfig &config);
-BrailleBackend *create_braille_backend(const UiConfig &config);
+BrailleBackend *create_braille_backend(const UiConfig &config,
+                                       documents::BrailleTranslationService *braille);
 SttBackend *create_stt_backend(const UiConfig &config);
 HapticBackend *create_haptic_backend(const UiConfig &ui_config,
                                        const telemetry::TelemetryConfig &telemetry_config);
-EmbosserBackend *create_embosser_backend(const UiConfig &config, motion::MotionService *motion);
+EmbosserBackend *create_embosser_backend(const UiConfig &config, motion::MotionService *motion,
+                                           documents::BrailleTranslationService *braille);
 MorseBackend *create_morse_backend(const UiConfig &config,
                                     const telemetry::TelemetryConfig &telemetry_config);
 

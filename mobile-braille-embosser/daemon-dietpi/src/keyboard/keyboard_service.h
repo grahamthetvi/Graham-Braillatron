@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../documents/liblouis_bridge.h"
+
 #include "chord_engine.h"
 #include "evdev_input.h"
 #include "evdev_keymap.h"
@@ -37,6 +39,8 @@ public:
     bool evdev_connected() const;
     bool try_serial_reconnect();
 
+    void set_braille_service(documents::BrailleTranslationService *service);
+
 private:
     void enqueue_frame(const SerialFrame &frame);
     void drain_frame_queue();
@@ -52,6 +56,7 @@ private:
     SerialListener serial_;
     ChordEngine chord_;
     FocusNavigator focus_;
+    documents::BrailleTranslationService *braille_service_ = nullptr;
 
     std::unique_ptr<EvdevInput> evdev_;
     HostChordAssembler host_chord_assembler_;

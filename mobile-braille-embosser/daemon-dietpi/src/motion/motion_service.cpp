@@ -56,10 +56,10 @@ void MotionService::emboss_dot_mask(uint8_t dot_mask)
 }
 
 void MotionService::emboss_text(const std::string &plain,
-                                documents::BrailleTable table)
+                                const documents::BrailleTranslationService &braille)
 {
-    const std::string braille = documents::translate_forward(plain, table);
-    for (unsigned char ch : braille) {
+    const std::string translated = braille.translate_forward(plain);
+    for (unsigned char ch : translated) {
         const uint8_t mask = documents::braille_char_to_dot_mask(static_cast<wchar_t>(ch));
         if (mask != 0) {
             controller_.emboss(mask);

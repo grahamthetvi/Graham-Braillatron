@@ -15,6 +15,7 @@
 #include "../ui/output_hub.h"
 #include "../connect/connect_client.h"
 #include "../connect/connect_defaults.h"
+#include "../documents/liblouis_bridge.h"
 #include "../ui/ui_config.h"
 #include "../keyboard/keyboard_config.h"
 #include "../keyboard/keyboard_service.h"
@@ -49,6 +50,7 @@ private:
     telemetry::TelemetryConfig telemetry_config_;
     UiConfig ui_config_;
     std::string ui_config_path_;
+    documents::BrailleTranslationService braille_service_;
 
     platform::DeviceStatus device_status_;
     platform::DeviceStatusReport status_report_;
