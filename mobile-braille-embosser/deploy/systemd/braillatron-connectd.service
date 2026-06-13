@@ -1,7 +1,6 @@
 [Unit]
 Description=Braillatron connectivity sidecar
-After=network-online.target
-Before=braillatron-ui.service
+After=local-fs.target
 
 [Service]
 Type=simple

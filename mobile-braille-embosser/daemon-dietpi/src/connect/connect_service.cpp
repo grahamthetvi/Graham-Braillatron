@@ -36,7 +36,6 @@ void ConnectService::start()
     ensure_directory(connect_config_.cookies_incoming_dir);
     ensure_directory(connect_config_.credentials_dir + "/signal-cli");
 
-    youtube_.start_mpv();
     signal_.start_daemon_if_linked();
     signal_.start_event_thread();
 

@@ -60,6 +60,9 @@ fi
 systemctl enable --now speech-dispatcher || true
 systemctl enable --now brltty || true
 systemctl enable --now NetworkManager || true
+# Wi-Fi autoconnects in the background; do not block multi-user on DHCP.
+systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
+systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
 
 bash "${ROOT}/deploy/os/setup-aux-audio.sh"
 

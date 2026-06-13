@@ -21,6 +21,7 @@ install -m 755 "${DAEMON_DIR}/braillatron-sentinel" "${PREFIX}/bin/braillatron-s
 install -m 755 "${DAEMON_DIR}/braillatron-connectd" "${PREFIX}/bin/braillatron-connectd"
 install -m 755 "${ROOT}/deploy/os/sync-documents.sh" "${PREFIX}/bin/braillatron-sync"
 install -m 755 "${ROOT}/deploy/os/braillatron-audio-select.sh" "${PREFIX}/bin/braillatron-audio-select"
+install -m 755 "${ROOT}/deploy/os/braillatron-bluetooth-autoconnect.sh" "${PREFIX}/bin/braillatron-bluetooth-autoconnect"
 
 install -d /usr/share/braillatron/audio
 install -m 644 "${ROOT}/deploy/os/audio/asound.aux.conf" /usr/share/braillatron/audio/
@@ -52,11 +53,16 @@ install -m 644 "${ROOT}/deploy/systemd/braillatron-sentinel.service" "${SYSTEMD_
 install -m 644 "${ROOT}/deploy/systemd/braillatron-connectd.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sync.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sync.timer" "${SYSTEMD_DIR}/"
+install -m 644 "${ROOT}/deploy/systemd/braillatron-bluetooth-autoconnect.service" "${SYSTEMD_DIR}/"
+install -m 644 "${ROOT}/deploy/systemd/braillatron-bluetooth-autoconnect.timer" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron.target" "${SYSTEMD_DIR}/"
 
 systemctl daemon-reload
 systemctl enable braillatron.target
 systemctl enable braillatron-sync.timer
+systemctl enable braillatron-bluetooth-autoconnect.timer
+systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
+systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
 
 echo "Installed Braillatron to ${PREFIX}/bin and ${CONFIG_DIR}"
 echo "Start with: systemctl start braillatron.target"

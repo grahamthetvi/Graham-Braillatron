@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <thread>
 
 #ifdef BRAILLATRON_A11Y
@@ -100,14 +101,9 @@ private:
         if (connection_ != nullptr) {
             return true;
         }
-        if (connect_failed_) {
-            return false;
-        }
 
         connection_ = spd_open("braillatron", "Braillatron UI", nullptr, SPD_MODE_THREADED);
         if (connection_ == nullptr) {
-            connect_failed_ = true;
-            std::cerr << "[tts] Speech Dispatcher unavailable\n";
             return false;
         }
 
@@ -140,7 +136,6 @@ private:
 
     std::string voice_;
     mutable SPDConnection *connection_ = nullptr;
-    mutable bool connect_failed_ = false;
     int pending_rate_ = -1;
     int pending_volume_ = -1;
 };
@@ -178,23 +173,24 @@ public:
     explicit BrlapiBackend(documents::BrailleTranslationService *braille)
         : braille_(braille)
     {
-        if (brlapi_openConnection(nullptr, nullptr) >= 0) {
-            open_ = true;
-        }
     }
 
     ~BrlapiBackend() override
     {
         if (open_) {
             brlapi_closeConnection();
+            open_ = false;
         }
     }
 
-    bool available() const override { return open_; }
+    bool available() const override
+    {
+        return ensure_open();
+    }
 
     void write(const std::string &text) override
     {
-        if (!open_) {
+        if (!ensure_open()) {
             std::cerr << "[braille] " << text << "\n";
             return;
         }
@@ -204,7 +200,18 @@ public:
     }
 
 private:
-    bool open_ = false;
+    bool ensure_open() const
+    {
+        if (open_) {
+            return true;
+        }
+        if (brlapi_openConnection(nullptr, nullptr) >= 0) {
+            open_ = true;
+        }
+        return open_;
+    }
+
+    mutable bool open_ = false;
     documents::BrailleTranslationService *braille_ = nullptr;
 };
 #endif
@@ -230,13 +237,43 @@ public:
         available_ = !model_path_.empty();
     }
 
-    ~VoskSttBackend() override { stop_capture(); }
+    ~VoskSttBackend() override
+    {
+        stop_capture();
+        if (preload_thread_.joinable()) {
+            preload_thread_.join();
+        }
+        std::lock_guard<std::mutex> lock(model_mutex_);
+        if (cached_model_ != nullptr) {
+            vosk_model_free(cached_model_);
+            cached_model_ = nullptr;
+        }
+    }
 
     bool available() const override { return available_; }
 
     void set_transcript_handler(TranscriptHandler handler) override
     {
         handler_ = std::move(handler);
+    }
+
+    void preload() override
+    {
+        if (!available_ || preload_started_.exchange(true)) {
+            return;
+        }
+        preload_thread_ = std::thread([this]() {
+            std::lock_guard<std::mutex> lock(model_mutex_);
+            if (cached_model_ != nullptr) {
+                return;
+            }
+            cached_model_ = vosk_model_new(model_path_.c_str());
+            if (cached_model_ != nullptr) {
+                std::cerr << "[stt] vosk model preloaded\n";
+            } else {
+                std::cerr << "[stt] vosk preload failed\n";
+            }
+        });
     }
 
     void set_ptt_open(bool open) override
@@ -253,6 +290,17 @@ public:
     }
 
 private:
+    VoskModel *acquire_model()
+    {
+        std::lock_guard<std::mutex> lock(model_mutex_);
+        if (cached_model_ != nullptr) {
+            VoskModel *model = cached_model_;
+            cached_model_ = nullptr;
+            return model;
+        }
+        return vosk_model_new(model_path_.c_str());
+    }
+
     void start_capture()
     {
         if (capture_running_.load()) {
@@ -272,7 +320,7 @@ private:
 
     void capture_loop()
     {
-        VoskModel *model = vosk_model_new(model_path_.c_str());
+        VoskModel *model = acquire_model();
         if (model == nullptr) {
             std::cerr << "[stt] failed to load vosk model\n";
             capture_running_ = false;
@@ -333,7 +381,11 @@ private:
     bool ptt_open_ = false;
     TranscriptHandler handler_;
     std::atomic<bool> capture_running_ {false};
+    std::atomic<bool> preload_started_ {false};
     std::thread capture_thread_;
+    std::thread preload_thread_;
+    std::mutex model_mutex_;
+    VoskModel *cached_model_ = nullptr;
 };
 #endif
 
@@ -464,11 +516,7 @@ BrailleBackend *create_braille_backend(const UiConfig &config,
 {
 #ifdef BRAILLATRON_A11Y
     if (config.braille_enabled) {
-        auto *brl = new BrlapiBackend(braille);
-        if (brl->available()) {
-            return brl;
-        }
-        delete brl;
+        return new BrlapiBackend(braille);
     }
 #endif
     (void)config;

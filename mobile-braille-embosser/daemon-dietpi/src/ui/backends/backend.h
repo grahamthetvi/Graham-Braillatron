@@ -49,6 +49,7 @@ public:
     virtual bool available() const = 0;
     virtual void set_ptt_open(bool open) = 0;
     virtual void set_transcript_handler(TranscriptHandler handler) = 0;
+    virtual void preload() {}
 };
 
 class HapticBackend {

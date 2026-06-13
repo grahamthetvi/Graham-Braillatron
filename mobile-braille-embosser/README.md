@@ -109,9 +109,9 @@ Mappings live in `daemon-dietpi/config/evdev_map.conf`. Defaults emulate the phy
 | **↑ / ↓** | Move focus (or move in the menu overlay when open) |
 | **Enter** | Activate focused app / menu item |
 | **Backspace** | Delete typed text / back out of menu |
-| **F7** | Pause / resume speech (press and release) |
-| **F8** (hold) | Push-to-talk dictation gate |
-| **F9** | Toggle global menu overlay |
+| **`** (grave) | Toggle global menu overlay |
+| **Tab** | Pause / resume speech (press and release) |
+| **Right Super** (hold) | Push-to-talk dictation gate |
 | **F** | Braille dot 1 |
 | **D** | Braille dot 2 |
 | **S** | Braille dot 3 |
@@ -135,7 +135,7 @@ When a chord resolves, the translated character is appended to the focus navigat
 
 1. **Start the UI** (commands above). Confirm `evdev listening` appears in the log.
 2. **Home screen** — press **↓** a few times. Each step announces the focused app (`Document`, `Calculator`, `Wikipedia`, …) on stderr.
-3. **Open the menu** — press **F9**. Use **↑ / ↓** to move, **Enter** to select, **Backspace** to go back.
+3. **Open the menu** — press **`** (grave). Use **↑ / ↓** to move, **Enter** to select, **Backspace** to go back.
 4. **Type braille** — on the home screen, chord **F** (letter `a`). With the default stub build, translation is disabled; use `host-chord-test` or an a11y build for full text (next section).
 5. **Activate an app** — focus `Wikipedia` with **↓**, press **Enter**. The app session takes over chord and D-pad routing until you exit.
 

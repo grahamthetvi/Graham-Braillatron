@@ -260,7 +260,7 @@ sudo braillatron-audio-select i2s        # MAX98357A I2S amp (production)
 sudo braillatron-audio-select status
 ```
 
-From the device menu (F9 → Settings):
+From the device menu (grave **`** → Settings):
 
 - **Audio output** — switch between aux jack, Bluetooth speaker, and I2S amplifier; reconnect a saved Bluetooth speaker
 - **Pair Bluetooth speaker** — enter the speaker MAC address (colons optional); pairs, saves, and switches to Bluetooth output
@@ -340,9 +340,9 @@ Default key map (`/etc/braillatron/evdev_map.conf`):
 | Up / Down arrows | Move focus (or menu overlay when open) |
 | Enter | Activate focused item / menu entry |
 | Backspace | Delete text / back out of menu |
-| F7 | Pause/resume speech (press/release) |
-| F8 (hold) | Push-to-talk dictation |
-| F9 | Toggle global menu overlay |
+| ` (grave) | Toggle global menu overlay |
+| Tab | Pause/resume speech (press/release) |
+| Right Super (hold) | Push-to-talk dictation |
 | F / D / S | Braille dots 1 / 2 / 3 (chord within 40 ms, e.g. F+D) |
 | J / K / L | Braille dots 4 / 5 / 6 |
 

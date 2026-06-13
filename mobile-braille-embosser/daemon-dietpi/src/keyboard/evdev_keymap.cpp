@@ -73,6 +73,7 @@ const std::unordered_map<std::string, unsigned> &evdev_name_table()
         {"KEY_PAGEUP", KEY_PAGEUP},
         {"KEY_PAGEDOWN", KEY_PAGEDOWN},
         {"KEY_TAB", KEY_TAB},
+        {"KEY_GRAVE", KEY_GRAVE},
         {"KEY_1", KEY_1},
         {"KEY_2", KEY_2},
         {"KEY_3", KEY_3},

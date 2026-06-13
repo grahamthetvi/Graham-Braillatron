@@ -1,6 +1,6 @@
 [Unit]
 Description=Braillatron device services
-Wants=braillatron-ui.service braillatron-sentinel.service braillatron-connectd.service braillatron-sync.timer
+Wants=speech-dispatcher.service braillatron-ui.service braillatron-sentinel.service braillatron-connectd.service braillatron-sync.timer
 
 [Install]
 WantedBy=multi-user.target

@@ -1,7 +1,8 @@
 [Unit]
 Description=Braillatron ScreenReader UI
-After=network.target braillatron-connectd.service sound.target speech-dispatcher.service brltty.service
-Wants=speech-dispatcher.service
+After=local-fs.target sound.target speech-dispatcher.service
+Requires=speech-dispatcher.service
+Wants=brltty.service braillatron-connectd.service
 
 [Service]
 Type=simple

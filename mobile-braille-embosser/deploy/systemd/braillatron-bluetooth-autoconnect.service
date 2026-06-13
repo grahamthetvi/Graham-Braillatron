@@ -1,0 +1,12 @@
+[Unit]
+Description=Braillatron Bluetooth speaker reconnect
+After=bluetooth.service
+ConditionPathExists=/etc/braillatron/bluetooth-audio.conf
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/braillatron-bluetooth-autoconnect
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

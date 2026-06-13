@@ -112,11 +112,14 @@ void OutputHub::announce_startup(const platform::DeviceStatusReport &report)
     const std::vector<std::string> missing = report.missing_user_messages();
     if (missing.empty()) {
         emit("All devices connected");
-        return;
+    } else {
+        for (const std::string &message : missing) {
+            emit(message);
+        }
     }
 
-    for (const std::string &message : missing) {
-        emit(message);
+    if (ui_config_.stt_enabled && stt_ != nullptr) {
+        stt_->preload();
     }
 }
 
