@@ -12,10 +12,6 @@
 
 #ifdef BRAILLATRON_GPIOD
 #include <gpiod.h>
-
-#if defined(GPIOD_LINE_DIRECTION_OUTPUT)
-#define BRAILLATRON_GPIOD_V2 1
-#endif
 #endif
 
 namespace braillatron::ui {

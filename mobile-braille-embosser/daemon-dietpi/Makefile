@@ -35,6 +35,12 @@ endif
 ifeq ($(shell pkg-config --exists libgpiod 2>/dev/null && echo yes),yes)
 DISPLAY_CXXFLAGS += -DBRAILLATRON_GPIOD
 DISPLAY_LIBS += -lgpiod
+GPIOD_MAJOR := $(shell pkg-config --modversion libgpiod 2>/dev/null | cut -d. -f1)
+ifneq ($(GPIOD_MAJOR),)
+ifeq ($(shell test "$(GPIOD_MAJOR)" -ge 2 2>/dev/null && echo yes),yes)
+DISPLAY_CXXFLAGS += -DBRAILLATRON_GPIOD_V2
+endif
+endif
 endif
 BACKEND_LIBS += $(DISPLAY_LIBS)
 BACKEND_CXXFLAGS += $(DISPLAY_CXXFLAGS)
