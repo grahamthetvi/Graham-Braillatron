@@ -18,8 +18,10 @@ public:
 
     bool is_linked() const;
     std::string accounts_status() const;
+    std::string link_status() const;
     std::string start_link();
     std::string finish_link();
+    std::string run_link_workflow();
     std::string list_chats();
     std::string list_messages(const std::string &recipient);
     std::string send_message(const std::string &recipient, const std::string &text);
@@ -41,6 +43,7 @@ private:
     std::thread event_thread_;
     std::atomic<bool> event_running_ {false};
     std::string pending_link_uri_;
+    std::atomic<bool> link_watch_active_ {false};
     mutable std::mutex mutex_;
 };
 

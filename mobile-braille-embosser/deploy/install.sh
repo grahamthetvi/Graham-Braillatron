@@ -43,10 +43,18 @@ install -m 644 "${ROOT}/deploy/config/localsend.conf" "${CONFIG_DIR}/localsend.c
 install -m 644 "${ROOT}/deploy/config/connect.conf" "${CONFIG_DIR}/connect.conf"
 install -m 644 "${ROOT}/deploy/config/youtube.conf" "${CONFIG_DIR}/youtube.conf"
 install -m 644 "${ROOT}/deploy/config/messages.conf" "${CONFIG_DIR}/messages.conf"
+install -m 644 "${ROOT}/deploy/config/dictionary.conf" "${CONFIG_DIR}/dictionary.conf"
+install -m 644 "${ROOT}/deploy/config/spelling.conf" "${CONFIG_DIR}/spelling.conf"
 
 install -d /var/lib/braillatron/ram
 install -d /data/braillatron/documents /data/braillatron/settings /data/braillatron/vosk-models || true
+install -d /data/braillatron/timer /data/braillatron/dictionary /data/braillatron/spelling-lists /data/braillatron/spelling-sessions || true
 install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/credentials/signal-cli || true
+
+install -m 755 "${ROOT}/deploy/install-dictionary-data.sh" "${PREFIX}/bin/braillatron-install-dictionary-data"
+install -m 755 "${ROOT}/deploy/install-spelling-data.sh" "${PREFIX}/bin/braillatron-install-spelling-data"
+bash "${ROOT}/deploy/install-dictionary-data.sh"
+bash "${ROOT}/deploy/install-spelling-data.sh"
 
 install -m 755 "${ROOT}/deploy/os/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
 install -m 755 "${ROOT}/deploy/os/braillatron-tty1-launch.sh" /usr/local/sbin/braillatron-tty1-launch.sh

@@ -371,6 +371,10 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 | connectd sidecar | Implemented (needs device validation) | `connect/`, `braillatron-connectd.service` |
 | YouTube audio app | Implemented (needs device validation) | `youtube_app.cpp`, `youtube_backend.cpp` |
 | Signal messaging app | Implemented (needs device validation) | `messages_app.cpp`, `signal_backend.cpp` |
+| Timer (inline) | Implemented | `timer_service.cpp`, `timer_inline.cpp` |
+| Dictionary (offline) | Implemented | `dictionary_store.cpp`, `dictionary_app.cpp` |
+| Spelling (offline) | Implemented | `spelling_list_store.cpp`, `spelling_app.cpp` |
+| connectd async IPC + global poll | Implemented | `connect_job_queue.cpp`, `connect_client.cpp`, `ui_app.cpp` |
 | Library / LocalSend | Scaffold | `library_app.cpp`, `localsend_app.cpp` |
 | Inter-processor protocol v1 | Implemented | `shared/protocol.h`, firmware + daemon parsers |
 | Telemetry JSON bridge | Implemented | `telemetry_bridge.cpp` |

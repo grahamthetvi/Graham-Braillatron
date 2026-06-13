@@ -126,11 +126,41 @@ void SignalBackend::stop_daemon()
     daemon_proc_.stop();
 }
 
+std::string SignalBackend::link_status() const
+{
+    if (!config_.enabled) {
+        return "{\"ok\":false,\"error\":\"signal disabled\"}";
+    }
+    const bool linked = is_linked();
+    const bool pending = link_watch_active_.load();
+    std::ostringstream out;
+    out << "{\"ok\":true,\"linked\":" << (linked ? "true" : "false") << ",\"link_pending\":"
+        << (pending ? "true" : "false");
+    if (!pending_link_uri_.empty()) {
+        out << ",\"uri\":\"" << json_escape(pending_link_uri_) << "\"";
+    }
+    out << "}";
+    return out.str();
+}
+
 std::string SignalBackend::start_link()
 {
     if (!config_.enabled) {
         return "{\"ok\":false,\"error\":\"signal disabled\"}";
     }
+    if (link_watch_active_.load()) {
+        return link_status();
+    }
+    return run_link_workflow();
+}
+
+std::string SignalBackend::run_link_workflow()
+{
+    if (!config_.enabled) {
+        return "{\"ok\":false,\"error\":\"signal disabled\"}";
+    }
+    link_watch_active_ = true;
+
     const std::string log_path = config_.signal_data_dir + "/link.log";
     const std::string cmd = signal_env() + config_.signal_cli_path + " link -n " +
                             shell_escape(config_.device_name) + " > " + shell_escape(log_path) +
@@ -152,7 +182,26 @@ std::string SignalBackend::start_link()
         events_->emit("signal.link_pending",
                       "{\"uri\":\"" + json_escape(pending_link_uri_) + "\"}");
     }
-    return "{\"ok\":true,\"uri\":\"" + json_escape(pending_link_uri_) + "\"}";
+
+    for (uint32_t i = 0; i < config_.link_timeout_sec; ++i) {
+        if (is_linked()) {
+            start_daemon_if_linked();
+            link_watch_active_ = false;
+            if (events_ != nullptr) {
+                events_->emit("signal.link_completed", "{\"linked\":true}");
+            }
+            return "{\"ok\":true,\"linked\":true,\"uri\":\"" + json_escape(pending_link_uri_) +
+                   "\"}";
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    link_watch_active_ = false;
+    if (events_ != nullptr) {
+        events_->emit("signal.link_failed", "{\"error\":\"link not completed\"}");
+    }
+    return "{\"ok\":false,\"error\":\"link not completed\",\"uri\":\"" +
+           json_escape(pending_link_uri_) + "\"}";
 }
 
 std::string SignalBackend::finish_link()
@@ -160,14 +209,14 @@ std::string SignalBackend::finish_link()
     if (!config_.enabled) {
         return "{\"ok\":false,\"error\":\"signal disabled\"}";
     }
-    for (uint32_t i = 0; i < config_.link_timeout_sec; ++i) {
-        if (is_linked()) {
-            start_daemon_if_linked();
-            return "{\"ok\":true,\"linked\":true}";
-        }
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (is_linked()) {
+        start_daemon_if_linked();
+        return "{\"ok\":true,\"linked\":true}";
     }
-    return "{\"ok\":false,\"error\":\"link not completed\"}";
+    if (link_watch_active_.load()) {
+        return link_status();
+    }
+    return "{\"ok\":false,\"error\":\"no link in progress; use signal.start_link\"}";
 }
 
 std::string SignalBackend::list_chats()

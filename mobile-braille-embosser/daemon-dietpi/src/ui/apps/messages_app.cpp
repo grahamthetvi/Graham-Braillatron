@@ -35,24 +35,17 @@ public:
         load_chats(ctx);
     }
 
-    void on_exit(UiContext &ctx) override { announce(ctx, "Messages closed"); }
+    void on_exit(UiContext &ctx) override
+    {
+        announce(ctx, "Messages closed");
+    }
 
     void on_poll(UiContext &ctx) override
     {
-        if (ctx.connect == nullptr) {
-            return;
+        if (!pending_announce_.empty()) {
+            announce(ctx, pending_announce_);
+            pending_announce_.clear();
         }
-        ctx.connect->poll_events([this, &ctx](const braillatron::connect::ConnectEvent &event) {
-            if (event.type != "message.received") {
-                return;
-            }
-            const std::string from = braillatron::connect::json_get_string(event.data_json, "from");
-            const std::string text = braillatron::connect::json_get_string(event.data_json, "text");
-            if (ctx.output != nullptr) {
-                ctx.output->play_boundary_haptic();
-                ctx.output->announce_message("Message from " + from + ". " + text);
-            }
-        });
     }
 
     void on_chord(uint8_t, UiContext &ctx) override
@@ -112,65 +105,77 @@ private:
     {
         chats_.clear();
         selected_chat_ = 0;
-        const std::string response = ctx.connect->request("signal.list_chats");
-        if (!braillatron::connect::json_get_bool(response, "ok", false)) {
-            announce(ctx, "Signal not linked. Use Settings Accounts to link.");
-            return;
-        }
-        const size_t arr = response.find("\"chats\":[");
-        if (arr == std::string::npos) {
-            announce(ctx, "No chats");
-            return;
-        }
-        const size_t end = response.find(']', arr);
-        const std::string array = response.substr(arr + 8, end - arr - 8);
-        for (const auto &obj : braillatron::connect::json_split_objects("[" + array + "]")) {
-            ChatItem chat;
-            chat.id = braillatron::connect::json_get_string(obj, "id");
-            chat.name = braillatron::connect::json_get_string(obj, "name");
-            if (!chat.id.empty()) {
-                chats_.push_back(std::move(chat));
+        ctx.connect->request_async("signal.list_chats", "", [this](const std::string &response) {
+            if (!braillatron::connect::json_get_bool(response, "ok", false)) {
+                pending_announce_ = "Signal not linked. Use Settings Accounts to link.";
+                return;
             }
-        }
-        if (chats_.empty()) {
-            announce(ctx, "No chats found");
-        } else {
-            announce(ctx, chats_.front().name);
-        }
+            const size_t arr = response.find("\"chats\":[");
+            if (arr == std::string::npos) {
+                pending_announce_ = "No chats";
+                return;
+            }
+            const size_t end = response.find(']', arr);
+            const std::string array = response.substr(arr + 8, end - arr - 8);
+            for (const auto &obj : braillatron::connect::json_split_objects("[" + array + "]")) {
+                ChatItem chat;
+                chat.id = braillatron::connect::json_get_string(obj, "id");
+                chat.name = braillatron::connect::json_get_string(obj, "name");
+                if (!chat.id.empty()) {
+                    chats_.push_back(std::move(chat));
+                }
+            }
+            if (chats_.empty()) {
+                pending_announce_ = "No chats found";
+            } else {
+                pending_announce_ = chats_.front().name;
+            }
+        });
     }
 
     void open_thread(UiContext &ctx)
     {
         active_chat_ = chats_[selected_chat_];
         state_ = MessagesState::Thread;
-        const std::string response = ctx.connect->request(
-            "signal.list_messages", "\"recipient\":\"" + active_chat_.id + "\"");
-        const size_t arr = response.find("\"messages\":[");
-        if (arr == std::string::npos) {
-            announce(ctx, "No messages with " + active_chat_.name);
-            return;
-        }
-        const size_t end = response.find(']', arr);
-        const std::string array = response.substr(arr + 11, end - arr - 11);
-        for (const auto &obj : braillatron::connect::json_split_objects("[" + array + "]")) {
-            const std::string from = braillatron::connect::json_get_string(obj, "from");
-            const std::string text = braillatron::connect::json_get_string(obj, "text");
-            announce(ctx, from + ": " + text);
-        }
+        ctx.connect->request_async(
+            "signal.list_messages",
+            "\"recipient\":\"" + braillatron::connect::json_escape(active_chat_.id) + "\"",
+            [this](const std::string &response) {
+                const size_t arr = response.find("\"messages\":[");
+                if (arr == std::string::npos) {
+                    pending_announce_ = "No messages with " + active_chat_.name;
+                    return;
+                }
+                const size_t end = response.find(']', arr);
+                const std::string array = response.substr(arr + 11, end - arr - 11);
+                std::string summary;
+                for (const auto &obj : braillatron::connect::json_split_objects("[" + array + "]")) {
+                    const std::string from = braillatron::connect::json_get_string(obj, "from");
+                    const std::string text = braillatron::connect::json_get_string(obj, "text");
+                    if (!summary.empty()) {
+                        summary += ". ";
+                    }
+                    summary += from + ": " + text;
+                }
+                pending_announce_ = summary.empty() ? "No messages with " + active_chat_.name : summary;
+            });
     }
 
     void send_message(UiContext &ctx)
     {
-        const std::string response = ctx.connect->request(
+        const std::string compose = compose_;
+        ctx.connect->request_async(
             "signal.send", "\"recipient\":\"" + braillatron::connect::json_escape(active_chat_.id) +
-                               "\",\"text\":\"" + braillatron::connect::json_escape(compose_) + "\"");
-        if (braillatron::connect::json_get_bool(response, "ok", false)) {
-            announce(ctx, "Message sent");
-            compose_.clear();
-            state_ = MessagesState::Thread;
-        } else {
-            announce(ctx, "Send failed");
-        }
+                               "\",\"text\":\"" + braillatron::connect::json_escape(compose) + "\"",
+            [this](const std::string &response) {
+                if (braillatron::connect::json_get_bool(response, "ok", false)) {
+                    compose_.clear();
+                    state_ = MessagesState::Thread;
+                    pending_announce_ = "Message sent";
+                } else {
+                    pending_announce_ = "Send failed";
+                }
+            });
     }
 
     MessagesState state_ = MessagesState::ChatList;
@@ -178,6 +183,7 @@ private:
     ChatItem active_chat_;
     size_t selected_chat_ = 0;
     std::string compose_;
+    std::string pending_announce_;
 };
 
 } // namespace

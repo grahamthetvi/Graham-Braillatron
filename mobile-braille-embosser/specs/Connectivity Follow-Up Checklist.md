@@ -76,8 +76,8 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 
 ### P0 — UI freeze / missed messages
 
-- [ ] **Non-blocking Signal link:** `signal.finish_link` currently blocks up to 120s on the connectd socket; UI freezes during Settings → Link Signal. Split into `start_link` + async `link_status` poll or event-driven completion.
-- [ ] **Global message events:** `ConnectClient::poll_events()` only runs inside YouTube/Messages apps. Move event drain to `UiApp::poll()` so inbound Signal messages announce from any foreground app.
+- [x] **Non-blocking Signal link:** `signal.finish_link` no longer blocks the UI. `signal.start_link` runs async via connectd job queue; `signal.link_status` polls state; `signal.link_completed` / `signal.link_failed` events announce completion.
+- [x] **Global message events:** `ConnectClient::poll_events()` runs in `UiApp::poll()`; inbound Signal messages announce from any foreground app.
 
 ### P1 — Reliability
 
@@ -88,7 +88,7 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 
 ### P2 — Build / test
 
-- [ ] **ui-test link:** Add connect objects (`connect_client`, `json_utils`, `connect_config`, `connect_defaults`) to `UI_TEST_OBJS` in `daemon-dietpi/Makefile`.
+- [x] **ui-test link:** Add connect objects (`connect_client`, `json_utils`, `connect_config`, `connect_defaults`) to `UI_TEST_OBJS` in `daemon-dietpi/Makefile`.
 - [ ] **signal-cli version pin:** Confirm `SIGNAL_CLI_VERSION` in `deploy/install-signal-cli.sh` matches a published aarch64 native release.
 
 ---
@@ -109,7 +109,7 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 ### Connectivity
 
 - [ ] **LocalSend → credentials:** Wire `localsend.conf` scaffold to receive files into `credentials/incoming/`
-- [ ] **Async connect IPC:** Request IDs + event responses so UI never blocks on connectd
+- [x] **Async connect IPC:** Request IDs + `connect.response` events so UI never blocks on connectd long operations (`ConnectJobQueue`, `ConnectClient::request_async`)
 - [ ] **YouTube captions → Braille:** `yt-dlp --write-auto-subs` → text via OutputHub/embosser
 
 ### Library (from earlier feasibility work)
@@ -184,4 +184,5 @@ Do not edit the Cursor plan file; update the spec checklist as items complete.
 
 | Date | Change |
 |------|--------|
+| 2026-06-13 | Phase 0 connectd hardening: async IPC, non-blocking Signal link, global event polling |
 | 2026-06-11 | Initial checklist after Connectd v1 implementation |

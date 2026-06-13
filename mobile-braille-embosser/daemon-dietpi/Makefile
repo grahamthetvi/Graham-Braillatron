@@ -24,7 +24,7 @@ LOUIS_LIBS += -llouis
 endif
 
 BACKEND_CXXFLAGS := $(LOUIS_CXXFLAGS) $(A11Y_CXXFLAGS)
-BACKEND_LIBS := $(LOUIS_LIBS) $(A11Y_LIBS)
+BACKEND_LIBS := $(LOUIS_LIBS) $(A11Y_LIBS) -lsqlite3
 
 DISPLAY_LIBS :=
 DISPLAY_CXXFLAGS :=
@@ -77,6 +77,8 @@ KINEMATICS_OBJS := \
 DOCUMENT_OBJS := \
 	src/documents/brf_store.o \
 	src/documents/coordinate_state.o \
+	src/documents/dictionary_store.o \
+	src/documents/spelling_list_store.o \
 	src/documents/edit_session.o \
 	src/documents/liblouis_bridge.o \
 	src/documents/paper_separator.o
@@ -103,12 +105,17 @@ APP_OBJS := \
 	src/ui/apps/save_exit_inline.o \
 	src/ui/apps/wikipedia_app.o \
 	src/ui/apps/youtube_app.o \
-	src/ui/apps/messages_app.o
+	src/ui/apps/messages_app.o \
+	src/ui/apps/dictionary_app.o \
+	src/ui/apps/spelling_app.o \
+	src/ui/apps/timer_inline.o
 
 CONNECT_COMMON_OBJS := \
 	src/connect/connect_config.o \
 	src/connect/connect_defaults.o \
 	src/connect/json_utils.o \
+	src/connect/connect_async.o \
+	src/connect/connect_job_queue.o \
 	src/connect/subprocess.o \
 	src/connect/event_writer.o \
 	src/connect/socket_server.o \
@@ -143,9 +150,12 @@ UI_OBJS := \
 	src/ui/backends/backend.o \
 	src/ui/menu_overlay.o \
 	src/ui/output_hub.o \
+	src/ui/timer_service.o \
 	src/ui/ui_app.o \
 	src/connect/connect_client.o \
 	src/connect/json_utils.o \
+	src/connect/connect_async.o \
+	src/connect/event_writer.o \
 	src/connect/connect_defaults.o \
 	src/connect/connect_config.o \
 	src/ui_main.o \
@@ -183,10 +193,22 @@ UI_TEST_OBJS := \
 	src/ui/backends/backend.o \
 	src/ui/menu_overlay.o \
 	src/ui/output_hub.o \
+	src/ui/timer_service.o \
 	src/connect/connect_client.o \
 	src/connect/json_utils.o \
+	src/connect/connect_async.o \
+	src/connect/event_writer.o \
+	src/connect/connect_config.o \
+	src/connect/connect_defaults.o \
 	src/keyboard/focus_nav.o \
 	src/ui_self_test.o
+
+CONNECT_TEST_OBJS := \
+	src/connect/connect_client.o \
+	src/connect/json_utils.o \
+	src/connect/connect_async.o \
+	src/connect/event_writer.o \
+	src/connect/connect_client_self_test.o
 
 MOTION_TEST_OBJS := $(KINEMATICS_OBJS) src/motion_gate.o src/motion_self_test.o
 
@@ -245,9 +267,21 @@ LIBLOUIS_TEST_OBJS := \
 	src/documents/liblouis_bridge_louis.o \
 	src/documents/liblouis_self_test.o
 
-.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test liblouis-test sentinel connectd ui-test install a11y liblouis display
+TIMER_TEST_OBJS := \
+	src/ui/timer_service.o \
+	src/ui/timer_self_test.o
 
-all: braillatron-ui braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-sentinel braillatron-connectd braillatron-ui-test
+DICTIONARY_TEST_OBJS := \
+	src/documents/dictionary_store.o \
+	src/documents/dictionary_self_test.o
+
+SPELLING_TEST_OBJS := \
+	src/documents/spelling_list_store.o \
+	src/documents/spelling_self_test.o
+
+.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test liblouis-test timer-test dictionary-test spelling-test sentinel connectd connect-test ui-test install a11y liblouis display
+
+all: braillatron-ui braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-sentinel braillatron-connectd braillatron-ui-test braillatron-connect-test
 
 keyboard: braillatron-ui
 
@@ -280,16 +314,28 @@ sentinel: braillatron-sentinel
 
 connectd: braillatron-connectd
 
+connect-test: braillatron-connect-test
+
 ui-test: braillatron-ui-test
 
-check: all
+timer-test: braillatron-timer-test
+
+dictionary-test: braillatron-dictionary-test
+
+spelling-test: braillatron-spelling-test
+
+check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test
 	./braillatron-motion-test
 	./braillatron-motion-gate-sync-test
 	./braillatron-host-chord-test
 	./braillatron-wikipedia-test
 	./braillatron-audio-output-test
 	./braillatron-display-test
+	./braillatron-connect-test
 	./braillatron-ui-test
+	./braillatron-timer-test
+	./braillatron-dictionary-test
+	./braillatron-spelling-test
 
 check-liblouis:
 	$(MAKE) BRAILLATRON_LIBLOUIS=1 braillatron-liblouis-test
@@ -304,8 +350,20 @@ braillatron-ui: $(UI_OBJS)
 braillatron-ui-test: $(UI_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(UI_TEST_OBJS) $(LDFLAGS) $(BACKEND_LIBS) -o $@
 
+braillatron-connect-test: $(CONNECT_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(CONNECT_TEST_OBJS) $(LDFLAGS) -pthread -o $@
+
 braillatron-liblouis-test: $(LIBLOUIS_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(LIBLOUIS_TEST_OBJS) $(LDFLAGS) $(LOUIS_LIBS) -o $@
+
+braillatron-timer-test: $(TIMER_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(TIMER_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-dictionary-test: $(DICTIONARY_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(DICTIONARY_TEST_OBJS) $(LDFLAGS) -lsqlite3 -o $@
+
+braillatron-spelling-test: $(SPELLING_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(SPELLING_TEST_OBJS) $(LDFLAGS) -o $@
 
 # Dedicated object so check-liblouis never reuses liblouis_bridge.o from a stub build.
 src/documents/liblouis_bridge_louis.o: src/documents/liblouis_bridge.cpp
@@ -386,10 +444,10 @@ src/ui/display/%.o: src/ui/display/%.cpp
 src/connect/%.o: src/connect/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \
-		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-liblouis-test braillatron-sentinel braillatron-connectd
+		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-liblouis-test braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-connect-test braillatron-sentinel braillatron-connectd
 
 -include $(ALL_OBJS:.o=.d)

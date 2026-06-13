@@ -27,6 +27,7 @@ class MotionService;
 
 namespace braillatron::connect {
 class ConnectClient;
+struct ConnectEvent;
 }
 
 namespace braillatron::ui {
@@ -63,6 +64,7 @@ public:
     void set_app_registry(AppRegistry *registry);
     void set_connect_client(connect::ConnectClient *client);
     void set_focus_nav(const keyboard::FocusNavigator *focus_nav);
+    void on_connect_event(const connect::ConnectEvent &event);
     void set_stt_transcript_handler(SttBackend::TranscriptHandler handler);
     void set_morse_passive(bool enabled);
     void set_media_playing(bool playing);
@@ -106,6 +108,7 @@ private:
     bool low_battery_announced_ = false;
     bool tts_paused_ = false;
     bool dictation_active_ = false;
+    bool signal_link_pending_ = false;
 
     motion::MotionService *motion_ = nullptr;
     documents::BrailleTranslationService *braille_service_ = nullptr;

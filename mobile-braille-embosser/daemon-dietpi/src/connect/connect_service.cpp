@@ -1,5 +1,6 @@
 #include "connect_service.h"
 
+#include "connect_async.h"
 #include "json_utils.h"
 #include "subprocess.h"
 
@@ -36,6 +37,7 @@ void ConnectService::start()
     ensure_directory(connect_config_.cookies_incoming_dir);
     ensure_directory(connect_config_.credentials_dir + "/signal-cli");
 
+    jobs_.start(&events_);
     signal_.start_daemon_if_linked();
     signal_.start_event_thread();
 
@@ -50,6 +52,7 @@ void ConnectService::start()
 void ConnectService::stop()
 {
     running_ = false;
+    jobs_.stop();
     signal_.stop_event_thread();
     signal_.stop_daemon();
     youtube_.stop_mpv();
@@ -76,9 +79,8 @@ std::string ConnectService::cmd_from_request(const std::string &request) const
     return json_get_string(request, "cmd");
 }
 
-std::string ConnectService::handle_request(const std::string &request)
+std::string ConnectService::execute_command(const std::string &cmd, const std::string &request)
 {
-    const std::string cmd = cmd_from_request(request);
     if (cmd == "ping") {
         return "{\"ok\":true,\"service\":\"connectd\"}";
     }
@@ -106,7 +108,10 @@ std::string ConnectService::handle_request(const std::string &request)
                std::string(youtube_.cookies_present() ? "true" : "false") + "}";
     }
     if (cmd == "signal.start_link") {
-        return signal_.start_link();
+        return signal_.run_link_workflow();
+    }
+    if (cmd == "signal.link_status") {
+        return signal_.link_status();
     }
     if (cmd == "signal.finish_link") {
         return signal_.finish_link();
@@ -122,6 +127,46 @@ std::string ConnectService::handle_request(const std::string &request)
                                     json_get_string(request, "text"));
     }
     return "{\"ok\":false,\"error\":\"unknown cmd\"}";
+}
+
+std::string ConnectService::handle_request(const std::string &request)
+{
+    const std::string cmd = cmd_from_request(request);
+    if (cmd.empty()) {
+        return "{\"ok\":false,\"error\":\"missing cmd\"}";
+    }
+
+    if (!is_async_command(cmd)) {
+        return execute_command(cmd, request);
+    }
+
+    const std::string request_id = request_id_from_json(request);
+    SignalBackend *signal_ptr = &signal_;
+    YoutubeBackend *youtube_ptr = &youtube_;
+    jobs_.submit(ConnectJob {
+        request_id,
+        [this, cmd, request, request_id, signal_ptr, youtube_ptr](EventWriter *events) {
+            std::string result;
+            if (cmd == "signal.start_link") {
+                result = signal_ptr->run_link_workflow();
+            } else if (cmd == "signal.finish_link") {
+                result = signal_ptr->finish_link();
+            } else if (cmd == "signal.list_chats") {
+                result = signal_ptr->list_chats();
+            } else if (cmd == "signal.list_messages") {
+                result = signal_ptr->list_messages(json_get_string(request, "recipient"));
+            } else if (cmd == "signal.send") {
+                result = signal_ptr->send_message(json_get_string(request, "recipient"),
+                                                  json_get_string(request, "text"));
+            } else if (cmd == "youtube.search") {
+                result = youtube_ptr->search(json_get_string(request, "query"));
+            } else {
+                result = execute_command(cmd, request);
+            }
+            emit_connect_response(events, request_id, result);
+        },
+    });
+    return make_pending_response(request_id);
 }
 
 } // namespace braillatron::connect

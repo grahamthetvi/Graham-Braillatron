@@ -81,6 +81,11 @@ bool standalone_app_active()
     return g_app_registry != nullptr && g_app_registry->active() != nullptr;
 }
 
+bool inline_app_active()
+{
+    return g_app_registry != nullptr && g_app_registry->active_inline() != nullptr;
+}
+
 void on_app_chord(uint8_t dot_mask)
 {
     if (g_app_registry != nullptr) {

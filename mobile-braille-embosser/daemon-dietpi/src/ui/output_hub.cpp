@@ -371,6 +371,38 @@ void OutputHub::set_focus_nav(const keyboard::FocusNavigator *focus_nav)
     focus_nav_ = focus_nav;
 }
 
+void OutputHub::on_connect_event(const connect::ConnectEvent &event)
+{
+    if (event.type == "message.received") {
+        const std::string from = connect::json_get_string(event.data_json, "from");
+        const std::string text = connect::json_get_string(event.data_json, "text");
+        play_boundary_haptic();
+        announce_message("Message from " + from + ". " + text);
+        return;
+    }
+
+    if (event.type == "signal.link_pending") {
+        signal_link_pending_ = true;
+        const std::string uri = connect::json_get_string(event.data_json, "uri");
+        emit("Open Signal on your phone. Linked Devices. Link New Device.");
+        if (!uri.empty() && uri.rfind("sgnl://", 0) == 0) {
+            emit(uri);
+        }
+        return;
+    }
+
+    if (event.type == "signal.link_completed") {
+        signal_link_pending_ = false;
+        emit("Signal linked");
+        return;
+    }
+
+    if (event.type == "signal.link_failed") {
+        signal_link_pending_ = false;
+        emit("Signal link not completed. Try again after approving on phone.");
+    }
+}
+
 void OutputHub::sync_chrome(bool at_boundary)
 {
     if (!ui_config_.display_enabled || display_ == nullptr) {
@@ -734,18 +766,24 @@ std::vector<MenuItem> OutputHub::build_accounts_menu()
                     emit("Connectivity client unavailable");
                     return;
                 }
-                const std::string start = connect_client_->request("signal.start_link");
-                const std::string uri = connect::json_get_string(start, "uri");
-                emit("Open Signal on your phone. Linked Devices. Link New Device.");
-                if (!uri.empty()) {
-                    emit(uri);
-                }
-                const std::string finish = connect_client_->request("signal.finish_link");
-                if (connect::json_get_bool(finish, "ok", false)) {
-                    emit("Signal link check complete");
-                } else {
-                    emit("Signal link pending. Try again after approving on phone.");
-                }
+                signal_link_pending_ = true;
+                connect_client_->request_async("signal.start_link", "", [this](const std::string &response) {
+                    if (connect::json_get_bool(response, "linked", false)) {
+                        signal_link_pending_ = false;
+                        emit("Signal linked");
+                        return;
+                    }
+                    if (connect::json_get_bool(response, "ok", false)) {
+                        const std::string uri = connect::json_get_string(response, "uri");
+                        if (!uri.empty() && uri.rfind("sgnl://", 0) == 0) {
+                            emit(uri);
+                        }
+                        emit("Approve link on phone. Completion will be announced automatically.");
+                    } else {
+                        signal_link_pending_ = false;
+                        emit("Signal link failed to start");
+                    }
+                });
             },
         },
         MenuItem {
