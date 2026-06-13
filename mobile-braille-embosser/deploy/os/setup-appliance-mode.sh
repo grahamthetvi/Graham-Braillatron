@@ -61,6 +61,11 @@ cat >/etc/braillatron/appliance.env <<EOF
 # Managed by setup-appliance-mode.sh — BRAILLATRON_HEADLESS=1 forces TTS-only (no HDMI ncurses).
 BRAILLATRON_HEADLESS=${HEADLESS}
 EOF
+if [[ "${HEADLESS}" == "1" ]]; then
+  touch /etc/braillatron/appliance-headless
+else
+  rm -f /etc/braillatron/appliance-headless
+fi
 echo "Appliance env: BRAILLATRON_HEADLESS=${HEADLESS}"
 
 echo "Installing display routing (SPI / HDMI ncurses / headless stub)..."

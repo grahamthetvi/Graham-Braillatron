@@ -20,6 +20,7 @@ cat >/etc/braillatron/appliance.env <<'EOF'
 # Managed by setup-dev-console-mode.sh / setup-appliance-mode.sh
 BRAILLATRON_HEADLESS=0
 EOF
+rm -f /etc/braillatron/appliance-headless
 
 echo "HDMI ncurses fallback enabled (BRAILLATRON_HEADLESS=0)."
 echo "Re-applying appliance console lockdown..."
