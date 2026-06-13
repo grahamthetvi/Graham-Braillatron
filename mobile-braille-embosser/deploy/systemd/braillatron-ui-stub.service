@@ -1,7 +1,8 @@
 [Unit]
-Description=Braillatron ScreenReader UI (SPI panel)
+Description=Braillatron ScreenReader UI (headless stub, TTS-only)
 EnvironmentFile=-/etc/braillatron/appliance.env
-ConditionPathExists=/dev/spidev0.0
+ConditionPathExists=!/dev/spidev0.0
+ConditionEnvironment=BRAILLATRON_HEADLESS=1
 After=local-fs.target sound.target speech-dispatcher.service
 Conflicts=braillatron-console-ui.service
 Requires=speech-dispatcher.service

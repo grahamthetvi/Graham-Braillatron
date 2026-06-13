@@ -48,6 +48,8 @@ install -d /var/lib/braillatron/ram
 install -d /data/braillatron/documents /data/braillatron/settings /data/braillatron/vosk-models || true
 install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/credentials/signal-cli || true
 
+install -m 755 "${ROOT}/deploy/os/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
+
 install -m 644 "${ROOT}/deploy/systemd/braillatron-ui.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sentinel.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-connectd.service" "${SYSTEMD_DIR}/"
@@ -55,6 +57,9 @@ install -m 644 "${ROOT}/deploy/systemd/braillatron-sync.service" "${SYSTEMD_DIR}
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sync.timer" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-bluetooth-autoconnect.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-bluetooth-autoconnect.timer" "${SYSTEMD_DIR}/"
+install -m 644 "${ROOT}/deploy/systemd/braillatron-console-ready.service" "${SYSTEMD_DIR}/"
+install -m 644 "${ROOT}/deploy/systemd/braillatron-console-ui.service" "${SYSTEMD_DIR}/"
+install -m 644 "${ROOT}/deploy/systemd/braillatron-ui-stub.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron.target" "${SYSTEMD_DIR}/"
 
 systemctl daemon-reload

@@ -190,7 +190,19 @@ Speech Dispatcher, BRLTTY, and Vosk can still be absent at runtime — the UI fa
 
 On a fully provisioned Pi image, bootstrap installs these libraries automatically and enables **appliance mode** (boot straight into Braillatron, SSH for dev). See [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md).
 
-For a similar local-console experience on a dev PC (ncurses bench), use [`deploy/os/install-bench-login.sh`](deploy/os/install-bench-login.sh) — SSH sessions stay a normal shell.
+For a similar local-console experience on a **dev PC** (ncurses bench), use [`deploy/os/install-bench-login.sh`](deploy/os/install-bench-login.sh) — SSH sessions stay a normal shell.
+
+**Pi display surfaces (appliance):**
+
+| Surface | When | What you see |
+| --- | --- | --- |
+| **SPI panel** | `/dev/spidev0.0` present (bootstrap with `BRAILLATRON_SPI_PANEL=1`) | UI chrome on the HAT display (`braillatron-ui.service`) |
+| **HDMI tty1** | SPI absent (default bootstrap) | Graham Braillatron banner, then ncurses UI (`braillatron-console-ui.service`) |
+| **SSH** | Always | Admin shell only — not the product UI |
+
+**TTY note:** HDMI uses a real virtual console (`tty1`). SSH uses a pseudo-TTY (`pts/0`). Ncurses needs a real tty, so the HDMI path runs `braillatron-ui` via `openvt` on tty1; the headless systemd service cannot draw ncurses on a monitor.
+
+Force TTS-only (no HDMI ncurses): `BRAILLATRON_HEADLESS=1` at bootstrap or set in `/etc/braillatron/appliance.env`, then `systemctl restart braillatron.target`. Re-enable HDMI UI: [`deploy/os/setup-dev-console-mode.sh`](deploy/os/setup-dev-console-mode.sh).
 
 ## Configuration layout
 

@@ -1,9 +1,10 @@
 [Unit]
-Description=Braillatron ScreenReader UI (SPI panel)
+Description=Braillatron ScreenReader UI on HDMI tty (ncurses fallback)
 EnvironmentFile=-/etc/braillatron/appliance.env
-ConditionPathExists=/dev/spidev0.0
+ConditionPathExists=!/dev/spidev0.0
+ConditionEnvironment=!BRAILLATRON_HEADLESS=1
 After=local-fs.target sound.target speech-dispatcher.service
-Conflicts=braillatron-console-ui.service
+Conflicts=braillatron-ui.service braillatron-ui-stub.service
 Requires=speech-dispatcher.service
 Wants=brltty.service braillatron-connectd.service
 
@@ -13,7 +14,8 @@ SupplementaryGroups=input
 EnvironmentFile=-/etc/braillatron/appliance.env
 Environment=BRAILLATRON_CONFIG=/etc/braillatron
 Environment=SPEECHD_ADDRESS=unix_socket:/run/speech-dispatcher/speechd.sock
-ExecStart=/usr/local/bin/braillatron-ui /etc/braillatron/hardware.conf
+ExecStartPre=/usr/local/sbin/braillatron-console-ready.sh --no-wait
+ExecStart=/usr/bin/openvt -c 1 -s -w -f -- /usr/local/bin/braillatron-ui /etc/braillatron/hardware.conf
 Restart=always
 RestartSec=5
 

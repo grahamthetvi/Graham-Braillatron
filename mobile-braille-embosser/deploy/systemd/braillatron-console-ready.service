@@ -1,0 +1,15 @@
+[Unit]
+Description=Braillatron ready banner on local console (SPI headless path)
+EnvironmentFile=-/etc/braillatron/appliance.env
+ConditionPathExists=/dev/spidev0.0
+After=braillatron-ui.service
+PartOf=braillatron.target
+ConditionPathExists=/usr/local/sbin/braillatron-console-ready.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/braillatron-console-ready.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=braillatron.target

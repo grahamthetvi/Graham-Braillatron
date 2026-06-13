@@ -24,13 +24,18 @@ if ! grep -q 'rk3566-i2s1-overlay' /boot/dietpiEnv.txt 2>/dev/null; then
   fi
 fi
 
-echo "Configuring SPI overlay for visual display panel..."
-if ! grep -q 'spidev' /boot/dietpiEnv.txt 2>/dev/null; then
-  if grep -q '^overlays=' /boot/dietpiEnv.txt 2>/dev/null; then
-    sed -i 's/^overlays=.*/& spi-spidev/' /boot/dietpiEnv.txt
-  else
-    echo 'overlays=spi-spidev' >> /boot/dietpiEnv.txt
+if [[ "${BRAILLATRON_SPI_PANEL:-0}" == "1" ]]; then
+  echo "Configuring SPI overlay for visual display panel..."
+  if ! grep -q 'spidev' /boot/dietpiEnv.txt 2>/dev/null; then
+    if grep -q '^overlays=' /boot/dietpiEnv.txt 2>/dev/null; then
+      sed -i 's/^overlays=.*/& spi-spidev/' /boot/dietpiEnv.txt
+    else
+      echo 'overlays=spi-spidev' >> /boot/dietpiEnv.txt
+    fi
   fi
+else
+  echo "SPI overlay skipped (default skeleton bench — HDMI ncurses on tty1)."
+  echo "  Re-bootstrap with BRAILLATRON_SPI_PANEL=1 when the SPI HAT is fitted."
 fi
 
 bash "${ROOT}/deploy/os/setup-data-partition.sh"
@@ -68,7 +73,7 @@ bash "${ROOT}/deploy/os/setup-aux-audio.sh"
 
 if [[ "${BRAILLATRON_APPLIANCE:-1}" != "0" ]]; then
   echo "Configuring production appliance mode..."
-  bash "${ROOT}/deploy/os/setup-appliance-mode.sh"
+  BRAILLATRON_HEADLESS="${BRAILLATRON_HEADLESS:-0}" bash "${ROOT}/deploy/os/setup-appliance-mode.sh"
 else
   echo "Appliance lockdown skipped (BRAILLATRON_APPLIANCE=0)."
   echo "Optional manual overlay setup:"

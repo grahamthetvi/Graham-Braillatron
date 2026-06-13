@@ -53,6 +53,29 @@ echo "DietPi banner suppression: ${AUTOLOGIN_DROPIN}"
 systemctl disable dietpi-postboot.service 2>/dev/null || true
 systemctl mask dietpi-postboot.service 2>/dev/null || true
 
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+HEADLESS="${BRAILLATRON_HEADLESS:-0}"
+install -d /etc/braillatron
+cat >/etc/braillatron/appliance.env <<EOF
+# Managed by setup-appliance-mode.sh — BRAILLATRON_HEADLESS=1 forces TTS-only (no HDMI ncurses).
+BRAILLATRON_HEADLESS=${HEADLESS}
+EOF
+echo "Appliance env: BRAILLATRON_HEADLESS=${HEADLESS}"
+
+echo "Installing display routing (SPI / HDMI ncurses / headless stub)..."
+install -m 755 "${SCRIPT_DIR}/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
+install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-console-ready.service" /etc/systemd/system/
+install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-console-ui.service" /etc/systemd/system/
+install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-ui-stub.service" /etc/systemd/system/
+install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-ui.service" /etc/systemd/system/
+install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron.target" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable braillatron-ui.service
+systemctl enable braillatron-console-ui.service
+systemctl enable braillatron-ui-stub.service
+systemctl enable braillatron-console-ready.service
+
 echo "Configuring read-only root and volatile tmpfs mounts..."
 bash "${SCRIPT_DIR}/setup-overlay-ro.sh"
 
@@ -67,14 +90,15 @@ fi
 cat <<EOF
 
 Appliance mode configured.
-  - Power on: braillatron-ui starts automatically (no login required)
-  - Local console: no login prompt
+  - Power on: Braillatron starts automatically (no login required)
+  - No SPI panel: HDMI shows banner then ncurses UI (unless BRAILLATRON_HEADLESS=1)
+  - SPI panel present: UI on panel; HDMI shows ready banner
   - SSH: enabled for development and maintenance
 
 Maintenance over SSH:
   ssh dietpi@<device-ip>
   sudo braillatron-remount-rw          # unlock / for system changes
-  sudo systemctl restart braillatron-ui
+  sudo systemctl restart braillatron.target
   sudo braillatron-remount-ro          # lock / when done
 
 /data/braillatron/ is always writable (documents, settings, credentials).
