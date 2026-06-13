@@ -202,7 +202,7 @@ sudo reboot
 
 After reboot, `braillatron.target` starts automatically. **No login or manual command is required** — power on, wait for TTS “Braillatron ready”, then use the physical keyboard.
 
-**HDMI monitor (no SPI panel):** boot scroll clears, the Graham Braillatron banner appears, then the **ncurses UI** takes over tty1 (`braillatron-console-ui.service`). This is automatic when `/etc/braillatron/appliance-spi` is absent (default skeleton bench).
+**HDMI monitor (no SPI panel):** boot scroll clears, the Graham Braillatron banner appears, then the **ncurses UI** takes over tty1 via `getty@tty1` + `braillatron-tty1-launch.sh`. This is automatic when `/etc/braillatron/appliance-spi` is absent (default skeleton bench). Seeing `Reached target Graphical Interface` in the boot log is normal DietPi noise — the product UI is on tty1, not `graphical.target`.
 
 **SPI panel present:** UI chrome renders on the panel; HDMI shows the ready banner only.
 
@@ -215,15 +215,18 @@ Use SSH for development and maintenance (see below).
 
 ```bash
 # Services
-systemctl status braillatron.target
-systemctl status braillatron-ui braillatron-console-ui braillatron-ui-stub \
+systemctl status braillatron.target getty@tty1.service
+systemctl status braillatron-ui braillatron-ui-stub \
   braillatron-sentinel braillatron-connectd braillatron-sync.timer
 
-# Which UI unit is active? (one of ui / console-ui / ui-stub)
-systemctl is-active braillatron-ui braillatron-console-ui braillatron-ui-stub
+# HDMI path: getty@tty1 should be active; SPI/headless use braillatron-ui / ui-stub
+systemctl is-active getty@tty1 braillatron-ui braillatron-ui-stub
 
-# UI log — use the active unit name from above
-journalctl -u braillatron-console-ui -b --no-pager | tail -30
+# Boot-path diagnostics (blank monitor)
+sudo braillatron-boot-diagnose.sh
+
+# UI log — HDMI uses getty journal; SPI panel uses braillatron-ui
+journalctl -u getty@tty1.service -b --no-pager | tail -30
 journalctl -u braillatron-ui -b --no-pager | tail -30
 
 # Connect sidecar

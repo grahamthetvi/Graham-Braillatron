@@ -49,6 +49,8 @@ install -d /data/braillatron/documents /data/braillatron/settings /data/braillat
 install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/credentials/signal-cli || true
 
 install -m 755 "${ROOT}/deploy/os/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
+install -m 755 "${ROOT}/deploy/os/braillatron-tty1-launch.sh" /usr/local/sbin/braillatron-tty1-launch.sh
+install -m 755 "${ROOT}/deploy/os/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
 
 install -m 644 "${ROOT}/deploy/systemd/braillatron-ui.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sentinel.service" "${SYSTEMD_DIR}/"
@@ -65,7 +67,8 @@ install -m 644 "${ROOT}/deploy/systemd/braillatron.target" "${SYSTEMD_DIR}/"
 systemctl daemon-reload
 systemctl enable braillatron.target
 systemctl enable braillatron-ui.service
-systemctl enable braillatron-console-ui.service
+systemctl disable braillatron-console-ui.service 2>/dev/null || true
+systemctl mask braillatron-console-ui.service 2>/dev/null || true
 systemctl enable braillatron-ui-stub.service
 systemctl enable braillatron-console-ready.service
 systemctl enable braillatron-sync.timer

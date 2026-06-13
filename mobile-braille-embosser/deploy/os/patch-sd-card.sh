@@ -121,6 +121,11 @@ install -m 644 "${REPO_ROOT}/deploy/systemd/"*.service "${SYSTEMD}/"
 install -m 644 "${REPO_ROOT}/deploy/systemd/"*.timer "${SYSTEMD}/"
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron.target" "${SYSTEMD}/"
 install -m 755 "${REPO_ROOT}/deploy/os/braillatron-console-ready.sh" "${PI}/usr/local/sbin/braillatron-console-ready.sh"
+install -m 755 "${REPO_ROOT}/deploy/os/braillatron-tty1-launch.sh" "${PI}/usr/local/sbin/braillatron-tty1-launch.sh"
+install -m 755 "${REPO_ROOT}/deploy/os/braillatron-boot-diagnose.sh" "${PI}/usr/local/bin/braillatron-boot-diagnose"
+install -d "${PI}/etc/systemd/system/getty@tty1.service.d"
+install -m 644 "${REPO_ROOT}/deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf" \
+  "${PI}/etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf"
 
 enable_unit() {
   local unit="$1"
@@ -142,9 +147,9 @@ enable_unit() {
 mkdir -p "${WANTS}"
 enable_unit braillatron.target
 enable_unit braillatron-ui.service
-enable_unit braillatron-console-ui.service
 enable_unit braillatron-ui-stub.service
 enable_unit braillatron-console-ready.service
+enable_unit getty@tty1.service
 enable_unit braillatron-sentinel.service
 enable_unit braillatron-connectd.service
 enable_unit braillatron-sync.timer
@@ -152,7 +157,20 @@ enable_unit ssh.service
 
 echo ""
 echo "== NetworkManager vs DietPi ifupdown =="
-ln -sf /dev/null "${SYSTEMD}/ifup@wlan0.service"
+for ifup_unit in ifup@wlan0.service ifup@eth0.service ifup@end0.service; do
+  ln -sf /dev/null "${SYSTEMD}/${ifup_unit}"
+done
+INTERFACES="${PI}/etc/network/interfaces"
+if [[ -f "${INTERFACES}" ]] && ! grep -q 'Managed by NetworkManager' "${INTERFACES}"; then
+  if [[ ! -f "${INTERFACES}.braillatron.bak" ]]; then
+    cp -a "${INTERFACES}" "${INTERFACES}.braillatron.bak"
+  fi
+fi
+cat >"${INTERFACES}" <<'EOF'
+# Managed by NetworkManager (deploy/os/setup-networkmanager.sh).
+auto lo
+iface lo inet loopback
+EOF
 if [[ -f "${PI}/etc/NetworkManager/NetworkManager.conf" ]]; then
   if ! grep -q '^\[ifupdown\]' "${PI}/etc/NetworkManager/NetworkManager.conf"; then
     cat >>"${PI}/etc/NetworkManager/NetworkManager.conf" <<'EOF'
@@ -177,6 +195,8 @@ else
 fi
 rm -f "${PI}/etc/braillatron/appliance-headless"
 rm -f "${PI}/etc/braillatron/appliance-spi"
+rm -f "${SYSTEMD}/getty@tty1.service"
+rm -f "${WANTS}/braillatron-console-ui.service"
 
 for boot_env in "${PI}/boot/dietpiEnv.txt" "${PI}/boot/firmware/dietpiEnv.txt"; do
   if [[ -f "${boot_env}" ]] && grep -q 'spi-spidev' "${boot_env}"; then
@@ -205,26 +225,44 @@ rm -f "${fstab_tmp}" "${fstab_tmp}.ro"
 
 echo ""
 echo "== Quick checks on mounted root =="
+checks=0
 if [[ -x "${PI}/usr/bin/figlet" || -x "${PI}/usr/local/bin/figlet" ]]; then
   echo "  OK  figlet installed"
 else
   echo "  note: figlet not installed — banner uses ASCII art until apt install figlet on Pi"
 fi
-if [[ -x "${PI}/usr/bin/openvt" ]]; then
-  echo "  OK  openvt present"
+if [[ -x "${PI}/usr/local/sbin/braillatron-tty1-launch.sh" ]]; then
+  echo "  OK  tty1 launch script"
 else
-  echo "  warn: openvt missing — console-ui cannot attach to tty1"
+  echo "  MISSING tty1 launch script"
   checks=1
 fi
-checks=0
+if [[ -x "${PI}/usr/bin/openvt" ]]; then
+  echo "  OK  openvt present (legacy console-ui path)"
+else
+  echo "  note: openvt missing — not required when getty drop-in is installed"
+fi
 grep -q 'Environment=TERM=linux' "${SYSTEMD}/braillatron-console-ui.service" && echo "  OK  TERM=linux in console-ui" || { echo "  MISSING TERM=linux"; checks=1; }
 grep -q "Graham Braillatron" "${PI}/usr/local/sbin/braillatron-console-ready.sh" && echo "  OK  console-ready banner script" || { echo "  MISSING banner script"; checks=1; }
-[[ -L "${SYSTEMD}/ifup@wlan0.service" ]] && echo "  OK  ifup@wlan0 masked" || { echo "  MISSING ifup mask"; checks=1; }
+[[ -L "${SYSTEMD}/ifup@wlan0.service" ]] && echo "  OK  ifup@wlan0 masked" || { echo "  MISSING ifup@wlan0 mask"; checks=1; }
+[[ -L "${SYSTEMD}/ifup@eth0.service" ]] && echo "  OK  ifup@eth0 masked" || echo "  note: ifup@eth0 not masked (end0 may be used instead)"
+grep -q 'Managed by NetworkManager' "${PI}/etc/network/interfaces" 2>/dev/null \
+  && echo "  OK  /etc/network/interfaces stubbed for NM" \
+  || echo "  note: interfaces file not stubbed — Ethernet may conflict with NM"
 [[ ! -f "${PI}/etc/braillatron/appliance-headless" ]] && echo "  OK  HDMI UI not headless" || { echo "  HEADLESS flag present"; checks=1; }
-if [[ -f "${SYSTEMD}/getty@tty1.service" ]] && [[ "$(readlink "${SYSTEMD}/getty@tty1.service")" == "/dev/null" ]]; then
-  echo "  OK  getty@tty1 masked (appliance mode)"
+if [[ -f "${PI}/etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf" ]]; then
+  echo "  OK  getty@tty1 braillatron drop-in installed"
 else
-  echo "  note: getty@tty1 not masked — local login may appear"
+  echo "  MISSING getty drop-in"
+  checks=1
+fi
+if [[ -L "${SYSTEMD}/getty@tty1.service" ]] && [[ "$(readlink "${SYSTEMD}/getty@tty1.service")" == "/dev/null" ]]; then
+  echo "  WARN  getty@tty1 still masked — unmask on Pi or re-run setup-appliance-mode.sh"
+  checks=1
+elif [[ -L "${WANTS}/getty@tty1.service" ]]; then
+  echo "  OK  getty@tty1 enabled for multi-user boot"
+else
+  echo "  note: getty@tty1 not in multi-user.target.wants"
 fi
 if [[ -x "${PI}/usr/local/bin/braillatron-ui" ]]; then
   echo "  note: braillatron-ui binary present (rebuild on Pi for latest C++ fixes)"

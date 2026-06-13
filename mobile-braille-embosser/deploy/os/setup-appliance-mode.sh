@@ -4,6 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "setup-appliance-mode.sh must run as root (sudo)." >&2
@@ -26,11 +27,17 @@ fi
 systemctl enable ssh 2>/dev/null || systemctl enable sshd 2>/dev/null || true
 systemctl start ssh 2>/dev/null || systemctl start sshd 2>/dev/null || true
 
-echo "Disabling local console login (appliance mode)..."
-for unit in getty@tty1.service; do
-  systemctl disable --now "${unit}" 2>/dev/null || true
-  systemctl mask "${unit}" 2>/dev/null || true
-done
+echo "Configuring HDMI console (getty@tty1 runs Braillatron or diagnostics)..."
+GETTY_DROPIN_DIR="/etc/systemd/system/getty@tty1.service.d"
+GETTY_DROPIN="${GETTY_DROPIN_DIR}/braillatron-appliance.conf"
+install -d "${GETTY_DROPIN_DIR}"
+install -m 644 "${REPO_ROOT}/deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf" "${GETTY_DROPIN}"
+install -m 755 "${SCRIPT_DIR}/braillatron-tty1-launch.sh" /usr/local/sbin/braillatron-tty1-launch.sh
+install -m 755 "${SCRIPT_DIR}/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
+systemctl unmask getty@tty1.service 2>/dev/null || true
+systemctl enable getty@tty1.service 2>/dev/null || true
+
+echo "Disabling serial console login (appliance mode)..."
 while IFS= read -r unit; do
   [[ -n "${unit}" ]] || continue
   systemctl disable --now "${unit}" 2>/dev/null || true
@@ -38,24 +45,16 @@ done < <(systemctl list-unit-files 'serial-getty@*.service' --no-legend 2>/dev/n
 systemctl mask serial-getty@.service 2>/dev/null || true
 
 echo "Suppressing DietPi console login banner..."
-AUTOLOGIN_DROPIN="/etc/systemd/system/getty@tty1.service.d/dietpi-autologin.conf"
-mkdir -p "$(dirname "${AUTOLOGIN_DROPIN}")"
+AUTOLOGIN_DROPIN="${GETTY_DROPIN_DIR}/dietpi-autologin.conf"
 cat >"${AUTOLOGIN_DROPIN}" <<'EOF'
 # Braillatron appliance mode: DietPi postboot skips the login banner when this file exists.
-# getty@tty1 remains disabled; no local console login.
 EOF
-if [[ ! -f "${AUTOLOGIN_DROPIN}" ]]; then
-  echo "ERROR: failed to create ${AUTOLOGIN_DROPIN}" >&2
-  exit 1
-fi
 echo "DietPi banner suppression: ${AUTOLOGIN_DROPIN}"
 
 # Belt-and-suspenders: postboot prints the banner when the drop-in is missing.
 # Masking avoids a stale/misleading prompt if getty is disabled.
 systemctl disable dietpi-postboot.service 2>/dev/null || true
 systemctl mask dietpi-postboot.service 2>/dev/null || true
-
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 HEADLESS="${BRAILLATRON_HEADLESS:-0}"
 SPI_PANEL="${BRAILLATRON_SPI_PANEL:-0}"
@@ -92,7 +91,8 @@ install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-ui.service" /etc/systemd
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron.target" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable braillatron-ui.service
-systemctl enable braillatron-console-ui.service
+systemctl disable braillatron-console-ui.service 2>/dev/null || true
+systemctl mask braillatron-console-ui.service 2>/dev/null || true
 systemctl enable braillatron-ui-stub.service
 systemctl enable braillatron-console-ready.service
 
@@ -111,8 +111,9 @@ cat <<EOF
 
 Appliance mode configured.
   - Power on: Braillatron starts automatically (no login required)
-  - No SPI panel: HDMI shows banner then ncurses UI (unless BRAILLATRON_HEADLESS=1)
+  - No SPI panel: getty@tty1 shows banner then ncurses UI (unless BRAILLATRON_HEADLESS=1)
   - SPI panel present: UI on panel; HDMI shows ready banner
+  - HDMI blank? SSH: sudo braillatron-boot-diagnose.sh
   - SSH: enabled for development and maintenance
 
 Maintenance over SSH:
