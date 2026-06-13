@@ -251,6 +251,21 @@ std::vector<MenuItem> AppRegistry::build_inline_menu()
             },
         });
     }
+
+    if (active_ != nullptr && active_->id() == "brailler") {
+        items.push_back(MenuItem {
+            "Look up word",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (ctx_.output != nullptr) {
+                    ctx_.output->announce_message(
+                        "Word lookup from Document is not available yet. Use the Dictionary app.");
+                }
+            },
+        });
+    }
+
     return items;
 }
 

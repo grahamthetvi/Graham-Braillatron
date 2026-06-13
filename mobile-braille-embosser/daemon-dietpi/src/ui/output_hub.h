@@ -105,6 +105,7 @@ private:
     std::function<void()> status_report_provider_;
     bool morse_passive_ = false;
     bool media_playing_ = false;
+    bool media_shift_paused_ = false;
     bool low_battery_announced_ = false;
     bool tts_paused_ = false;
     bool dictation_active_ = false;

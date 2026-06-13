@@ -120,9 +120,20 @@ std::string ConnectService::media_pause_toggle()
 {
     if (mpv_.ensure_started()) {
         mpv_.pause_toggle();
-        return "{\"ok\":true}";
+        return "{\"ok\":true,\"paused\":" + std::string(mpv_.is_paused() ? "true" : "false") + "}";
     }
     return "{\"ok\":false,\"error\":\"mpv unavailable\"}";
+}
+
+std::string ConnectService::media_set_pause(bool pause)
+{
+    if (!mpv_.ensure_started()) {
+        return "{\"ok\":false,\"error\":\"mpv unavailable\"}";
+    }
+    if (!mpv_.set_paused(pause)) {
+        return "{\"ok\":false,\"error\":\"mpv pause failed\"}";
+    }
+    return "{\"ok\":true,\"paused\":" + std::string(pause ? "true" : "false") + "}";
 }
 
 std::string ConnectService::execute_command(const std::string &cmd, const std::string &request)
@@ -139,6 +150,9 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     }
     if (cmd == "media.pause") {
         return media_pause_toggle();
+    }
+    if (cmd == "media.set_pause") {
+        return media_set_pause(json_get_bool(request, "pause", true));
     }
     if (cmd == "youtube.search") {
         return youtube_.search(json_get_string(request, "query"));

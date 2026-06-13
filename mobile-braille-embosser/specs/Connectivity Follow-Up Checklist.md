@@ -27,8 +27,9 @@ For a new Cursor conversation, paste the **Suggested agent prompt** at the botto
 
 ## Phase 0 — Merge and deploy
 
-- [ ] Merge PR #1 (or rebase onto current `main`)
+- [ ] Merge PR #3 (Multi-App Integration v1.2)
 - [ ] Run `deploy/bootstrap-dietpi.sh` or `deploy/install.sh` on Orange Pi 3B
+- [ ] Run `braillatron-verify-install` after install
 - [ ] Confirm packages installed: `yt-dlp`, `mpv`, `ffmpeg`
 - [ ] Confirm `signal-cli` installed via `deploy/install-signal-cli.sh` (aarch64 native)
 - [ ] Confirm config installed: `/etc/braillatron/connect.conf`, `youtube.conf`, `messages.conf`
@@ -43,7 +44,7 @@ For a new Cursor conversation, paste the **Suggested agent prompt** at the botto
 ### connectd health
 
 - [ ] `systemctl status braillatron-connectd` — active, no crash loop
-- [ ] Settings → Accounts → **Connectivity status** announces "Connectd online"
+- [ ] Settings → Accounts → **Connectivity status** announces "Connect daemon online"
 - [ ] Socket exists: `/run/braillatron/connect.sock`
 - [ ] Event file writable: `/run/braillatron/connect.events`
 
@@ -81,10 +82,10 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 
 ### P1 — Reliability
 
-- [ ] **Signal account detection:** `linked_account()` directory scan may not match signal-cli layout under `XDG_DATA_HOME`. Validate on device; use `signal-cli listAccounts` if needed.
-- [ ] **mpv startup race:** Retry or wait for `/run/braillatron/mpv.sock` before accepting `youtube.play`.
-- [ ] **YouTube search shell escaping:** Escape special characters in queries passed to `yt-dlp` shell command (`youtube_backend.cpp`).
-- [ ] **Shift/TTS pause toggle:** Track mpv pause state; resume on key release when appropriate.
+- [x] **Signal account detection:** `linked_account()` scans data dir, nested `data/` layout, and falls back to `signal-cli listAccounts`.
+- [x] **mpv startup race:** `MpvService::ensure_started()` waits for IPC socket; YouTube play retries load after wait.
+- [x] **YouTube search shell escaping:** Search terms passed through shell-safe quoting in `youtube_backend.cpp`.
+- [x] **Shift/TTS pause toggle:** Hold Shift pauses via `media.set_pause`; release resumes (tracked in `OutputHub`).
 
 ### P2 — Build / test
 
@@ -96,7 +97,7 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 ## Phase 3 — Production hardening
 
 - [ ] YouTube cookie missing/expired — TTS warning on app enter and periodic reminder
-- [ ] Quick Status inline — include connectd reachability alongside Wi-Fi/battery
+- [x] Quick Status inline — include connectd reachability alongside Wi-Fi/battery
 - [ ] yt-dlp rate limiting — `--sleep-requests` / backoff on HTTP 429
 - [ ] connectd reconnect — UI graceful message when sidecar dies mid-session
 - [ ] Credential dir permissions — enforce `0700` at connectd startup
@@ -188,6 +189,8 @@ Do not edit the Cursor plan file; update the spec checklist as items complete.
 
 | Date | Change |
 |------|--------|
+| 2026-06-13 | P1 reliability fixes: signal listAccounts fallback, mpv socket wait, yt-dlp shell escape, Shift hold-to-pause |
+| 2026-06-13 | UX polish: Messages thread refresh, Quick Status connectd ping, Document Look up stub, verify-install script |
 | 2026-06-13 | Phases 2–8: Document STT, Contacts, Music, Weather, Podcasts/Radio, Library EPUB/DAISY/Gutendex, Gmail OAuth |
 | 2026-06-13 | Phase 0 connectd hardening: async IPC, non-blocking Signal link, global event polling |
 | 2026-06-11 | Initial checklist after Connectd v1 implementation |

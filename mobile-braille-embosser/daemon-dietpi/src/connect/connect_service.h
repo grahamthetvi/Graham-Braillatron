@@ -36,6 +36,7 @@ private:
     std::string execute_command(const std::string &cmd, const std::string &request);
     std::string cmd_from_request(const std::string &request) const;
     std::string media_pause_toggle();
+    std::string media_set_pause(bool pause);
 
     ConnectConfig connect_config_;
     EventWriter events_;

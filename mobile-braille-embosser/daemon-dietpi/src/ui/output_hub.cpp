@@ -249,6 +249,10 @@ void OutputHub::announce_quick_status()
         stream << weather_line;
     }
 
+    if (connect_client_ != nullptr) {
+        stream << (connect_client_->ping() ? "Connect daemon online. " : "Connect daemon offline. ");
+    }
+
     emit(stream.str());
 }
 
@@ -273,8 +277,17 @@ void OutputHub::check_battery_warning()
 void OutputHub::on_shift_tts_toggle(bool pressed)
 {
     if (media_playing_ && connect_client_ != nullptr) {
-        connect_client_->request("media.pause");
-        emit(pressed ? "Playback paused" : "Playback resumed");
+        if (pressed) {
+            if (!media_shift_paused_) {
+                connect_client_->request("media.set_pause", ",\"pause\":true");
+                media_shift_paused_ = true;
+                emit("Playback paused");
+            }
+        } else if (media_shift_paused_) {
+            connect_client_->request("media.set_pause", ",\"pause\":false");
+            media_shift_paused_ = false;
+            emit("Playback resumed");
+        }
         return;
     }
 
@@ -561,6 +574,9 @@ void OutputHub::rebuild_display_backend()
 void OutputHub::set_media_playing(bool playing)
 {
     media_playing_ = playing;
+    if (!playing) {
+        media_shift_paused_ = false;
+    }
 }
 
 void OutputHub::set_stt_transcript_handler(SttBackend::TranscriptHandler handler)
@@ -836,7 +852,7 @@ std::vector<MenuItem> OutputHub::build_accounts_menu()
                     return;
                 }
                 const bool online = connect_client_->ping();
-                emit(online ? "Connectd online" : "Connectd offline");
+                emit(online ? "Connect daemon online" : "Connect daemon offline");
             },
         },
         MenuItem {

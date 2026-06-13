@@ -63,6 +63,7 @@ install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/crede
 install -m 755 "${ROOT}/deploy/install-dictionary-data.sh" "${PREFIX}/bin/braillatron-install-dictionary-data"
 install -m 755 "${ROOT}/deploy/install-spelling-data.sh" "${PREFIX}/bin/braillatron-install-spelling-data"
 install -m 755 "${ROOT}/deploy/install-gmail-oauth.sh" "${PREFIX}/bin/braillatron-install-gmail-oauth"
+install -m 755 "${ROOT}/deploy/verify-install.sh" "${PREFIX}/bin/braillatron-verify-install"
 bash "${ROOT}/deploy/install-dictionary-data.sh"
 bash "${ROOT}/deploy/install-spelling-data.sh"
 bash "${ROOT}/deploy/install-gmail-oauth.sh"
@@ -95,4 +96,5 @@ systemctl enable braillatron-bluetooth-autoconnect.timer
 bash "${ROOT}/deploy/os/setup-networkmanager.sh"
 
 echo "Installed Braillatron to ${PREFIX}/bin and ${CONFIG_DIR}"
+echo "Verify with: braillatron-verify-install"
 echo "Start with: systemctl start braillatron.target"

@@ -2,6 +2,7 @@
 #include "ui_context.h"
 
 #include "../output_hub.h"
+#include "../timer_service.h"
 
 #include <memory>
 #include <string>
@@ -19,6 +20,9 @@ public:
     {
         if (ctx.output != nullptr) {
             ctx.output->announce_quick_status();
+            if (ctx.timer != nullptr && ctx.timer->running()) {
+                ctx.output->announce_message("Timer " + ctx.timer->status_text());
+            }
         }
     }
 

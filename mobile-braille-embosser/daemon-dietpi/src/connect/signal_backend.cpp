@@ -75,24 +75,56 @@ bool SignalBackend::is_linked() const
 
 std::string SignalBackend::linked_account() const
 {
-    DIR *dir = opendir(config_.signal_data_dir.c_str());
-    if (dir == nullptr) {
-        return {};
-    }
-    std::string account;
-    dirent *entry = nullptr;
-    while ((entry = readdir(dir)) != nullptr) {
-        const std::string name = entry->d_name;
-        if (name == "." || name == "..") {
-            continue;
+    auto account_from_name = [](const std::string &name) -> std::string {
+        if (name.empty() || name == "." || name == "..") {
+            return {};
         }
         if (name.find('+') == 0 || std::isdigit(static_cast<unsigned char>(name[0]))) {
-            account = name;
-            break;
+            return name;
+        }
+        return {};
+    };
+
+    DIR *dir = opendir(config_.signal_data_dir.c_str());
+    if (dir != nullptr) {
+        dirent *entry = nullptr;
+        while ((entry = readdir(dir)) != nullptr) {
+            const std::string account = account_from_name(entry->d_name);
+            if (!account.empty()) {
+                closedir(dir);
+                return account;
+            }
+        }
+        closedir(dir);
+
+        const std::string data_account_dir = config_.signal_data_dir + "/data";
+        dir = opendir(data_account_dir.c_str());
+        if (dir != nullptr) {
+            dirent *nested = nullptr;
+            while ((nested = readdir(dir)) != nullptr) {
+                const std::string account = account_from_name(nested->d_name);
+                if (!account.empty()) {
+                    closedir(dir);
+                    return account;
+                }
+            }
+            closedir(dir);
         }
     }
-    closedir(dir);
-    return account;
+
+    const std::string output =
+        run_command(signal_env() + config_.signal_cli_path + " listAccounts 2>/dev/null");
+    std::istringstream stream(output);
+    std::string line;
+    while (std::getline(stream, line)) {
+        line.erase(0, line.find_first_not_of(" \t\r\n"));
+        line.erase(line.find_last_not_of(" \t\r\n") + 1);
+        const std::string account = account_from_name(line);
+        if (!account.empty()) {
+            return account;
+        }
+    }
+    return {};
 }
 
 std::string SignalBackend::accounts_status() const

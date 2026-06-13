@@ -42,9 +42,32 @@ public:
 
     void on_poll(UiContext &ctx) override
     {
+        if (pending_chat_reload_) {
+            pending_chat_reload_ = false;
+            load_chats(ctx);
+        }
+        if (pending_thread_refresh_) {
+            pending_thread_refresh_ = false;
+            open_thread(ctx);
+        }
         if (!pending_announce_.empty()) {
             announce(ctx, pending_announce_);
             pending_announce_.clear();
+        }
+    }
+
+    void on_connect_event(const braillatron::connect::ConnectEvent &event, UiContext &ctx) override
+    {
+        (void)ctx;
+        if (event.type != "message.received") {
+            return;
+        }
+        const std::string from = braillatron::connect::json_get_string(event.data_json, "from");
+        if (state_ == MessagesState::Thread &&
+            (from == active_chat_.id || from == active_chat_.name)) {
+            pending_thread_refresh_ = true;
+        } else if (state_ == MessagesState::ChatList) {
+            pending_chat_reload_ = true;
         }
     }
 
@@ -184,6 +207,8 @@ private:
     size_t selected_chat_ = 0;
     std::string compose_;
     std::string pending_announce_;
+    bool pending_chat_reload_ = false;
+    bool pending_thread_refresh_ = false;
 };
 
 } // namespace

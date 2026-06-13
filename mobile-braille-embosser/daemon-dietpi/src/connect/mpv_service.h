@@ -24,10 +24,13 @@ public:
     const MpvIpc &ipc() const { return mpv_; }
 
     bool pause_toggle();
+    bool set_paused(bool pause);
     void mark_playing();
     bool is_paused() const { return paused_; }
 
 private:
+    bool wait_for_socket(int attempts, int delay_ms) const;
+
     Options options_;
     MpvIpc mpv_;
     ManagedProcess mpv_proc_;

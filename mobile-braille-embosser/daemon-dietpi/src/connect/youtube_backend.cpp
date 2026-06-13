@@ -7,6 +7,24 @@
 
 namespace braillatron::connect {
 
+namespace {
+
+std::string shell_escape(const std::string &value)
+{
+    std::string out = "'";
+    for (char ch : value) {
+        if (ch == '\'') {
+            out += "'\\''";
+        } else {
+            out += ch;
+        }
+    }
+    out += "'";
+    return out;
+}
+
+} // namespace
+
 YoutubeBackend::YoutubeBackend(YoutubeConfig config, ConnectConfig connect_config, MpvService *mpv,
                                EventWriter *events)
     : config_(std::move(config))
@@ -56,10 +74,11 @@ std::string YoutubeBackend::search(const std::string &query)
         return "{\"ok\":false,\"error\":\"youtube disabled\"}";
     }
 
+    const std::string search_term =
+        "ytsearch" + std::to_string(config_.search_limit) + ":" + query;
     const std::string cmd = config_.ytdlp_path +
                             " --flat-playlist --dump-json --no-warnings --ignore-errors" +
-                            ytdlp_cookie_args() + " \"ytsearch" +
-                            std::to_string(config_.search_limit) + ":" + query + "\" 2>/dev/null";
+                            ytdlp_cookie_args() + " " + shell_escape(search_term) + " 2>/dev/null";
 
     const std::string output = run_command(cmd);
     std::ostringstream results;
@@ -100,7 +119,11 @@ std::string YoutubeBackend::play(const std::string &url)
     }
     paused_ = false;
     mpv_->mark_playing();
-    if (!mpv_->ipc().load_url(url)) {
+    bool loaded = mpv_->ipc().load_url(url);
+    if (!loaded) {
+        loaded = mpv_->ensure_started() && mpv_->ipc().load_url(url);
+    }
+    if (!loaded) {
         return "{\"ok\":false,\"error\":\"mpv load failed\"}";
     }
     if (events_ != nullptr) {
