@@ -1,6 +1,6 @@
 [Unit]
 Description=Braillatron ScreenReader UI (headless stub, TTS-only)
-ConditionPathExists=!/dev/spidev0.0
+ConditionPathExists=!/etc/braillatron/appliance-spi
 ConditionPathExists=/etc/braillatron/appliance-headless
 After=local-fs.target sound.target speech-dispatcher.service
 Conflicts=braillatron-console-ui.service

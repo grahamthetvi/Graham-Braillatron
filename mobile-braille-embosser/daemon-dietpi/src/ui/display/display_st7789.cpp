@@ -175,7 +175,7 @@ St7789DisplayBackend::St7789DisplayBackend(const DisplayConfig &config)
     (void)config_;
 #endif
 
-    ready_ = true;
+    ready_ = spi_fd_ >= 0 && config.gpio_dc >= 0;
 }
 
 St7789DisplayBackend::~St7789DisplayBackend()

@@ -1,10 +1,10 @@
 [Unit]
 Description=Braillatron ScreenReader UI on HDMI tty (ncurses fallback)
-ConditionPathExists=!/dev/spidev0.0
+ConditionPathExists=!/etc/braillatron/appliance-spi
 ConditionPathExists=!/etc/braillatron/appliance-headless
 After=local-fs.target sound.target speech-dispatcher.service
 Conflicts=braillatron-ui.service braillatron-ui-stub.service
-Requires=speech-dispatcher.service
+Wants=speech-dispatcher.service
 Wants=brltty.service braillatron-connectd.service
 
 [Service]

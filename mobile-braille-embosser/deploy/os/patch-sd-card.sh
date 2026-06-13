@@ -176,6 +176,7 @@ else
   sed -i 's/^BRAILLATRON_HEADLESS=.*/BRAILLATRON_HEADLESS=0/' "${PI}/etc/braillatron/appliance.env"
 fi
 rm -f "${PI}/etc/braillatron/appliance-headless"
+rm -f "${PI}/etc/braillatron/appliance-spi"
 
 for boot_env in "${PI}/boot/dietpiEnv.txt" "${PI}/boot/firmware/dietpiEnv.txt"; do
   if [[ -f "${boot_env}" ]] && grep -q 'spi-spidev' "${boot_env}"; then
@@ -203,7 +204,18 @@ install -m 644 "${fstab_tmp}.ro" "${PI}/etc/fstab"
 rm -f "${fstab_tmp}" "${fstab_tmp}.ro"
 
 echo ""
-echo "== Verification =="
+echo "== Quick checks on mounted root =="
+if [[ -x "${PI}/usr/bin/figlet" || -x "${PI}/usr/local/bin/figlet" ]]; then
+  echo "  OK  figlet installed"
+else
+  echo "  note: figlet not installed — banner uses ASCII art until apt install figlet on Pi"
+fi
+if [[ -x "${PI}/usr/bin/openvt" ]]; then
+  echo "  OK  openvt present"
+else
+  echo "  warn: openvt missing — console-ui cannot attach to tty1"
+  checks=1
+fi
 checks=0
 grep -q 'Environment=TERM=linux' "${SYSTEMD}/braillatron-console-ui.service" && echo "  OK  TERM=linux in console-ui" || { echo "  MISSING TERM=linux"; checks=1; }
 grep -q "Graham Braillatron" "${PI}/usr/local/sbin/braillatron-console-ready.sh" && echo "  OK  console-ready banner script" || { echo "  MISSING banner script"; checks=1; }

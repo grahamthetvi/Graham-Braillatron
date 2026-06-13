@@ -4,6 +4,7 @@ espeak-ng
 espeak-ng-data
 brltty
 figlet
+kbd
 rsync
 alsa-utils
 parted

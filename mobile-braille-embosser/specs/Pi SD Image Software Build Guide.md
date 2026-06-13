@@ -202,7 +202,7 @@ sudo reboot
 
 After reboot, `braillatron.target` starts automatically. **No login or manual command is required** — power on, wait for TTS “Braillatron ready”, then use the physical keyboard.
 
-**HDMI monitor (no SPI panel):** boot scroll clears, the Graham Braillatron banner appears, then the **ncurses UI** takes over tty1 (`braillatron-console-ui.service`). This is automatic when `/dev/spidev0.0` is absent.
+**HDMI monitor (no SPI panel):** boot scroll clears, the Graham Braillatron banner appears, then the **ncurses UI** takes over tty1 (`braillatron-console-ui.service`). This is automatic when `/etc/braillatron/appliance-spi` is absent (default skeleton bench).
 
 **SPI panel present:** UI chrome renders on the panel; HDMI shows the ready banner only.
 
@@ -257,7 +257,7 @@ Production bootstrap locks the device into appliance mode automatically:
 
 | Surface | What you get |
 | --- | --- |
-| **SPI panel** | `braillatron-ui.service` — UI chrome on the HAT when `/dev/spidev0.0` exists (`BRAILLATRON_SPI_PANEL=1` at bootstrap) |
+| **SPI panel** | `braillatron-ui.service` — UI chrome on the HAT when `/etc/braillatron/appliance-spi` exists (`BRAILLATRON_SPI_PANEL=1` at bootstrap) |
 | **HDMI (no SPI)** | `braillatron-console-ui.service` — banner then ncurses on tty1 (default bootstrap / skeleton bench) |
 | **Headless override** | `braillatron-ui-stub.service` when `BRAILLATRON_HEADLESS=1` — TTS + keyboard, no HDMI UI |
 | **SSH** | Normal shell for builds, config edits, and debugging |
@@ -353,13 +353,14 @@ Production hardware with the **MAX98357A I2S amp** still uses `rk3566-i2s1-overl
 
 ## Testing on the Pi
 
-Braillatron has **no graphical UI**. A connected monitor stays blank. After `systemctl restart braillatron-ui`, the command itself prints nothing — that is normal.
+On the **default skeleton bench** (no SPI HAT), a connected HDMI monitor shows the Graham Braillatron banner, then the **ncurses UI** on tty1 via `braillatron-console-ui.service`. Speech, BRLTTY, and journal logs remain available regardless of display path.
 
 Feedback channels:
 
 | Channel | How to use |
 | --- | --- |
-| **Journal logs** | `journalctl -u braillatron-ui -f` |
+| **HDMI tty1** | Banner then ncurses menu (when `/etc/braillatron/appliance-spi` is absent and not headless) |
+| **Journal logs** | `journalctl -u braillatron-console-ui -f` (HDMI) or `journalctl -u braillatron-ui -f` (SPI panel) |
 | **Speech** | TTS on startup and focus changes (aux jack, Bluetooth, or I2S + Speech Dispatcher) |
 | **Braille display** | BRLTTY when a display is connected |
 
@@ -370,10 +371,11 @@ Bench input reads the **USB keyboard plugged into the Pi** via Linux evdev (`/de
 ### Quick diagnostic
 
 ```bash
-systemctl is-active braillatron-ui
-journalctl -u braillatron-ui -b --no-pager -n 20
+systemctl is-active braillatron-console-ui braillatron-ui
+journalctl -u braillatron-console-ui -u braillatron-ui -b --no-pager -n 20
 grep evdev /etc/braillatron/keyboard.conf
 ls /dev/input/event*
+test -f /etc/braillatron/appliance-spi && echo spi-panel || echo hdmi-ncurses
 ```
 
 Healthy startup includes `[ui] Braillatron ready`, `[ui] Document`, and `braillatron-ui profile=skeleton_v4`.
@@ -381,11 +383,11 @@ Healthy startup includes `[ui] Braillatron ready`, `[ui] Document`, and `brailla
 ### Foreground run (debugging)
 
 ```bash
-sudo systemctl stop braillatron-ui
-sudo /usr/local/bin/braillatron-ui /etc/braillatron/hardware.conf
+sudo systemctl stop braillatron-console-ui braillatron-ui
+sudo openvt -c 1 -s -w -- /usr/local/bin/braillatron-ui /etc/braillatron/hardware.conf
 ```
 
-Logs stream directly to the terminal. Use the Pi's USB keyboard for input. **Ctrl+C** to quit, then `sudo systemctl start braillatron-ui`.
+Logs stream directly to the terminal. Use the Pi's USB keyboard for input. **Ctrl+C** to quit, then `sudo systemctl start braillatron.target`.
 
 
 ### Bench testing with a USB keyboard (no wired buttons)
@@ -546,7 +548,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | Symptom | Check |
 | --- | --- |
 | `systemctl restart` shows nothing | Normal — use `journalctl -u braillatron-ui -f` or `systemctl status braillatron-ui` |
-| Monitor is blank after boot | Expected — no GUI; use journal + TTS |
+| Monitor is blank after boot | Check `systemctl is-active braillatron-console-ui`; `test -f /etc/braillatron/appliance-spi && echo spi` ; stale `/dev/spidev0.0` without GPIO config — see **No ncurses on HDMI** row |
 | Keyboard does nothing over SSH | SSH laptop keys don't reach evdev; plug USB keyboard into Pi |
 | `braillatron-ui` exits immediately | `journalctl -u braillatron-ui -b`; confirm `/etc/braillatron/hardware.conf` exists |
 | `keyboard: no input sources available` | Set `evdev_enabled=true` or connect Arduino |
@@ -566,7 +568,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | Config changes lost after rebuild | `make install` overwrites `/etc/braillatron/` — back up before install |
 | Monitor frozen on last boot line (`graphical.target`) | Boot may be done — SSH in and check `systemctl is-active braillatron-console-ui`. With no SPI, HDMI should show banner then ncurses |
 | Monitor shows DietPi "hit return to login" but Enter does nothing | Expected when getty is disabled — re-run `setup-appliance-mode.sh`; use SSH or USB keyboard on the Pi |
-| No ncurses on HDMI after reboot | Check `ls /dev/spidev0.0` (SPI present skips console-ui); `test -f /etc/braillatron/appliance-headless && echo headless`; `systemctl show braillatron-console-ui -p ConditionResult`; run `sudo bash deploy/os/setup-appliance-mode.sh` and `sudo systemctl restart braillatron.target`. Images bootstrapped before SPI became opt-in may still have `spi-spidev` in `/boot/dietpiEnv.txt` without a HAT — remove it, reboot, or re-bootstrap without `BRAILLATRON_SPI_PANEL=1` |
+| No ncurses on HDMI after reboot | Check `test -f /etc/braillatron/appliance-spi && echo spi-panel` (SPI routing skips console-ui); `test -f /etc/braillatron/appliance-headless && echo headless`; `systemctl show braillatron-console-ui -p ConditionResult`; `grep gpio_dc /etc/braillatron/display.conf` (must be ≥0 for SPI backend); run `sudo bash deploy/os/setup-appliance-mode.sh` and `sudo systemctl restart braillatron.target`. Stale `spi-spidev` in `/boot/dietpiEnv.txt` without a HAT — remove overlay, ensure `appliance-spi` absent, reboot, or re-bootstrap without `BRAILLATRON_SPI_PANEL=1` |
 | No local login prompt after bootstrap | Expected in appliance mode — use SSH; re-flash or `BRAILLATRON_APPLIANCE=0` bootstrap for dev image |
 | SSH unreachable after bootstrap | Check IP and network (`nmcli dev wifi`); confirm `systemctl status ssh`; if locked out entirely, re-flash SD and use `BRAILLATRON_APPLIANCE=0` bootstrap for a dev image with local login |
 | `systemd-fstab-generator` duplicate entry warnings in `dmesg` | Duplicate `/tmp` or `/var/log` fstab lines (DietPi + braillatron); run `sudo bash deploy/os/setup-appliance-mode.sh` or `setup-overlay-ro.sh`, then reboot |
@@ -580,7 +582,7 @@ flowchart TD
     PowerOn[SD inserted, power on] --> DietPi[DietPi boots]
     DietPi --> MultiUser[multi-user.target]
     MultiUser --> Target[braillatron.target]
-    Target --> SpiCheck{spidev0.0?}
+    Target --> SpiCheck{appliance-spi?}
     SpiCheck -->|yes| UI[braillatron-ui SPI]
     SpiCheck -->|no| HeadlessCheck{appliance-headless?}
     HeadlessCheck -->|no| ConsoleUI[braillatron-console-ui HDMI ncurses]

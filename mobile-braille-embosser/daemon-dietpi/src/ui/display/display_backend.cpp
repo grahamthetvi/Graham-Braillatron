@@ -28,6 +28,11 @@ bool stdout_is_tty()
     return isatty(STDOUT_FILENO) != 0;
 }
 
+bool spi_panel_gpio_configured(const DisplayConfig &config)
+{
+    return config.gpio_dc >= 0;
+}
+
 class StubDisplayBackend : public DisplayBackend {
 public:
     bool available() const override { return false; }
@@ -113,7 +118,7 @@ DisplayBackend *create_display_backend(const UiConfig &ui_config, const DisplayC
         return new StubDisplayBackend();
     }
 
-    if (path_exists(display_config.spidev)) {
+    if (path_exists(display_config.spidev) && spi_panel_gpio_configured(display_config)) {
         DisplayBackend *backend = try_create_spi(display_config);
         if (backend != nullptr) {
             return backend;
