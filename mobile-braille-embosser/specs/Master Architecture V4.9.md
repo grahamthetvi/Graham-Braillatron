@@ -100,7 +100,7 @@ Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [4 Ω 3 W speaker]
 
 ### 3.2 Battery & telemetry
 
-**LTC2944** on system I2C: capacity, current, voltage. Policy at 20% / 5% SOC: [V9 §6.2](Master%20Software%20Architecture%20V9.md#62-battery-policy). Pi relays limit flags to Arduino via `BRAILLATRON_OP_TELEMETRY`.
+**LTC2944** on system I2C: capacity, current, voltage. Policy at 20% / 5% SOC: [V9 §6.3](Master%20Software%20Architecture%20V9.md#63-battery-policy). Pi relays limit flags to Arduino via `BRAILLATRON_OP_TELEMETRY`.
 
 ---
 
@@ -149,7 +149,7 @@ Sudden power cuts from the safety interlock must not corrupt the OS partition:
 
 Full deploy procedure: [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Software%20Build%20Guide.md). Software policy: [V9 §6.1](Master%20Software%20Architecture%20V9.md#61-read-only-root--persistent-data).
 
-> **OTA / A/B updates:** RAUC or Mender dual-bank OTA is **not yet implemented**. Current field updates use read-only root + `/data` transactional storage (`deploy/os/setup-overlay-ro.sh`). See [V9 §6.4](Master%20Software%20Architecture%20V9.md#64-ota--ab-updates--not-yet-addressed).
+> **OTA / A/B updates:** RAUC or Mender dual-bank OTA is **not yet implemented**. Current field updates use read-only root + `/data` transactional storage (`deploy/os/setup-overlay-ro.sh`). See [V9 §6.5](Master%20Software%20Architecture%20V9.md#65-ota--ab-updates--not-yet-addressed).
 
 ---
 
@@ -176,7 +176,7 @@ Standardized BOM: [V9 §7](Master%20Software%20Architecture%20V9.md#7-standardiz
 | Servo-driven 6-key embosser array | Staggered solenoid head ([V9 §5.4](Master%20Software%20Architecture%20V9.md#54-staggered-embossing-head)) |
 | 18650 TBD battery pack | 4S LiPo + LTC2944 |
 | 4×4 keyboard matrix + per-key diodes | Direct-pin Arduino topology (§2.1) |
-| Piper TTS | eSpeak NG ([V9 §6.5](Master%20Software%20Architecture%20V9.md#65-dependencies)) |
+| Piper TTS | eSpeak NG ([V9 §6.6](Master%20Software%20Architecture%20V9.md#66-dependencies)) |
 
 ---
 

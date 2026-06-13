@@ -93,6 +93,26 @@ braillatron-ui profile=skeleton_v4
 
 Press **Ctrl+C** to quit.
 
+### Auto-start on local login (SSH stays a normal shell)
+
+For bench development on a Linux PC, you can launch the ncurses UI automatically when you log in on a **local virtual console** (`tty1`, etc.), while **SSH sessions** keep a regular shell for coding:
+
+```bash
+./deploy/os/install-bench-login.sh
+```
+
+Log out and back in on the local console (or switch to a text tty with **Ctrl+Alt+F3**). The hook runs `make display` if needed, then starts `braillatron-ui`. **Ctrl+C** returns you to your login shell.
+
+- **SSH** — unaffected; use it for build/edit work as usual
+- **Skip once** — `BRAILLATRON_BENCH_AUTO=0 login`
+- **Remove hook** — `./deploy/os/install-bench-login.sh --uninstall`
+
+Run the UI manually anytime without the hook:
+
+```bash
+./deploy/os/braillatron-bench-console.sh
+```
+
 ### Run from the project root
 
 ```bash
@@ -168,7 +188,9 @@ Speech Dispatcher, BRLTTY, and Vosk can still be absent at runtime — the UI fa
 
 **Braille grade** (`ui.conf` → `braille_table`) is a global preset cycling through UEB G1/G2 combined with UEB Math or Nemeth: `ueb_g1_math`, `ueb_g1_nemeth`, `ueb_g2_math`, `ueb_g2_nemeth`. Change it from Settings → Braille grade; input, embosser, and refreshable braille all follow the same preset. On systems where the literary+Nemeth composite table fails to compile, Nemeth presets fall back to the matching UEB literary table (override the Nemeth overlay with `LOUIS_NEMETH_TABLE`, default `en-us-mathtext.ctb`).
 
-On a fully provisioned Pi image, bootstrap installs these libraries automatically; see [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md).
+On a fully provisioned Pi image, bootstrap installs these libraries automatically and enables **appliance mode** (boot straight into Braillatron, SSH for dev). See [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md).
+
+For a similar local-console experience on a dev PC (ncurses bench), use [`deploy/os/install-bench-login.sh`](deploy/os/install-bench-login.sh) — SSH sessions stay a normal shell.
 
 ## Configuration layout
 

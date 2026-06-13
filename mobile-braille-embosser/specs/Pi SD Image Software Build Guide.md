@@ -188,6 +188,7 @@ This script runs, in order:
 7. **Vosk model** — downloads `vosk-model-small-en-us-0.15` (~40 MB) to `/data/braillatron/vosk-models/`
 8. **Accessibility stack** — enables `speech-dispatcher`, `brltty`, `NetworkManager`
 9. **Audio default** — `setup-aux-audio.sh` routes ALSA + TTS to the 3.5 mm aux jack; optional Bluetooth via `setup-bluetooth-audio.sh`
+10. **Appliance mode** — `setup-appliance-mode.sh` disables local console login, enables read-only root, keeps SSH for development (skipped when `BRAILLATRON_APPLIANCE=0`)
 
 Bootstrap takes several minutes on first run (apt + compile + model download).
 
@@ -198,7 +199,9 @@ Bootstrap takes several minutes on first run (apt + compile + model download).
 sudo reboot
 ```
 
-After reboot, `braillatron.target` should start automatically. No login or manual command is required for normal operation.
+After reboot, `braillatron.target` starts automatically. **No login or manual command is required** — the device is in appliance mode: power on, wait for TTS “Braillatron ready”, then use the physical keyboard.
+
+An attached monitor will stay blank (no login prompt). Use SSH for development and maintenance (see below).
 
 
 ## Step 6: Verify
@@ -234,6 +237,42 @@ With default `allow_missing_arduino=true` in `hardware.conf`, the UI daemon **st
 - GPIO limit sensors are unconfigured
 
 Status is logged to the journal and announced through the Output Hub (TTS/braille when those backends are available).
+
+
+## Appliance mode and SSH development
+
+Production bootstrap locks the device into appliance mode automatically:
+
+| Surface | What you get |
+| --- | --- |
+| **Local (power on)** | `braillatron-ui` via systemd; TTS “Braillatron ready”; physical keyboard; no login prompt |
+| **SSH** | Normal shell for builds, config edits, and debugging |
+
+**Develop over SSH:**
+
+```bash
+ssh dietpi@<device-ip>
+
+# View logs (no remount needed)
+journalctl -u braillatron-ui -f
+
+# Edit system config or reinstall daemons
+sudo braillatron-remount-rw
+sudo nano /etc/braillatron/ui.conf          # example
+sudo systemctl restart braillatron-ui
+sudo braillatron-remount-ro
+
+# User documents — always writable
+ls /data/braillatron/documents/
+```
+
+**Skip appliance lockdown** during initial factory bring-up (local login + writable root):
+
+```bash
+BRAILLATRON_APPLIANCE=0 sudo bash deploy/bootstrap-dietpi.sh
+```
+
+See [Master Software Architecture V9 §6.2](Master%20Software%20Architecture%20V9.md#62-appliance-console-vs-dev-ssh) for the full policy.
 
 
 ## Audio output (aux default, Bluetooth optional)
@@ -473,6 +512,9 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | USB keyboard ignored | `evdev_enabled=true`; `ls /dev/input/event*`; `SupplementaryGroups=input` in unit; restart `braillatron-ui` |
 | YouTube/Messages unavailable | `systemctl status braillatron-connectd`; `journalctl -u braillatron-connectd -b` |
 | Config changes lost after rebuild | `make install` overwrites `/etc/braillatron/` — back up before install |
+| No local login prompt after bootstrap | Expected in appliance mode — use SSH; re-flash or `BRAILLATRON_APPLIANCE=0` bootstrap for dev image |
+| SSH unreachable after bootstrap | Check IP and network (`nmcli dev wifi`); confirm `systemctl status ssh`; if locked out entirely, re-flash SD and use `BRAILLATRON_APPLIANCE=0` bootstrap for a dev image with local login |
+| Cannot edit `/etc/braillatron/` over SSH | Run `sudo braillatron-remount-rw` first, then `sudo braillatron-remount-ro` when done |
 
 
 ## Boot flow (summary)
@@ -486,8 +528,9 @@ flowchart TD
     Target --> Sentinel[braillatron-sentinel]
     Target --> Connectd[braillatron-connectd]
     Target --> Timer[braillatron-sync.timer]
-    UI --> Hub[Output Hub announces ready / missing devices]
-    Connectd --> Sockets[/run/braillatron/connect.sock]
+    UI --> Ready[TTS: Braillatron ready]
+    Ready --> Use[Physical keyboard + Output Hub]
+    MultiUser --> SSH[ssh.service for dev access]
 ```
 
 

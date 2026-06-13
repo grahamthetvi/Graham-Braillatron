@@ -213,7 +213,7 @@ Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 
 - **Logic rail:** TPS5430 buck from battery to filtered 5 V for Orange Pi and Arduino.
 - **Motor rail:** 14.8 V through IRLZ44N (TC4420 gate driver) to TMC2209 VMOT; Arduino controls the gate.
 - **Audio isolation:** MAX98357A powered from 5 V with local 470 µF + 0.1 µF at VDD/GND to keep Class D switching noise off the logic bus.
-- **Battery telemetry:** LTC2944 on system I2C tracks capacity, current, and voltage (see §6.2).
+- **Battery telemetry:** LTC2944 on system I2C tracks capacity, current, and voltage (see §6.3).
 - **High-current routing:** Motor VMOT and returns use off-board dual-row terminal blocks (up to 15 A), not prototype-board traces.
 - **Thermal fuse:** Non-resettable 85 °C fuse clamped to a unified aluminum heatsink spanning all eight stepper drivers.
 
@@ -270,7 +270,7 @@ The motion controller must not fire all solenoids simultaneously. Row A fires as
 |------------|------|------------|
 | Heavy stepper EMI | Audio instability, SoC noise | Digital I2S audio (MAX98357A); local 470 µF + 0.1 µF on amp VDD/GND |
 | RK3566 pin limits | Cannot wire 8 independent driver UARTs | Dual-bus single-wire UART daisy chain with diodes + MS1/MS2 addresses |
-| Sudden power loss | eMMC/SD corruption | Read-only root + overlayfs; atomic writes to `/data`; `braillatron-sync.timer` |
+| Sudden power loss | eMMC/SD corruption | Read-only root + tmpfs volatile mounts; atomic writes to `/data`; `braillatron-sync.timer` |
 | Drop during motion | Head/solenoid damage | MPU6050 hardware interrupt → sub-10 ms IRLZ44N cut + SAFETY broadcast |
 | Driver thermal runaway | Fire / hardware damage | Unified heatsink + 85 °C thermal fuse on motor rail |
 | Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin topology** — one GPIO per key, no matrix (§1.3) |
@@ -281,27 +281,43 @@ The motion controller must not fire all solenoids simultaneously. Row A fires as
 
 ### 6.1 Read-Only Root & Persistent `/data`
 
-- Root `/` read-only with overlayfs for volatile paths (logs, ephemeral state).
+- Root `/` read-only; volatile paths (`/tmp`, `/var/log`, `/var/tmp`) on tmpfs via `deploy/os/setup-overlay-ro.sh` (logs, ephemeral state).
 - User documents and settings on `/data/braillatron/`.
 - Atomic writes: RAM buffer → `.tmp` → `fsync` → `rename`.
 - `braillatron-sync.timer` mirrors RAM layers to flash so sudden interlock power cuts do not corrupt the OS partition.
 
-### 6.2 Battery Policy
+### 6.2 Appliance Console vs Dev SSH
+
+Production images boot directly into Braillatron — no login prompt, no local shell. End users power on and interact through the ScreenReader (physical keyboard, TTS, refreshable braille, SPI display). Bootstrap applies this via `deploy/os/setup-appliance-mode.sh`:
+
+- **`braillatron.target`** starts at multi-user boot (systemd, not a login session).
+- **Local getty disabled** — an attached monitor does not show a login prompt.
+- **Root `/` read-only** — volatile paths (`/tmp`, `/var/log`, `/var/tmp`) on tmpfs; remount helpers at `/usr/local/sbin/braillatron-remount-rw` and `braillatron-remount-ro`.
+- **SSH enabled** — development and maintenance over the network only.
+
+| Surface | Access | Writable paths |
+| --- | --- | --- |
+| Appliance (local) | Keyboard + Output Hub only | `/data/braillatron/` (documents, settings, credentials) |
+| Dev (SSH) | Normal shell | `/data/braillatron/` always; `/etc/braillatron/` and system files after `braillatron-remount-rw` |
+
+Skip appliance lockdown during factory bring-up: `BRAILLATRON_APPLIANCE=0 sudo bash deploy/bootstrap-dietpi.sh`.
+
+### 6.3 Battery Policy
 
 | Threshold | Action |
 |-----------|--------|
 | 20% | One-time audio + haptic warning per session (UI reads `/run/braillatron/telemetry.json`) |
 | 5% | Block motion, flush RAM/coords/BRF, shutdown haptic, graceful power off; LTC2944 triggers `BRAILLATRON_LIMIT_BATTERY_CRITICAL` relay |
 
-### 6.3 Crash Reporting (Optional)
+### 6.4 Crash Reporting (Optional)
 
 Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Never** attach document text, SSIDs, or user paths — stack traces and hardware metrics only.
 
-### 6.4 OTA / A/B Updates — NOT YET ADDRESSED
+### 6.5 OTA / A/B Updates — NOT YET ADDRESSED
 
 > **Footnote:** Over-the-air A/B dual-bank updates (RAUC or Mender) are **not yet addressed**. Current deployment uses DietPi read-only root + `/data` transactional storage (`deploy/os/setup-overlay-ro.sh`). Future work must define partition layout and choose RAUC or Mender before client implementation.
 
-### 6.5 Dependencies
+### 6.6 Dependencies
 
 - **TTS:** eSpeak NG (Speech Dispatcher) — Piper excluded.
 - **STT:** Vosk-API + PipeWire capture.

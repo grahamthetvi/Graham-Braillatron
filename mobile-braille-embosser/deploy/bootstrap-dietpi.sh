@@ -66,6 +66,17 @@ systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
 
 bash "${ROOT}/deploy/os/setup-aux-audio.sh"
 
-echo "Bootstrap complete. Review overlay setup:"
-echo "  sudo bash ${ROOT}/deploy/os/setup-overlay-ro.sh"
-echo "Then reboot."
+if [[ "${BRAILLATRON_APPLIANCE:-1}" != "0" ]]; then
+  echo "Configuring production appliance mode..."
+  bash "${ROOT}/deploy/os/setup-appliance-mode.sh"
+else
+  echo "Appliance lockdown skipped (BRAILLATRON_APPLIANCE=0)."
+  echo "Optional manual overlay setup:"
+  echo "  sudo bash ${ROOT}/deploy/os/setup-overlay-ro.sh"
+fi
+
+if [[ "${BRAILLATRON_APPLIANCE:-1}" != "0" ]]; then
+  echo "Bootstrap complete. Reboot to run the locked production image."
+else
+  echo "Bootstrap complete. Reboot when ready (developer image: local login + writable root)."
+fi

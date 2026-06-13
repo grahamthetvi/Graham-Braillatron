@@ -10,7 +10,7 @@ SupplementaryGroups=input
 Environment=BRAILLATRON_CONFIG=/etc/braillatron
 Environment=SPEECHD_ADDRESS=unix_socket:/run/speech-dispatcher/speechd.sock
 ExecStart=/usr/local/bin/braillatron-ui /etc/braillatron/hardware.conf
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]

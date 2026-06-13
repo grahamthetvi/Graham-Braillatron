@@ -19,6 +19,7 @@ libbrlapi-dev
 liblouis-dev
 liblouis-data
 network-manager
+openssh-server
 bluez
 bluez-alsa-utils
 yt-dlp
