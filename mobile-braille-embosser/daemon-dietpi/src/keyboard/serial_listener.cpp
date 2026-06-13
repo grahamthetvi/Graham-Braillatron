@@ -297,13 +297,15 @@ void SerialListener::stop()
     }
 
     running_ = false;
-    if (worker_.joinable()) {
-        worker_.join();
+
+    const int fd = fd_;
+    fd_ = -1;
+    if (fd >= 0) {
+        close(fd);
     }
 
-    if (fd_ >= 0) {
-        close(fd_);
-        fd_ = -1;
+    if (worker_.joinable()) {
+        worker_.join();
     }
 
     connected_ = false;

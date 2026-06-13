@@ -92,6 +92,7 @@ void UiApp::stop()
     brf_store_.save();
     coord_store_.save();
     serial_link_.close();
+    output_hub_.release_backends();
     keyboard_.stop();
     hooks::set_app_registry(nullptr);
     hooks::set_output_hub(nullptr);

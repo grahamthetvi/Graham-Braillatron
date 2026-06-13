@@ -164,17 +164,18 @@ void EvdevInput::stop()
     }
 
     running_ = false;
+
+    const int fd = fd_;
+    fd_ = -1;
+    if (fd >= 0) {
+        if (grab_device_) {
+            ioctl(fd, EVIOCGRAB, 0);
+        }
+        close(fd);
+    }
+
     if (worker_.joinable()) {
         worker_.join();
-    }
-
-    if (grab_device_ && fd_ >= 0) {
-        ioctl(fd_, EVIOCGRAB, 0);
-    }
-
-    if (fd_ >= 0) {
-        close(fd_);
-        fd_ = -1;
     }
 
     connected_ = false;

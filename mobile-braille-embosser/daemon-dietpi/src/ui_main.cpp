@@ -41,6 +41,7 @@ std::string resolve_config_path(const std::string &base, const std::string &path
 
 int main(int argc, char *argv[])
 {
+    std::cerr << std::unitbuf;
     const std::string base = config_dir();
     const std::string hardware_path =
         argc > 1 ? argv[1] : resolve_config_path(base, "hardware.conf");
@@ -49,6 +50,7 @@ int main(int argc, char *argv[])
     std::signal(SIGTERM, handle_signal);
 
     try {
+        std::cerr << "[ui] loading configuration from " << base << "\n";
         const braillatron::hardware::HardwareConfig hardware =
             braillatron::hardware::load_hardware_config(hardware_path);
 
@@ -80,6 +82,7 @@ int main(int argc, char *argv[])
 
         braillatron::ui::UiApp app(resolved_hardware, keyboard_config, telemetry_config,
                                    kinematics_config, ui_config, ui_config_path);
+        std::cerr << "[ui] starting services\n";
         app.start();
 
         std::cerr << "braillatron-ui profile=" << resolved_hardware.board_profile << "\n";

@@ -40,24 +40,24 @@ public:
     explicit SpdTtsBackend(std::string voice)
         : voice_(std::move(voice))
     {
-        connection_ = spd_open("braillatron", "Braillatron UI", nullptr, SPD_MODE_THREADED);
-        if (connection_ != nullptr && !voice_.empty()) {
-            spd_set_synthesis_voice(connection_, voice_.c_str());
-        }
     }
 
     ~SpdTtsBackend() override
     {
         if (connection_ != nullptr) {
             spd_close(connection_);
+            connection_ = nullptr;
         }
     }
 
-    bool available() const override { return connection_ != nullptr; }
+    bool available() const override
+    {
+        return connect();
+    }
 
     void speak(const std::string &text) override
     {
-        if (connection_ == nullptr) {
+        if (!connect()) {
             std::cerr << "[tts] " << text << "\n";
             return;
         }
@@ -80,28 +80,69 @@ public:
 
     void set_rate(int rate) override
     {
+        pending_rate_ = rate;
         if (connection_ != nullptr) {
-            // ui.conf tts_rate is espeak WPM (~150 default); SPD voice rate is -100..100 (0 = normal).
-            int spd_rate = (rate - 150) * 100 / 250;
-            if (spd_rate < -100) {
-                spd_rate = -100;
-            } else if (spd_rate > 100) {
-                spd_rate = 100;
-            }
-            spd_set_voice_rate(connection_, spd_rate);
+            apply_rate(rate);
         }
     }
 
     void set_volume(int volume) override
     {
+        pending_volume_ = volume;
         if (connection_ != nullptr) {
             spd_set_volume(connection_, volume);
         }
     }
 
 private:
+    bool connect() const
+    {
+        if (connection_ != nullptr) {
+            return true;
+        }
+        if (connect_failed_) {
+            return false;
+        }
+
+        connection_ = spd_open("braillatron", "Braillatron UI", nullptr, SPD_MODE_THREADED);
+        if (connection_ == nullptr) {
+            connect_failed_ = true;
+            std::cerr << "[tts] Speech Dispatcher unavailable\n";
+            return false;
+        }
+
+        if (!voice_.empty()) {
+            spd_set_synthesis_voice(connection_, voice_.c_str());
+        }
+        if (pending_rate_ >= 0) {
+            apply_rate(pending_rate_);
+        }
+        if (pending_volume_ >= 0) {
+            spd_set_volume(connection_, pending_volume_);
+        }
+        return true;
+    }
+
+    void apply_rate(int rate) const
+    {
+        if (connection_ == nullptr) {
+            return;
+        }
+        // ui.conf tts_rate is espeak WPM (~150 default); SPD voice rate is -100..100 (0 = normal).
+        int spd_rate = (rate - 150) * 100 / 250;
+        if (spd_rate < -100) {
+            spd_rate = -100;
+        } else if (spd_rate > 100) {
+            spd_rate = 100;
+        }
+        spd_set_voice_rate(connection_, spd_rate);
+    }
+
     std::string voice_;
-    SPDConnection *connection_ = nullptr;
+    mutable SPDConnection *connection_ = nullptr;
+    mutable bool connect_failed_ = false;
+    int pending_rate_ = -1;
+    int pending_volume_ = -1;
 };
 #endif
 
@@ -409,15 +450,9 @@ TtsBackend *create_tts_backend(const UiConfig &config)
 #ifdef BRAILLATRON_A11Y
     if (config.tts_enabled) {
         auto *spd = new SpdTtsBackend(config.spd_voice);
-        if (spd->available()) {
-            spd->set_rate(config.tts_rate);
-            spd->set_volume(config.tts_volume);
-            return spd;
-        }
-        delete spd;
-        auto *espeak = new EspeakFallbackTtsBackend();
-        espeak->set_rate(config.tts_rate);
-        return espeak;
+        spd->set_rate(config.tts_rate);
+        spd->set_volume(config.tts_volume);
+        return spd;
     }
 #endif
     (void)config;

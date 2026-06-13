@@ -70,6 +70,8 @@ public:
 
     void apply_braille_grade_preset(documents::BrailleGradePreset preset);
 
+    void release_backends();
+
 private:
     void emit(const std::string &message);
     void persist_ui_config();

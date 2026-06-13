@@ -175,9 +175,20 @@ BrailleGradePreset next_braille_grade_preset(BrailleGradePreset preset)
 
 BrailleTranslationService::BrailleTranslationService(BrailleGradePreset preset)
     : preset_(preset)
+    , resolved_table_list_(preset_table_list_string(preset))
 {
+}
+
+void BrailleTranslationService::ensure_tables_ready()
+{
+    if (tables_verified_) {
+        return;
+    }
+
     refresh_table_list();
     available_ = verify_available();
+    tables_verified_ = true;
+
 #ifndef BRAILLATRON_HAS_LIBLOUIS
     std::cerr << "[liblouis] translation unavailable (rebuild with BRAILLATRON_LIBLOUIS=1)\n";
 #else
@@ -190,8 +201,9 @@ BrailleTranslationService::BrailleTranslationService(BrailleGradePreset preset)
 void BrailleTranslationService::set_grade_preset(BrailleGradePreset preset)
 {
     preset_ = preset;
-    refresh_table_list();
-    available_ = verify_available();
+    tables_verified_ = false;
+    resolved_table_list_ = preset_table_list_string(preset_);
+    ensure_tables_ready();
 }
 
 void BrailleTranslationService::refresh_table_list()
@@ -231,6 +243,8 @@ std::string BrailleTranslationService::translate_forward(const std::string &plai
         return {};
     }
 
+    const_cast<BrailleTranslationService *>(this)->ensure_tables_ready();
+
 #ifdef BRAILLATRON_HAS_LIBLOUIS
     if (!available_) {
         return plain;
@@ -269,6 +283,8 @@ std::optional<std::string> BrailleTranslationService::translate_backward_dots(
     if (dot_mask == 0) {
         return std::string(" ");
     }
+
+    const_cast<BrailleTranslationService *>(this)->ensure_tables_ready();
 
 #ifdef BRAILLATRON_HAS_LIBLOUIS
     if (!available_) {

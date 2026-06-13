@@ -48,6 +48,16 @@ void OutputHub::apply_braille_grade_preset(documents::BrailleGradePreset preset)
     emit(std::string("Braille grade: ") + documents::braille_grade_preset_display_label(preset));
 }
 
+void OutputHub::release_backends()
+{
+    tts_.reset();
+    braille_.reset();
+    stt_.reset();
+    haptics_.reset();
+    embosser_.reset();
+    morse_.reset();
+}
+
 OutputHub::~OutputHub() = default;
 
 void OutputHub::emit(const std::string &message)
