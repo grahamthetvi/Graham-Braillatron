@@ -1,6 +1,7 @@
 #include "ui_app.h"
 
 #include "../keyboard/global_hooks.h"
+#include "../telemetry/telemetry_bridge.h"
 
 #include <chrono>
 #include <iostream>
@@ -110,6 +111,7 @@ void UiApp::poll()
     keyboard_.poll();
     app_registry_.poll();
     refresh_status(false);
+    telemetry::sync_motion_gate_from_telemetry();
     output_hub_.check_battery_warning();
     send_heartbeat_if_due(now);
 

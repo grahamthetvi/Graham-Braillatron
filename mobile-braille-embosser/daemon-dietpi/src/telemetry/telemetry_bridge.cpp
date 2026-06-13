@@ -1,5 +1,7 @@
 #include "telemetry_bridge.h"
 
+#include "../motion_gate.h"
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -82,7 +84,28 @@ TelemetrySnapshot read_telemetry_json(const std::string &path)
     }
 
     snapshot.motion_blocked = json.find("\"motion_blocked\": true") != std::string::npos;
+
+    const std::string limit_key = "\"limit_status\":";
+    const size_t limit_pos = json.find(limit_key);
+    if (limit_pos != std::string::npos) {
+        snapshot.limit_status =
+            static_cast<uint8_t>(std::strtoul(json.c_str() + limit_pos + limit_key.size(), nullptr, 10));
+    }
+
     return snapshot;
+}
+
+void sync_motion_gate_from_telemetry(const std::string &path)
+{
+    const TelemetrySnapshot snap = read_telemetry_json(path);
+    if (!snap.motion_blocked) {
+        return;
+    }
+
+    const char *reason = (snap.limit_status & BRAILLATRON_LIMIT_BATTERY_CRITICAL) != 0
+                             ? "battery below critical threshold"
+                             : "motion blocked by telemetry policy";
+    MotionGate::block(reason);
 }
 
 } // namespace braillatron::telemetry

@@ -1,6 +1,7 @@
 #include "../../net/wikipedia_client.h"
 #include "../output_hub.h"
 #include "app_session.h"
+#include "app_util.h"
 #include "ui_context.h"
 
 #include "../../documents/liblouis_bridge.h"
@@ -13,13 +14,6 @@ namespace braillatron::ui {
 namespace {
 
 constexpr size_t kMaxAnnounceLen = 300;
-
-void announce(UiContext &ctx, const std::string &msg)
-{
-    if (ctx.output != nullptr) {
-        ctx.output->announce_message(msg);
-    }
-}
 
 std::string truncate_for_tts(const std::string &text)
 {

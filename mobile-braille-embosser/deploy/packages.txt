@@ -1,8 +1,11 @@
 speech-dispatcher
 speech-dispatcher-espeak-ng
+sound-icons
 espeak-ng
 espeak-ng-data
 brltty
+brltty-speechd
+dialog
 figlet
 kbd
 rsync

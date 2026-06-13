@@ -85,8 +85,19 @@ HAPTICS_OBJS := \
 	src/haptics/morse_encoder.o
 
 APP_OBJS := \
-	src/ui/apps/all_apps.o \
 	src/ui/apps/app_registry.o \
+	src/ui/apps/brailler_app.o \
+	src/ui/apps/calculator_app.o \
+	src/ui/apps/transcriber_app.o \
+	src/ui/apps/morse_learn_app.o \
+	src/ui/apps/network_app.o \
+	src/ui/apps/bluetooth_setup_app.o \
+	src/ui/apps/library_app.o \
+	src/ui/apps/localsend_app.o \
+	src/ui/apps/quick_status_inline.o \
+	src/ui/apps/morse_output_inline.o \
+	src/ui/apps/paper_nav_inline.o \
+	src/ui/apps/save_exit_inline.o \
 	src/ui/apps/wikipedia_app.o \
 	src/ui/apps/youtube_app.o \
 	src/ui/apps/messages_app.o
@@ -176,6 +187,11 @@ UI_TEST_OBJS := \
 
 MOTION_TEST_OBJS := $(KINEMATICS_OBJS) src/motion_gate.o src/motion_self_test.o
 
+MOTION_GATE_SYNC_TEST_OBJS := \
+	src/motion_gate.o \
+	src/telemetry/telemetry_bridge.o \
+	src/motion_gate_sync_self_test.o
+
 HOST_CHORD_TEST_OBJS := \
 	src/keyboard/host_chord_assembler.o \
 	src/keyboard/host_chord_self_test.o
@@ -219,7 +235,7 @@ LIBLOUIS_TEST_OBJS := \
 
 .PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test liblouis-test sentinel connectd ui-test install a11y liblouis display
 
-all: braillatron-ui braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-sentinel braillatron-connectd braillatron-ui-test
+all: braillatron-ui braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-sentinel braillatron-connectd braillatron-ui-test
 
 keyboard: braillatron-ui
 
@@ -238,6 +254,8 @@ liblouis-test: braillatron-liblouis-test
 
 motion-test: braillatron-motion-test
 
+motion-gate-sync-test: braillatron-motion-gate-sync-test
+
 host-chord-test: braillatron-host-chord-test
 
 wikipedia-test: braillatron-wikipedia-test
@@ -254,6 +272,7 @@ ui-test: braillatron-ui-test
 
 check: all
 	./braillatron-motion-test
+	./braillatron-motion-gate-sync-test
 	./braillatron-host-chord-test
 	./braillatron-wikipedia-test
 	./braillatron-audio-output-test
@@ -282,6 +301,9 @@ src/documents/liblouis_bridge_louis.o: src/documents/liblouis_bridge.cpp
 
 braillatron-motion-test: $(MOTION_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(MOTION_TEST_OBJS) -o $@
+
+braillatron-motion-gate-sync-test: $(MOTION_GATE_SYNC_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(MOTION_GATE_SYNC_TEST_OBJS) -o $@
 
 braillatron-host-chord-test: $(HOST_CHORD_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(HOST_CHORD_TEST_OBJS) -o $@
@@ -356,6 +378,6 @@ ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_T
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \
-		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-liblouis-test braillatron-sentinel braillatron-connectd
+		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-liblouis-test braillatron-sentinel braillatron-connectd
 
 -include $(ALL_OBJS:.o=.d)

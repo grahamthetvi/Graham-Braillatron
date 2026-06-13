@@ -1,6 +1,7 @@
 #include "../../connect/connect_client.h"
 #include "../../connect/json_utils.h"
 #include "app_session.h"
+#include "app_util.h"
 #include "ui_context.h"
 
 #include "../output_hub.h"
@@ -14,13 +15,6 @@
 
 namespace braillatron::ui {
 namespace {
-
-void announce(UiContext &ctx, const std::string &msg)
-{
-    if (ctx.output != nullptr) {
-        ctx.output->announce_message(msg);
-    }
-}
 
 enum class YoutubeState { Search, Results, Playing };
 
