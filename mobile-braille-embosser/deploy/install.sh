@@ -64,6 +64,10 @@ install -m 644 "${ROOT}/deploy/systemd/braillatron.target" "${SYSTEMD_DIR}/"
 
 systemctl daemon-reload
 systemctl enable braillatron.target
+systemctl enable braillatron-ui.service
+systemctl enable braillatron-console-ui.service
+systemctl enable braillatron-ui-stub.service
+systemctl enable braillatron-console-ready.service
 systemctl enable braillatron-sync.timer
 systemctl enable braillatron-bluetooth-autoconnect.timer
 systemctl disable NetworkManager-wait-online.service 2>/dev/null || true

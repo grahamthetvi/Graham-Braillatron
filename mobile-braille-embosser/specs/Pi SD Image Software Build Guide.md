@@ -24,8 +24,8 @@ After bootstrap, the SD card provides:
 | Settings overrides (RO root) | `/data/braillatron/settings/` |
 | Network credentials (YouTube, Signal, etc.) | `/data/braillatron/credentials/` |
 | Vosk STT model | `/data/braillatron/vosk-models/vosk-model-small-en-us-0.15/` |
-| RAM document layers | `/var/lib/braillatron/ram/` |
-| Coordinate session file | `/var/lib/braillatron/ram/coords.json` |
+| RAM document layers (ephemeral tmpfs) | `/var/lib/braillatron/ram/` — lost on reboot; synced to `/data` by `braillatron-sync.timer` |
+| Coordinate session file (ephemeral tmpfs) | `/var/lib/braillatron/ram/coords.json` |
 | Live telemetry (sentinel → UI) | `/run/braillatron/telemetry.json` |
 | Homing status (sentinel) | `/run/braillatron/homing.status` |
 | Connect IPC (connectd ↔ UI) | `/run/braillatron/connect.sock`, `/run/braillatron/connect.events` |
@@ -481,7 +481,29 @@ Maintenance helpers installed by the overlay script:
 - `sudo braillatron-remount-rw` — remount `/` read-write for edits
 - `sudo braillatron-remount-ro` — lock root read-only again
 
-`/data` and `/var/lib/braillatron` remain writable for documents and RAM layers.
+`/data` remains writable for documents, settings, and credentials. `/var/lib/braillatron` is a tmpfs mount (session RAM state) and is recreated empty on each boot.
+
+
+## Repair existing appliance images
+
+After pulling boot-hardening updates, re-apply appliance setup once (fixes duplicate fstab entries, read-only root, getty lockdown, and stale SPI overlay):
+
+```bash
+sudo braillatron-remount-rw    # skip if root is still rw
+cd ~/braillatron/mobile-braille-embosser
+git pull
+sudo bash deploy/os/setup-appliance-mode.sh
+grep -E 'tmpfs|/ ext4' /etc/fstab
+sudo reboot
+```
+
+After reboot, verify:
+
+```bash
+findmnt -o TARGET,OPTIONS / /var/lib/braillatron /tmp /data
+dmesg | grep -i 'duplicate entry'    # expect empty
+systemctl is-active braillatron-console-ui braillatron-ui braillatron-ui-stub
+```
 
 
 ## Manual build (without full bootstrap)
@@ -547,6 +569,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | No ncurses on HDMI after reboot | Check `ls /dev/spidev0.0` (SPI present skips console-ui); `test -f /etc/braillatron/appliance-headless && echo headless`; `systemctl show braillatron-console-ui -p ConditionResult`; run `sudo bash deploy/os/setup-appliance-mode.sh` and `sudo systemctl restart braillatron.target`. Images bootstrapped before SPI became opt-in may still have `spi-spidev` in `/boot/dietpiEnv.txt` without a HAT — remove it, reboot, or re-bootstrap without `BRAILLATRON_SPI_PANEL=1` |
 | No local login prompt after bootstrap | Expected in appliance mode — use SSH; re-flash or `BRAILLATRON_APPLIANCE=0` bootstrap for dev image |
 | SSH unreachable after bootstrap | Check IP and network (`nmcli dev wifi`); confirm `systemctl status ssh`; if locked out entirely, re-flash SD and use `BRAILLATRON_APPLIANCE=0` bootstrap for a dev image with local login |
+| `systemd-fstab-generator` duplicate entry warnings in `dmesg` | Duplicate `/tmp` or `/var/log` fstab lines (DietPi + braillatron); run `sudo bash deploy/os/setup-appliance-mode.sh` or `setup-overlay-ro.sh`, then reboot |
 | Cannot edit `/etc/braillatron/` over SSH | Run `sudo braillatron-remount-rw` first, then `sudo braillatron-remount-ro` when done |
 
 
@@ -559,7 +582,7 @@ flowchart TD
     MultiUser --> Target[braillatron.target]
     Target --> SpiCheck{spidev0.0?}
     SpiCheck -->|yes| UI[braillatron-ui SPI]
-    SpiCheck -->|no| HeadlessCheck{HEADLESS=1?}
+    SpiCheck -->|no| HeadlessCheck{appliance-headless?}
     HeadlessCheck -->|no| ConsoleUI[braillatron-console-ui HDMI ncurses]
     HeadlessCheck -->|yes| StubUI[braillatron-ui-stub TTS only]
     Target --> Sentinel[braillatron-sentinel]

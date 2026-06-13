@@ -73,7 +73,9 @@ bash "${ROOT}/deploy/os/setup-aux-audio.sh"
 
 if [[ "${BRAILLATRON_APPLIANCE:-1}" != "0" ]]; then
   echo "Configuring production appliance mode..."
-  BRAILLATRON_HEADLESS="${BRAILLATRON_HEADLESS:-0}" bash "${ROOT}/deploy/os/setup-appliance-mode.sh"
+  BRAILLATRON_HEADLESS="${BRAILLATRON_HEADLESS:-0}" \
+  BRAILLATRON_SPI_PANEL="${BRAILLATRON_SPI_PANEL:-0}" \
+    bash "${ROOT}/deploy/os/setup-appliance-mode.sh"
 else
   echo "Appliance lockdown skipped (BRAILLATRON_APPLIANCE=0)."
   echo "Optional manual overlay setup:"

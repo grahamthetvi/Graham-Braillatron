@@ -29,11 +29,13 @@ systemctl start ssh 2>/dev/null || systemctl start sshd 2>/dev/null || true
 echo "Disabling local console login (appliance mode)..."
 for unit in getty@tty1.service; do
   systemctl disable --now "${unit}" 2>/dev/null || true
+  systemctl mask "${unit}" 2>/dev/null || true
 done
 while IFS= read -r unit; do
   [[ -n "${unit}" ]] || continue
   systemctl disable --now "${unit}" 2>/dev/null || true
 done < <(systemctl list-unit-files 'serial-getty@*.service' --no-legend 2>/dev/null | awk '{print $1}')
+systemctl mask serial-getty@.service 2>/dev/null || true
 
 echo "Suppressing DietPi console login banner..."
 AUTOLOGIN_DROPIN="/etc/systemd/system/getty@tty1.service.d/dietpi-autologin.conf"
@@ -56,6 +58,7 @@ systemctl mask dietpi-postboot.service 2>/dev/null || true
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 HEADLESS="${BRAILLATRON_HEADLESS:-0}"
+SPI_PANEL="${BRAILLATRON_SPI_PANEL:-0}"
 install -d /etc/braillatron
 cat >/etc/braillatron/appliance.env <<EOF
 # Managed by setup-appliance-mode.sh — BRAILLATRON_HEADLESS=1 forces TTS-only (no HDMI ncurses).
@@ -66,7 +69,16 @@ if [[ "${HEADLESS}" == "1" ]]; then
 else
   rm -f /etc/braillatron/appliance-headless
 fi
-echo "Appliance env: BRAILLATRON_HEADLESS=${HEADLESS}"
+if [[ "${SPI_PANEL}" == "1" ]]; then
+  touch /etc/braillatron/appliance-spi
+else
+  rm -f /etc/braillatron/appliance-spi
+  if [[ -f /boot/dietpiEnv.txt ]] && grep -q 'spi-spidev' /boot/dietpiEnv.txt; then
+    sed -i 's/ spi-spidev//g; s/spi-spidev //g; s/^overlays=spi-spidev$/overlays=/' /boot/dietpiEnv.txt
+    echo "Removed stale spi-spidev overlay (no SPI panel configured)."
+  fi
+fi
+echo "Appliance env: BRAILLATRON_HEADLESS=${HEADLESS} BRAILLATRON_SPI_PANEL=${SPI_PANEL}"
 
 echo "Installing display routing (SPI / HDMI ncurses / headless stub)..."
 install -m 755 "${SCRIPT_DIR}/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
@@ -89,7 +101,7 @@ cd /
 sync
 if ! mount -o remount,ro /; then
   echo "Note: could not remount / read-only (mount point busy). Root stays writable until reboot." >&2
-  echo "  After reboot, tmpfs mounts apply and / is typically read-only from fstab." >&2
+  echo "  After reboot, fstab mounts / read-only and tmpfs volatile paths apply." >&2
 fi
 
 cat <<EOF
