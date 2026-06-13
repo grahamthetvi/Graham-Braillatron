@@ -27,7 +27,7 @@ For a new Cursor conversation, paste the **Suggested agent prompt** at the botto
 
 ## Phase 0 — Merge and deploy
 
-- [ ] Merge PR #3 (Multi-App Integration v1.2)
+- [x] Merge PR #3 (Multi-App Integration v1.2)
 - [ ] Run `deploy/bootstrap-dietpi.sh` or `deploy/install.sh` on Orange Pi 3B
 - [ ] Run `braillatron-verify-install` after install
 - [ ] Confirm packages installed: `yt-dlp`, `mpv`, `ffmpeg`
