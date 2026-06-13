@@ -27,8 +27,9 @@ For a new Cursor conversation, paste the **Suggested agent prompt** at the botto
 
 ## Phase 0 — Merge and deploy
 
-- [ ] Merge PR #1 (or rebase onto current `main`)
+- [ ] Merge PR #3 (Multi-App Integration v1.2)
 - [ ] Run `deploy/bootstrap-dietpi.sh` or `deploy/install.sh` on Orange Pi 3B
+- [ ] Run `braillatron-verify-install` after install
 - [ ] Confirm packages installed: `yt-dlp`, `mpv`, `ffmpeg`
 - [ ] Confirm `signal-cli` installed via `deploy/install-signal-cli.sh` (aarch64 native)
 - [ ] Confirm config installed: `/etc/braillatron/connect.conf`, `youtube.conf`, `messages.conf`
@@ -43,7 +44,7 @@ For a new Cursor conversation, paste the **Suggested agent prompt** at the botto
 ### connectd health
 
 - [ ] `systemctl status braillatron-connectd` — active, no crash loop
-- [ ] Settings → Accounts → **Connectivity status** announces "Connectd online"
+- [ ] Settings → Accounts → **Connectivity status** announces "Connect daemon online"
 - [ ] Socket exists: `/run/braillatron/connect.sock`
 - [ ] Event file writable: `/run/braillatron/connect.events`
 
@@ -76,19 +77,19 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 
 ### P0 — UI freeze / missed messages
 
-- [ ] **Non-blocking Signal link:** `signal.finish_link` currently blocks up to 120s on the connectd socket; UI freezes during Settings → Link Signal. Split into `start_link` + async `link_status` poll or event-driven completion.
-- [ ] **Global message events:** `ConnectClient::poll_events()` only runs inside YouTube/Messages apps. Move event drain to `UiApp::poll()` so inbound Signal messages announce from any foreground app.
+- [x] **Non-blocking Signal link:** `signal.finish_link` no longer blocks the UI. `signal.start_link` runs async via connectd job queue; `signal.link_status` polls state; `signal.link_completed` / `signal.link_failed` events announce completion.
+- [x] **Global message events:** `ConnectClient::poll_events()` runs in `UiApp::poll()`; inbound Signal messages announce from any foreground app.
 
 ### P1 — Reliability
 
-- [ ] **Signal account detection:** `linked_account()` directory scan may not match signal-cli layout under `XDG_DATA_HOME`. Validate on device; use `signal-cli listAccounts` if needed.
-- [ ] **mpv startup race:** Retry or wait for `/run/braillatron/mpv.sock` before accepting `youtube.play`.
-- [ ] **YouTube search shell escaping:** Escape special characters in queries passed to `yt-dlp` shell command (`youtube_backend.cpp`).
-- [ ] **Shift/TTS pause toggle:** Track mpv pause state; resume on key release when appropriate.
+- [x] **Signal account detection:** `linked_account()` scans data dir, nested `data/` layout, and falls back to `signal-cli listAccounts`.
+- [x] **mpv startup race:** `MpvService::ensure_started()` waits for IPC socket; YouTube play retries load after wait.
+- [x] **YouTube search shell escaping:** Search terms passed through shell-safe quoting in `youtube_backend.cpp`.
+- [x] **Shift/TTS pause toggle:** Hold Shift pauses via `media.set_pause`; release resumes (tracked in `OutputHub`).
 
 ### P2 — Build / test
 
-- [ ] **ui-test link:** Add connect objects (`connect_client`, `json_utils`, `connect_config`, `connect_defaults`) to `UI_TEST_OBJS` in `daemon-dietpi/Makefile`.
+- [x] **ui-test link:** Add connect objects (`connect_client`, `json_utils`, `connect_config`, `connect_defaults`) to `UI_TEST_OBJS` in `daemon-dietpi/Makefile`.
 - [ ] **signal-cli version pin:** Confirm `SIGNAL_CLI_VERSION` in `deploy/install-signal-cli.sh` matches a published aarch64 native release.
 
 ---
@@ -96,7 +97,7 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 ## Phase 3 — Production hardening
 
 - [ ] YouTube cookie missing/expired — TTS warning on app enter and periodic reminder
-- [ ] Quick Status inline — include connectd reachability alongside Wi-Fi/battery
+- [x] Quick Status inline — include connectd reachability alongside Wi-Fi/battery
 - [ ] yt-dlp rate limiting — `--sleep-requests` / backoff on HTTP 429
 - [ ] connectd reconnect — UI graceful message when sidecar dies mid-session
 - [ ] Credential dir permissions — enforce `0700` at connectd startup
@@ -109,18 +110,22 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 ### Connectivity
 
 - [ ] **LocalSend → credentials:** Wire `localsend.conf` scaffold to receive files into `credentials/incoming/`
-- [ ] **Async connect IPC:** Request IDs + event responses so UI never blocks on connectd
+- [x] **Async connect IPC:** Request IDs + `connect.response` events so UI never blocks on connectd long operations (`ConnectJobQueue`, `ConnectClient::request_async`)
 - [ ] **YouTube captions → Braille:** `yt-dlp --write-auto-subs` → text via OutputHub/embosser
 
 ### Library (from earlier feasibility work)
 
-- [ ] Public domain books — Gutendex search + Gutenberg download + BRF import (`library.conf`, `LibraryApp`)
+- [x] Public domain books — Gutendex search + Gutenberg download + EPUB/DAISY reading (`library.conf`, `LibraryApp`, `library_backend.cpp`)
+- [ ] BARD Public API integration
+- [ ] BARD patron-authenticated downloads
+- [ ] Bookshare integration
 - [ ] BARD Public API metadata search (`api.nlsbard.loc.gov`)
 - [ ] BARD patron-authenticated downloads (requires user account)
 
 ### Deferred integrations (not started)
 
-- [ ] Gmail / Delta Chat (email-shaped messaging)
+- [x] Gmail — OAuth device flow, inbox/read/compose/reply, archive/star/delete, BRF export (`gmail_backend.cpp`, `gmail_app.cpp`)
+- [ ] Delta Chat (email-shaped messaging)
 - [ ] WhatsApp / iMessage — not feasible on this platform; do not pursue unless product direction changes
 - [ ] YouTube Data API v3 OAuth — wrong API for playback; cookies remain the path
 
@@ -184,4 +189,8 @@ Do not edit the Cursor plan file; update the spec checklist as items complete.
 
 | Date | Change |
 |------|--------|
+| 2026-06-13 | P1 reliability fixes: signal listAccounts fallback, mpv socket wait, yt-dlp shell escape, Shift hold-to-pause |
+| 2026-06-13 | UX polish: Messages thread refresh, Quick Status connectd ping, Document Look up stub, verify-install script |
+| 2026-06-13 | Phases 2–8: Document STT, Contacts, Music, Weather, Podcasts/Radio, Library EPUB/DAISY/Gutendex, Gmail OAuth |
+| 2026-06-13 | Phase 0 connectd hardening: async IPC, non-blocking Signal link, global event polling |
 | 2026-06-11 | Initial checklist after Connectd v1 implementation |

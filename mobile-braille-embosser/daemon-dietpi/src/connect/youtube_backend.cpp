@@ -7,11 +7,30 @@
 
 namespace braillatron::connect {
 
-YoutubeBackend::YoutubeBackend(YoutubeConfig config, ConnectConfig connect_config, EventWriter *events)
+namespace {
+
+std::string shell_escape(const std::string &value)
+{
+    std::string out = "'";
+    for (char ch : value) {
+        if (ch == '\'') {
+            out += "'\\''";
+        } else {
+            out += ch;
+        }
+    }
+    out += "'";
+    return out;
+}
+
+} // namespace
+
+YoutubeBackend::YoutubeBackend(YoutubeConfig config, ConnectConfig connect_config, MpvService *mpv,
+                               EventWriter *events)
     : config_(std::move(config))
     , connect_config_(std::move(connect_config))
+    , mpv_(mpv)
     , events_(events)
-    , mpv_(connect_config_.mpv_socket_path)
 {
 }
 
@@ -55,10 +74,11 @@ std::string YoutubeBackend::search(const std::string &query)
         return "{\"ok\":false,\"error\":\"youtube disabled\"}";
     }
 
+    const std::string search_term =
+        "ytsearch" + std::to_string(config_.search_limit) + ":" + query;
     const std::string cmd = config_.ytdlp_path +
                             " --flat-playlist --dump-json --no-warnings --ignore-errors" +
-                            ytdlp_cookie_args() + " \"ytsearch" +
-                            std::to_string(config_.search_limit) + ":" + query + "\" 2>/dev/null";
+                            ytdlp_cookie_args() + " " + shell_escape(search_term) + " 2>/dev/null";
 
     const std::string output = run_command(cmd);
     std::ostringstream results;
@@ -89,32 +109,21 @@ std::string YoutubeBackend::search(const std::string &query)
     return results.str();
 }
 
-bool YoutubeBackend::start_mpv()
-{
-    if (mpv_proc_.pid > 0) {
-        return true;
-    }
-    const std::string cmd = config_.mpv_path + " --idle=yes --no-video --ao=" + config_.mpv_ao +
-                            " --input-ipc-server=" + connect_config_.mpv_socket_path + cookie_args() +
-                            " >/dev/null 2>&1";
-    mpv_proc_ = spawn_background(cmd);
-    return mpv_proc_.pid > 0;
-}
-
-void YoutubeBackend::stop_mpv()
-{
-    mpv_.stop();
-    mpv_proc_.stop();
-}
-
 std::string YoutubeBackend::play(const std::string &url)
 {
     if (!config_.enabled) {
         return "{\"ok\":false,\"error\":\"youtube disabled\"}";
     }
-    start_mpv();
+    if (mpv_ == nullptr || !mpv_->ensure_started()) {
+        return "{\"ok\":false,\"error\":\"mpv start failed\"}";
+    }
     paused_ = false;
-    if (!mpv_.load_url(url)) {
+    mpv_->mark_playing();
+    bool loaded = mpv_->ipc().load_url(url);
+    if (!loaded) {
+        loaded = mpv_->ensure_started() && mpv_->ipc().load_url(url);
+    }
+    if (!loaded) {
         return "{\"ok\":false,\"error\":\"mpv load failed\"}";
     }
     if (events_ != nullptr) {
@@ -125,22 +134,22 @@ std::string YoutubeBackend::play(const std::string &url)
 
 std::string YoutubeBackend::pause_toggle()
 {
-    if (paused_) {
-        mpv_.resume();
-        paused_ = false;
-        if (events_ != nullptr) {
-            events_->emit("youtube.playing", "{}");
-        }
-        return "{\"ok\":true,\"paused\":false}";
+    if (mpv_ == nullptr) {
+        return "{\"ok\":false,\"error\":\"mpv unavailable\"}";
     }
-    mpv_.pause();
-    paused_ = true;
-    return "{\"ok\":true,\"paused\":true}";
+    mpv_->pause_toggle();
+    paused_ = mpv_->is_paused();
+    if (!paused_ && events_ != nullptr) {
+        events_->emit("youtube.playing", "{}");
+    }
+    return "{\"ok\":true,\"paused\":" + std::string(paused_ ? "true" : "false") + "}";
 }
 
 std::string YoutubeBackend::stop()
 {
-    mpv_.stop();
+    if (mpv_ != nullptr) {
+        mpv_->ipc().stop();
+    }
     paused_ = false;
     if (events_ != nullptr) {
         events_->emit("youtube.ended", "{}");

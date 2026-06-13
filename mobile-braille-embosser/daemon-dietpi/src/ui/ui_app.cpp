@@ -30,8 +30,13 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
                   &motion_service_, &braille_service_)
     , connect_client_(braillatron::connect::default_connect_config().socket_path,
                       braillatron::connect::default_connect_config().event_path)
+    , timer_service_("/data/braillatron/timer/state.json")
     , keyboard_(keyboard_config_)
 {
+    timer_service_.set_alert_handler([this](const std::string &message) {
+        output_hub_.announce_message(message);
+        output_hub_.play_boundary_haptic();
+    });
     coord_store_.load();
     brf_store_.load();
 
@@ -46,6 +51,7 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     ui_context_.braille = &braille_service_;
     ui_context_.registry = &app_registry_;
     ui_context_.connect = &connect_client_;
+    ui_context_.timer = &timer_service_;
 
     app_registry_.set_context(ui_context_);
     output_hub_.set_app_registry(&app_registry_);
@@ -109,6 +115,11 @@ void UiApp::poll()
 
     const uint64_t now = now_ms();
     keyboard_.poll();
+    connect_client_.poll_events([this](const braillatron::connect::ConnectEvent &event) {
+        output_hub_.on_connect_event(event);
+        app_registry_.on_connect_event(event);
+    });
+    timer_service_.tick(now);
     app_registry_.poll();
     refresh_status(false);
     telemetry::sync_motion_gate_from_telemetry();

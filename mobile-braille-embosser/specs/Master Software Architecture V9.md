@@ -71,7 +71,7 @@ Take primary control of embosser head and paper feed. Launched from the main app
 | **Brailler** | `.brf` document editor; edit modes; worksheet auto-record | `apps/brailler_app.cpp` |
 | **Calculator** | Nemeth math; char/silent/space-affirm audio modes | `apps/calculator_app.cpp` |
 | **Transcriber** | Vosk STT → liblouis → emboss; buffer failsafe | `apps/transcriber_app.cpp` |
-| **Library** | BARD, Bookshare, public domain (scaffold) | `apps/library_app.cpp` |
+| **Library** | EPUB/DAISY reading, Gutendex public domain search | `library_app.cpp`, `library_store.cpp`, `library_backend.cpp` |
 | **Morse Learning** | Morse alphabet lessons and quiz via haptics | `apps/morse_learn_app.cpp` |
 | **Network & Devices** | Wi-Fi scan/connect via NetworkManager; BT list stub | `apps/network_app.cpp` |
 | **LocalSend** | Local file transfer (scaffold) | `apps/localsend_app.cpp` |
@@ -362,6 +362,7 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 | Deaf-blind menu parity | Implemented | `OutputHub::emit` policy |
 | App registry / Standalone-Inline | Implemented | `app_registry.cpp` |
 | Brailler + edit FSM | Implemented | `brailler_app.cpp`, `edit_session.cpp` |
+| Document dictation (PTT → BRF) | Implemented | `brailler_app.cpp`, Settings toggle |
 | Coordinate memory | Implemented | `coordinate_state.cpp` |
 | Boot homing | Implemented | `homing_service.cpp` |
 | Calculator Nemeth | Implemented | `calculator_app.cpp` |
@@ -371,7 +372,17 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 | connectd sidecar | Implemented (needs device validation) | `connect/`, `braillatron-connectd.service` |
 | YouTube audio app | Implemented (needs device validation) | `youtube_app.cpp`, `youtube_backend.cpp` |
 | Signal messaging app | Implemented (needs device validation) | `messages_app.cpp`, `signal_backend.cpp` |
-| Library / LocalSend | Scaffold | `library_app.cpp`, `localsend_app.cpp` |
+| Timer (inline) | Implemented | `timer_service.cpp`, `timer_inline.cpp` |
+| Dictionary (offline) | Implemented | `dictionary_store.cpp`, `dictionary_app.cpp` |
+| Spelling (offline) | Implemented | `spelling_list_store.cpp`, `spelling_app.cpp` |
+| Contacts (offline) | Implemented | `contacts_store.cpp`, `contacts_app.cpp` |
+| Local Music Player | Implemented | `music_backend.cpp`, `music_app.cpp`, shared `mpv_service.cpp` |
+| Weather | Implemented | `weather_backend.cpp`, `weather_app.cpp`, Open-Meteo cache |
+| Podcasts | Implemented | `rss_backend.cpp`, `podcasts_app.cpp`, OPML import, shared mpv |
+| Internet Radio | Implemented | `radio_backend.cpp`, `radio_app.cpp`, ICY metadata, favorites |
+| connectd async IPC + global poll | Implemented | `connect_job_queue.cpp`, `connect_client.cpp`, `ui_app.cpp` |
+| Library / LocalSend | **Implemented** (EPUB/DAISY/Gutendex; BARD/Bookshare deferred) | `library_app.cpp`, `library_store.cpp`, `library_backend.cpp`, `localsend_app.cpp` |
+| Gmail | Implemented (needs device validation) | `gmail_app.cpp`, `gmail_backend.cpp`, OAuth device flow, BRF export to `documents/gmail/` |
 | Inter-processor protocol v1 | Implemented | `shared/protocol.h`, firmware + daemon parsers |
 | Telemetry JSON bridge | Implemented | `telemetry_bridge.cpp` |
 | 20% battery warning | Implemented | `telemetry_sentinel.cpp`, UI poll |

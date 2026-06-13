@@ -17,6 +17,7 @@ namespace braillatron::ui {
 
 class AppRegistry;
 class OutputHub;
+class TimerService;
 
 struct UiContext {
     OutputHub *output = nullptr;
@@ -28,6 +29,7 @@ struct UiContext {
     documents::BrailleTranslationService *braille = nullptr;
     AppRegistry *registry = nullptr;
     connect::ConnectClient *connect = nullptr;
+    TimerService *timer = nullptr;
 };
 
 } // namespace braillatron::ui

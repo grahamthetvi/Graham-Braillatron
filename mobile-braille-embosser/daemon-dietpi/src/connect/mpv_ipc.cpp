@@ -50,6 +50,11 @@ bool MpvIpc::load_url(const std::string &url)
     return playing_;
 }
 
+bool MpvIpc::seek_seconds(double seconds)
+{
+    return send_command("{\"command\":[\"seek\"," + std::to_string(seconds) + ",\"absolute\"]}");
+}
+
 bool MpvIpc::pause()
 {
     playing_ = false;

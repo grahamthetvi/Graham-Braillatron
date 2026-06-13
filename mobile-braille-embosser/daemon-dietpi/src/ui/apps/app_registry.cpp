@@ -3,6 +3,8 @@
 #include "all_apps.h"
 #include "../output_hub.h"
 
+#include "../../connect/connect_client.h"
+
 namespace braillatron::ui {
 
 AppRegistry::AppRegistry()
@@ -18,7 +20,16 @@ AppRegistry::AppRegistry()
     register_app(make_library_app());
     register_app(make_localsend_app());
     register_app(make_wikipedia_app());
+    register_app(make_dictionary_app());
+    register_app(make_spelling_app());
+    register_app(make_contacts_app());
+    register_app(make_music_app());
+    register_app(make_weather_app());
+    register_app(make_podcasts_app());
+    register_app(make_radio_app());
+    register_app(make_gmail_app());
     register_app(make_quick_status_inline());
+    register_app(make_timer_inline());
     register_app(make_morse_output_inline());
     register_app(make_paper_nav_inline());
     register_app(make_save_exit_inline());
@@ -55,6 +66,36 @@ bool AppRegistry::enter(const std::string &id)
     return false;
 }
 
+bool AppRegistry::enter_inline(const std::string &id)
+{
+    if (active_inline_ != nullptr) {
+        active_inline_->on_exit(ctx_);
+        active_inline_ = nullptr;
+    }
+    for (const auto &app : apps_) {
+        if (app->id() == id && app->kind() == AppKind::Inline) {
+            active_inline_ = app.get();
+            active_inline_->on_enter(ctx_);
+            if (ctx_.output != nullptr) {
+                ctx_.output->sync_chrome(false);
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+void AppRegistry::exit_inline()
+{
+    if (active_inline_ != nullptr) {
+        active_inline_->on_exit(ctx_);
+        active_inline_ = nullptr;
+        if (ctx_.output != nullptr) {
+            ctx_.output->sync_chrome(false);
+        }
+    }
+}
+
 void AppRegistry::exit()
 {
     if (active_ != nullptr) {
@@ -76,6 +117,9 @@ bool AppRegistry::switch_app(const std::string &id)
 
 void AppRegistry::poll()
 {
+    if (active_inline_ != nullptr) {
+        active_inline_->on_poll(ctx_);
+    }
     if (active_ != nullptr) {
         active_->on_poll(ctx_);
     }
@@ -83,6 +127,10 @@ void AppRegistry::poll()
 
 void AppRegistry::on_chord(uint8_t dot_mask)
 {
+    if (active_inline_ != nullptr) {
+        active_inline_->on_chord(dot_mask, ctx_);
+        return;
+    }
     if (active_ != nullptr) {
         active_->on_chord(dot_mask, ctx_);
     }
@@ -90,6 +138,10 @@ void AppRegistry::on_chord(uint8_t dot_mask)
 
 void AppRegistry::on_text(const std::string &text)
 {
+    if (active_inline_ != nullptr) {
+        active_inline_->on_text(text, ctx_);
+        return;
+    }
     if (active_ != nullptr) {
         active_->on_text(text, ctx_);
     }
@@ -97,8 +149,22 @@ void AppRegistry::on_text(const std::string &text)
 
 void AppRegistry::on_control(keyboard::ControlKey key, bool pressed)
 {
+    if (active_inline_ != nullptr) {
+        active_inline_->on_control(key, pressed, ctx_);
+        return;
+    }
     if (active_ != nullptr) {
         active_->on_control(key, pressed, ctx_);
+    }
+}
+
+void AppRegistry::on_connect_event(const braillatron::connect::ConnectEvent &event)
+{
+    if (active_inline_ != nullptr) {
+        active_inline_->on_connect_event(event, ctx_);
+    }
+    if (active_ != nullptr) {
+        active_->on_connect_event(event, ctx_);
     }
 }
 
@@ -181,15 +247,25 @@ std::vector<MenuItem> AppRegistry::build_inline_menu()
             {},
             [this, app_id](MenuOverlay &mo) {
                 (void)mo;
-                for (const auto &candidate : apps_) {
-                    if (candidate->id() == app_id) {
-                        candidate->on_enter(ctx_);
-                        break;
-                    }
+                enter_inline(app_id);
+            },
+        });
+    }
+
+    if (active_ != nullptr && active_->id() == "brailler") {
+        items.push_back(MenuItem {
+            "Look up word",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (ctx_.output != nullptr) {
+                    ctx_.output->announce_message(
+                        "Word lookup from Document is not available yet. Use the Dictionary app.");
                 }
             },
         });
     }
+
     return items;
 }
 

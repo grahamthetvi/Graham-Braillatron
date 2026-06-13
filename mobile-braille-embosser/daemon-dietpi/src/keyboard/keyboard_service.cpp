@@ -263,7 +263,7 @@ void KeyboardService::handle_chord(uint8_t dot_mask)
         text = braille_service_->translate_backward_dots(dot_mask);
     }
 
-    if (hooks::standalone_app_active()) {
+    if (hooks::standalone_app_active() || hooks::inline_app_active()) {
         hooks::on_app_chord(dot_mask);
         if (text.has_value()) {
             hooks::on_app_text(*text);
@@ -305,7 +305,7 @@ void KeyboardService::handle_control_edge(const ControlEdge &edge)
         if (edge.pressed) {
             if (menu_open) {
                 hooks::on_menu_move(true);
-            } else if (hooks::standalone_app_active()) {
+            } else if (hooks::standalone_app_active() || hooks::inline_app_active()) {
                 hooks::on_app_control(edge.key, edge.pressed);
             } else {
                 focus_.on_dpad_up();
@@ -316,7 +316,7 @@ void KeyboardService::handle_control_edge(const ControlEdge &edge)
         if (edge.pressed) {
             if (menu_open) {
                 hooks::on_menu_move(false);
-            } else if (hooks::standalone_app_active()) {
+            } else if (hooks::standalone_app_active() || hooks::inline_app_active()) {
                 hooks::on_app_control(edge.key, edge.pressed);
             } else {
                 focus_.on_dpad_down();
@@ -327,7 +327,7 @@ void KeyboardService::handle_control_edge(const ControlEdge &edge)
         if (edge.pressed) {
             if (menu_open) {
                 hooks::on_menu_back();
-            } else if (hooks::standalone_app_active()) {
+            } else if (hooks::standalone_app_active() || hooks::inline_app_active()) {
                 hooks::on_app_control(edge.key, edge.pressed);
             } else {
                 focus_.on_backspace();
@@ -338,7 +338,7 @@ void KeyboardService::handle_control_edge(const ControlEdge &edge)
         if (edge.pressed) {
             if (menu_open) {
                 hooks::on_menu_activate();
-            } else if (hooks::standalone_app_active()) {
+            } else if (hooks::standalone_app_active() || hooks::inline_app_active()) {
                 hooks::on_app_control(edge.key, edge.pressed);
             } else {
                 focus_.on_enter();

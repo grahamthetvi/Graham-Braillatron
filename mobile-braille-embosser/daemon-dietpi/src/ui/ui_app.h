@@ -10,6 +10,7 @@
 #include "../platform/device_status.h"
 #include "../platform/serial_link.h"
 #include "../telemetry/telemetry_config.h"
+#include "../ui/timer_service.h"
 #include "../ui/apps/app_registry.h"
 #include "../ui/apps/ui_context.h"
 #include "../ui/output_hub.h"
@@ -67,6 +68,7 @@ private:
 
     OutputHub output_hub_;
     connect::ConnectClient connect_client_;
+    TimerService timer_service_;
     AppRegistry app_registry_;
     UiContext ui_context_;
     keyboard::KeyboardService keyboard_;

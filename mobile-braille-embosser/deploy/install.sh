@@ -43,10 +43,30 @@ install -m 644 "${ROOT}/deploy/config/localsend.conf" "${CONFIG_DIR}/localsend.c
 install -m 644 "${ROOT}/deploy/config/connect.conf" "${CONFIG_DIR}/connect.conf"
 install -m 644 "${ROOT}/deploy/config/youtube.conf" "${CONFIG_DIR}/youtube.conf"
 install -m 644 "${ROOT}/deploy/config/messages.conf" "${CONFIG_DIR}/messages.conf"
+install -m 644 "${ROOT}/deploy/config/dictionary.conf" "${CONFIG_DIR}/dictionary.conf"
+install -m 644 "${ROOT}/deploy/config/spelling.conf" "${CONFIG_DIR}/spelling.conf"
+install -m 644 "${ROOT}/deploy/config/contacts.conf" "${CONFIG_DIR}/contacts.conf"
+install -m 644 "${ROOT}/deploy/config/music.conf" "${CONFIG_DIR}/music.conf"
+install -m 644 "${ROOT}/deploy/config/weather.conf" "${CONFIG_DIR}/weather.conf"
+install -m 644 "${ROOT}/deploy/config/podcasts.conf" "${CONFIG_DIR}/podcasts.conf"
+install -m 644 "${ROOT}/deploy/config/radio.conf" "${CONFIG_DIR}/radio.conf"
+install -m 644 "${ROOT}/deploy/config/gmail.conf" "${CONFIG_DIR}/gmail.conf"
+
+install -d /usr/share/braillatron/radio
+install -m 644 "${ROOT}/deploy/radio/stations.json" /usr/share/braillatron/radio/stations.json
 
 install -d /var/lib/braillatron/ram
 install -d /data/braillatron/documents /data/braillatron/settings /data/braillatron/vosk-models || true
-install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/credentials/signal-cli || true
+install -d /data/braillatron/timer /data/braillatron/dictionary /data/braillatron/spelling-lists /data/braillatron/spelling-sessions /data/braillatron/contacts/import /data/braillatron/music /data/braillatron/weather /data/braillatron/podcasts/import /data/braillatron/podcasts/downloads /data/braillatron/radio /data/braillatron/library/books /data/braillatron/library/import /data/braillatron/library/state /data/braillatron/documents/gmail || true
+install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/credentials/signal-cli /data/braillatron/credentials/gmail || true
+
+install -m 755 "${ROOT}/deploy/install-dictionary-data.sh" "${PREFIX}/bin/braillatron-install-dictionary-data"
+install -m 755 "${ROOT}/deploy/install-spelling-data.sh" "${PREFIX}/bin/braillatron-install-spelling-data"
+install -m 755 "${ROOT}/deploy/install-gmail-oauth.sh" "${PREFIX}/bin/braillatron-install-gmail-oauth"
+install -m 755 "${ROOT}/deploy/verify-install.sh" "${PREFIX}/bin/braillatron-verify-install"
+bash "${ROOT}/deploy/install-dictionary-data.sh"
+bash "${ROOT}/deploy/install-spelling-data.sh"
+bash "${ROOT}/deploy/install-gmail-oauth.sh"
 
 install -m 755 "${ROOT}/deploy/os/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
 install -m 755 "${ROOT}/deploy/os/braillatron-tty1-launch.sh" /usr/local/sbin/braillatron-tty1-launch.sh
@@ -76,4 +96,5 @@ systemctl enable braillatron-bluetooth-autoconnect.timer
 bash "${ROOT}/deploy/os/setup-networkmanager.sh"
 
 echo "Installed Braillatron to ${PREFIX}/bin and ${CONFIG_DIR}"
+echo "Verify with: braillatron-verify-install"
 echo "Start with: systemctl start braillatron.target"

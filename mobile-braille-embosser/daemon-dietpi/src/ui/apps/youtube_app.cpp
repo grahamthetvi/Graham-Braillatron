@@ -35,6 +35,7 @@ public:
         query_.clear();
         results_.clear();
         selected_ = 0;
+        pending_announce_.clear();
         if (ctx.connect != nullptr) {
             const std::string status = ctx.connect->request("accounts.status");
             if (braillatron::connect::json_get_bool(status, "youtube_cookies", false)) {
@@ -58,20 +59,23 @@ public:
 
     void on_poll(UiContext &ctx) override
     {
-        if (ctx.connect == nullptr) {
-            return;
+        if (!pending_announce_.empty()) {
+            announce(ctx, pending_announce_);
+            pending_announce_.clear();
         }
-        ctx.connect->poll_events([this, &ctx](const braillatron::connect::ConnectEvent &event) {
-            if (event.type == "youtube.ended") {
-                state_ = YoutubeState::Results;
-            }
-            if (event.type == "youtube.playing" && ctx.output != nullptr) {
-                ctx.output->set_media_playing(true);
-            }
-            if (event.type == "youtube.ended" && ctx.output != nullptr) {
+    }
+
+    void on_connect_event(const braillatron::connect::ConnectEvent &event, UiContext &ctx) override
+    {
+        if (event.type == "youtube.ended") {
+            state_ = YoutubeState::Results;
+            if (ctx.output != nullptr) {
                 ctx.output->set_media_playing(false);
             }
-        });
+        }
+        if (event.type == "youtube.playing" && ctx.output != nullptr) {
+            ctx.output->set_media_playing(true);
+        }
     }
 
     void on_chord(uint8_t, UiContext &ctx) override
@@ -132,34 +136,42 @@ public:
 private:
     void run_search(UiContext &ctx)
     {
-        const std::string response = ctx.connect->request(
-            "youtube.search",
-            "\"query\":\"" + braillatron::connect::json_escape(query_) + "\"");
-        results_.clear();
-        selected_ = 0;
+        if (ctx.connect == nullptr) {
+            announce(ctx, "Connectivity unavailable");
+            return;
+        }
+        announce(ctx, "Searching");
+        const std::string query = query_;
+        ctx.connect->request_async(
+            "youtube.search", "\"query\":\"" + braillatron::connect::json_escape(query) + "\"",
+            [this, query](const std::string &response) {
+                (void)query;
+                results_.clear();
+                selected_ = 0;
 
-        const size_t arr = response.find("\"results\":[");
-        if (arr == std::string::npos) {
-            announce(ctx, "Search failed");
-            return;
-        }
-        const size_t end = response.find(']', arr);
-        const std::string array = response.substr(arr + 10, end - arr - 10);
-        for (const auto &obj : braillatron::connect::json_split_objects("[" + array + "]")) {
-            YoutubeResultItem item;
-            item.title = braillatron::connect::json_get_string(obj, "title");
-            item.url = braillatron::connect::json_get_string(obj, "url");
-            if (!item.title.empty()) {
-                results_.push_back(std::move(item));
-            }
-        }
-        if (results_.empty()) {
-            announce(ctx, "No results");
-            return;
-        }
-        state_ = YoutubeState::Results;
-        announce(ctx, "Found " + std::to_string(results_.size()) + " results");
-        announce(ctx, "1. " + results_.front().title);
+                const size_t arr = response.find("\"results\":[");
+                if (arr == std::string::npos) {
+                    pending_announce_ = "Search failed";
+                    return;
+                }
+                const size_t end = response.find(']', arr);
+                const std::string array = response.substr(arr + 10, end - arr - 10);
+                for (const auto &obj : braillatron::connect::json_split_objects("[" + array + "]")) {
+                    YoutubeResultItem item;
+                    item.title = braillatron::connect::json_get_string(obj, "title");
+                    item.url = braillatron::connect::json_get_string(obj, "url");
+                    if (!item.title.empty()) {
+                        results_.push_back(std::move(item));
+                    }
+                }
+                if (results_.empty()) {
+                    pending_announce_ = "No results";
+                    return;
+                }
+                state_ = YoutubeState::Results;
+                pending_announce_ = "Found " + std::to_string(results_.size()) + " results. 1. " +
+                                    results_.front().title;
+            });
     }
 
     void play_selected(UiContext &ctx)
@@ -182,6 +194,7 @@ private:
     std::string compose_;
     std::vector<YoutubeResultItem> results_;
     size_t selected_ = 0;
+    std::string pending_announce_;
 };
 
 } // namespace

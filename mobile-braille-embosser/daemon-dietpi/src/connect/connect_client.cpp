@@ -1,5 +1,6 @@
 #include "connect_client.h"
 
+#include "connect_async.h"
 #include "json_utils.h"
 
 #include <cstring>
@@ -16,7 +17,7 @@ ConnectClient::ConnectClient(std::string socket_path, std::string event_path)
 {
 }
 
-std::string ConnectClient::request(const std::string &cmd, const std::string &extra_fields)
+std::string ConnectClient::request_with_payload(const std::string &payload)
 {
     const int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
@@ -38,17 +39,8 @@ std::string ConnectClient::request(const std::string &cmd, const std::string &ex
         return "{\"ok\":false,\"error\":\"connectd unavailable\"}";
     }
 
-    std::string payload = "{\"cmd\":\"" + json_escape(cmd) + "\"";
-    if (!extra_fields.empty()) {
-        if (extra_fields.front() == ',') {
-            payload += extra_fields;
-        } else {
-            payload += "," + extra_fields;
-        }
-    }
-    payload += "}\n";
-
-    send(fd, payload.c_str(), payload.size(), 0);
+    const std::string line = payload.back() == '\n' ? payload : payload + "\n";
+    send(fd, line.c_str(), line.size(), 0);
 
     std::string response;
     char buffer[8192];
@@ -58,8 +50,51 @@ std::string ConnectClient::request(const std::string &cmd, const std::string &ex
         response += buffer;
     }
     close(fd);
-    connected_ = json_get_string(response, "ok") == "true" || cmd == "ping";
+    connected_ = json_get_bool(response, "ok", false) ||
+                 json_get_string(response, "service") == "connectd";
     return response;
+}
+
+std::string ConnectClient::request(const std::string &cmd, const std::string &extra_fields)
+{
+    std::string payload = "{\"cmd\":\"" + json_escape(cmd) + "\"";
+    if (!extra_fields.empty()) {
+        if (extra_fields.front() == ',') {
+            payload += extra_fields;
+        } else {
+            payload += "," + extra_fields;
+        }
+    }
+    payload += "}";
+    return request_with_payload(payload);
+}
+
+void ConnectClient::request_async(const std::string &cmd, const std::string &extra_fields,
+                                  AsyncCallback callback)
+{
+    const std::string request_id = generate_request_id();
+    std::string payload = "{\"cmd\":\"" + json_escape(cmd) + "\",\"request_id\":\"" +
+                          json_escape(request_id) + "\"";
+    if (!extra_fields.empty()) {
+        if (extra_fields.front() == ',') {
+            payload += extra_fields;
+        } else {
+            payload += "," + extra_fields;
+        }
+    }
+    payload += "}";
+
+    const std::string response = request_with_payload(payload);
+    if (!json_get_bool(response, "pending", false)) {
+        if (callback) {
+            callback(response);
+        }
+        return;
+    }
+
+    if (callback) {
+        pending_[request_id] = std::move(callback);
+    }
 }
 
 bool ConnectClient::ping()
@@ -97,8 +132,36 @@ void ConnectClient::poll_events(const std::function<void(const ConnectEvent &)> 
             }
         }
         if (!event.type.empty()) {
+            dispatch_async_response(event);
             handler(event);
         }
+    }
+}
+
+void ConnectClient::dispatch_async_response(const ConnectEvent &event)
+{
+    if (event.type != "connect.response") {
+        return;
+    }
+    const std::string request_id = json_get_string(event.data_json, "request_id");
+    if (request_id.empty()) {
+        return;
+    }
+    const auto it = pending_.find(request_id);
+    if (it == pending_.end()) {
+        return;
+    }
+    AsyncCallback callback = std::move(it->second);
+    pending_.erase(it);
+    if (callback) {
+        callback(event.data_json);
+    }
+}
+
+void ConnectClient::register_pending_for_test(const std::string &request_id, AsyncCallback callback)
+{
+    if (callback) {
+        pending_[request_id] = std::move(callback);
     }
 }
 

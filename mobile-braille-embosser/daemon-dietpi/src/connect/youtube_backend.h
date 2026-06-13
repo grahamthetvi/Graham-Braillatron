@@ -2,8 +2,7 @@
 
 #include "connect_config.h"
 #include "event_writer.h"
-#include "mpv_ipc.h"
-#include "subprocess.h"
+#include "mpv_service.h"
 
 #include <string>
 #include <vector>
@@ -18,7 +17,8 @@ struct YoutubeResult {
 
 class YoutubeBackend {
 public:
-    YoutubeBackend(YoutubeConfig config, ConnectConfig connect_config, EventWriter *events);
+    YoutubeBackend(YoutubeConfig config, ConnectConfig connect_config, MpvService *mpv,
+                   EventWriter *events);
 
     bool cookies_present() const;
     void poll_cookie_import();
@@ -26,8 +26,6 @@ public:
     std::string play(const std::string &url);
     std::string pause_toggle();
     std::string stop();
-    bool start_mpv();
-    void stop_mpv();
 
 private:
     std::string cookie_args() const;
@@ -35,9 +33,8 @@ private:
 
     YoutubeConfig config_;
     ConnectConfig connect_config_;
+    MpvService *mpv_;
     EventWriter *events_;
-    MpvIpc mpv_;
-    ManagedProcess mpv_proc_;
     bool paused_ = false;
 };
 
