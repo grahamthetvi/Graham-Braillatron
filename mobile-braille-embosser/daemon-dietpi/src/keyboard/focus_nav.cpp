@@ -71,6 +71,11 @@ const std::string &FocusNavigator::input_buffer() const
     return input_buffer_;
 }
 
+const std::vector<std::string> &FocusNavigator::entries() const
+{
+    return entries_;
+}
+
 void FocusNavigator::set_activate_handler(FocusActivateHandler handler)
 {
     activate_handler_ = std::move(handler);

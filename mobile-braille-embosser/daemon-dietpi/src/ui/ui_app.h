@@ -16,6 +16,7 @@
 #include "../connect/connect_client.h"
 #include "../connect/connect_defaults.h"
 #include "../documents/liblouis_bridge.h"
+#include "../ui/display/display_config.h"
 #include "../ui/ui_config.h"
 #include "../keyboard/keyboard_config.h"
 #include "../keyboard/keyboard_service.h"
@@ -33,7 +34,8 @@ public:
           telemetry::TelemetryConfig telemetry_config,
           kinematics::KinematicsConfig kinematics_config,
           UiConfig ui_config,
-          std::string ui_config_path);
+          std::string ui_config_path,
+          DisplayConfig display_config);
 
     void start();
     void stop();
@@ -50,6 +52,7 @@ private:
     telemetry::TelemetryConfig telemetry_config_;
     UiConfig ui_config_;
     std::string ui_config_path_;
+    DisplayConfig display_config_;
     documents::BrailleTranslationService braille_service_;
 
     platform::DeviceStatus device_status_;

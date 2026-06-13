@@ -40,6 +40,7 @@ Whenever focus changes or a word is announced, the Output Hub distributes conten
 |---------|---------------------|--------|
 | TTS | eSpeak NG via Speech Dispatcher; MAX98357A I2S + 3.5 mm jack | `output_hub.cpp`, `backend.cpp` |
 | Refreshable Braille | BRLTTY brlapi + liblouis forward translation | `backend.cpp`, `liblouis_bridge.cpp` |
+| Visual Display | ST7789 SPI panel (240×240) + ncurses dev fallback; UI chrome | `ui/display/*`, `output_hub.cpp` |
 | Embosser | Solenoid stagger head via `MotionService` | `motion_service.cpp`, `emboss_scheduler.cpp` |
 | Haptics | DRV2605L LRA; Morse timed pulses | `drv2605l.cpp`, `morse_encoder.cpp` |
 
@@ -338,6 +339,7 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 | Spec Item | Status | Module |
 |-----------|--------|--------|
 | ScreenReader focus nav | Implemented | `focus_nav.cpp` |
+| Visual display (UI chrome) | Implemented | `ui/display/*`, `output_hub.cpp` |
 | Menu overlay | Implemented | `menu_overlay.cpp` |
 | Output Hub TTS/BRL/STT/Haptics | Implemented | `output_hub.cpp` |
 | Embosser output channel | Implemented | `EmbosserBackend`, `motion_service.cpp` |

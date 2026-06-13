@@ -179,15 +179,15 @@ sudo bash deploy/bootstrap-dietpi.sh
 
 This script runs, in order:
 
-1. **`apt install`** — packages from `deploy/packages.txt` (build tools, Speech Dispatcher, BRLTTY, PipeWire, gpiod, parted, rsync, mpv, yt-dlp, etc.)
+1. **`apt install`** — packages from `deploy/packages.txt` (build tools, Speech Dispatcher, BRLTTY, BlueZ, gpiod, parted, rsync, mpv, yt-dlp, etc.)
 2. **I2S overlay** — adds `rk3566-i2s1-overlay` to the `overlays=` line in `/boot/dietpiEnv.txt` (MAX98357A audio; see Skeleton Build Guide)
 3. **`/data` partition** — `deploy/os/setup-data-partition.sh` creates an ext4 partition labeled `braillatron-data` in unallocated tail space (requires ≥ 768 MB free at the disk end; does not shrink root)
 4. **libvosk** — `deploy/install-vosk-lib.sh` installs the prebuilt aarch64 Vosk library (not in Debian apt)
 5. **Build + install** — `deploy/install.sh` compiles with `BRAILLATRON_A11Y=1`, installs binaries, configs, and systemd units
 6. **signal-cli (optional)** — `deploy/install-signal-cli.sh` for Messages app; skipped gracefully if it fails
 7. **Vosk model** — downloads `vosk-model-small-en-us-0.15` (~40 MB) to `/data/braillatron/vosk-models/`
-8. **Accessibility stack** — enables `speech-dispatcher`, `brltty`, `pipewire`, `wireplumber`
-9. **ALSA default** — appends I2S routing snippet to `/etc/asound.conf`
+8. **Accessibility stack** — enables `speech-dispatcher`, `brltty`, `NetworkManager`
+9. **Audio default** — `setup-aux-audio.sh` routes ALSA + TTS to the 3.5 mm aux jack; optional Bluetooth via `setup-bluetooth-audio.sh`
 
 Bootstrap takes several minutes on first run (apt + compile + model download).
 
@@ -236,46 +236,50 @@ With default `allow_missing_arduino=true` in `hardware.conf`, the UI daemon **st
 Status is logged to the journal and announced through the Output Hub (TTS/braille when those backends are available).
 
 
-## Bluetooth speaker (no I2S amp)
+## Audio output (aux default, Bluetooth optional)
 
-Production hardware uses a **MAX98357A I2S amp** (see Skeleton Build Guide). Bootstrap also points ALSA at `hw:1,0` — if that amp is not wired, **TTS will be silent** even though the UI daemon is healthy.
-
-For bench testing with a **Bluetooth speaker** (or USB / 3.5 mm jack), re-route audio through PipeWire:
+Bootstrap configures the **3.5 mm aux jack** as the default route (ALSA + Speech Dispatcher). This works on a skeleton bench without I2S or Bluetooth.
 
 ```bash
-cd ~/braillatron/mobile-braille-embosser   # or your clone path
-sudo bash deploy/os/setup-bluetooth-audio.sh
-```
+# Restore aux default after experiments or a freeze:
+sudo bash deploy/os/recover-bluetooth-audio.sh
+# same as:
+sudo bash deploy/os/setup-aux-audio.sh
 
-If you see `failed to connect to user scope bus`, enable linger and start the user manager, then re-run (or reboot once after the first run):
-
-```bash
-sudo loginctl enable-linger root
-sudo systemctl start user@0.service
-sudo bash deploy/os/setup-bluetooth-audio.sh
-```
-
-Then pair the speaker and set it as the default sink:
-
-```bash
-bluetoothctl
-# power on → agent on → default-agent → scan on
-# pair / trust / connect <MAC>
-# quit
-
-wpctl status
-wpctl set-default <sink-id>    # the Bluetooth device
-
-# If wpctl cannot connect, prefix runtime dir (headless SSH):
-# XDG_RUNTIME_DIR=/run/user/0 wpctl status
-
-spd-say "Braillatron Bluetooth test"
+speaker-test -t sine -f 440 -c 1 -l 1   # Ctrl+C to stop
+spd-say "Braillatron aux test"
 sudo systemctl restart braillatron-ui
 ```
 
-You should hear startup speech ("Braillatron ready", missing-device notices, "Document"). YouTube playback in connectd also uses Pulse and will follow the same default sink.
+Switch outputs anytime:
 
-To revert to built-in I2S later, restore `/etc/asound.conf` from the `.bak.*` file the script creates and set `AudioOutputMethod "alsa"` in `/etc/speech-dispatcher/speechd.conf`.
+```bash
+sudo braillatron-audio-select aux          # 3.5 mm jack (default)
+sudo braillatron-audio-select bluetooth  # paired BT speaker (BlueALSA)
+sudo braillatron-audio-select i2s        # MAX98357A I2S amp (production)
+sudo braillatron-audio-select status
+```
+
+From the device menu (F9 → Settings):
+
+- **Audio output** — switch between aux jack, Bluetooth speaker, and I2S amplifier; reconnect a saved Bluetooth speaker
+- **Pair Bluetooth speaker** — enter the speaker MAC address (colons optional); pairs, saves, and switches to Bluetooth output
+
+SSH scripts above remain for advanced recovery and bench setup.
+
+**Optional Bluetooth** (does not change default until you select it):
+
+```bash
+sudo bash deploy/os/setup-bluetooth-audio.sh
+# pair your speaker, then:
+sudo braillatron-audio-select bluetooth
+spd-say "Braillatron Bluetooth test"
+sudo braillatron-audio-select aux   # back to aux jack
+```
+
+Bluetooth uses **BlueALSA** (system service) instead of PipeWire user sessions, which avoids headless SSH freezes.
+
+Production hardware with the **MAX98357A I2S amp** still uses `rk3566-i2s1-overlay` in `/boot/dietpiEnv.txt`; run `sudo braillatron-audio-select i2s` after wiring.
 
 
 ## Testing on the Pi
@@ -287,7 +291,7 @@ Feedback channels:
 | Channel | How to use |
 | --- | --- |
 | **Journal logs** | `journalctl -u braillatron-ui -f` |
-| **Speech** | TTS on startup and focus changes (I2S amp, Bluetooth, or other PipeWire sink + Speech Dispatcher) |
+| **Speech** | TTS on startup and focus changes (aux jack, Bluetooth, or I2S + Speech Dispatcher) |
 | **Braille display** | BRLTTY when a display is connected |
 
 ### SSH vs physical keyboard
@@ -430,7 +434,8 @@ make host-chord-test && ./braillatron-host-chord-test
 | --- | --- |
 | `/etc/braillatron/braillatron.conf` | Master config directory pointer |
 | `/etc/braillatron/hardware.conf` | Arduino serial path, `allow_missing_arduino`, motion enable, board profile |
-| `/etc/braillatron/ui.conf` | TTS, braille, STT, haptics; Vosk model path |
+| `/etc/braillatron/ui.conf` | TTS, braille, STT, haptics, visual display toggle; Vosk model path |
+| `/etc/braillatron/display.conf` | Visual display backend (`auto`/`spi`/`ncurses`/`stub`), `/dev/spidev0.0`, GPIO placeholders |
 | `/etc/braillatron/telemetry.conf` | I2C, GPIO limit sensors, persistence paths |
 | `/etc/braillatron/keyboard.conf` | Pi-side keyboard service; `evdev_enabled` for USB bench input |
 | `/etc/braillatron/matrix_map.conf` | Maps Arduino key-state bits to logical key names |
@@ -456,8 +461,9 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | `keyboard: no input sources available` | Set `evdev_enabled=true` or connect Arduino |
 | Build fails on `spd_set_rate` | Update source — Trixie uses `spd_set_voice_rate` (fixed in current tree) |
 | Build fails on `-lvosk` | Re-run `sudo bash deploy/install-vosk-lib.sh`; confirm `aarch64` |
-| No speech | `systemctl status speech-dispatcher`; `spd-say test`; I2S overlay in `/boot/dietpiEnv.txt`; or run `deploy/os/setup-bluetooth-audio.sh` for BT |
-| No audio on speaker | `aplay -l`; `/etc/asound.conf`; I2S wiring (Skeleton Guide) **or** Bluetooth setup script above |
+| No speech | `systemctl status speech-dispatcher`; `spd-say test`; `sudo braillatron-audio-select status`; aux jack + `/etc/asound.conf` |
+| No audio on aux | `aplay -l`; `sudo bash deploy/os/setup-aux-audio.sh`; try `Braillatron_AUX_CARD=1 sudo braillatron-audio-select aux` if card 0 is wrong |
+| Bluetooth silent | `sudo braillatron-audio-select bluetooth`; `bluetoothctl connect <MAC>`; `systemctl status bluealsa` |
 | DietPi-Upgrade fails: "No space left on device" | Root stayed at the small flashed size; run `sudo bash deploy/os/expand-root-reserve-data.sh`, then `sudo apt-get clean && sudo dpkg --configure -a` |
 | `git: command not found` on fresh DietPi | Install git: `sudo apt update && sudo apt install -y git`, or use Step 3 Option B (rsync) |
 | Bootstrap fails: "Not enough unallocated space" | DietPi filled the card; re-flash and run `sudo python3 deploy/prepare-sd-card.py --shrink-if-needed` on your PC (Step 1) |

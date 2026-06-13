@@ -3,6 +3,7 @@
 #include "telemetry/telemetry_config.h"
 #include "ui/ui_app.h"
 #include "ui/ui_config.h"
+#include "ui/display/display_config.h"
 #include "keyboard/keyboard_config.h"
 
 #include <csignal>
@@ -79,9 +80,12 @@ int main(int argc, char *argv[])
         const std::string ui_config_path = resolve_config_path(base, "ui.conf");
         const braillatron::ui::UiConfig ui_config =
             braillatron::ui::load_ui_config(ui_config_path);
+        const braillatron::ui::DisplayConfig display_config =
+            braillatron::ui::load_display_config(resolve_config_path(base, "display.conf"));
 
         braillatron::ui::UiApp app(resolved_hardware, keyboard_config, telemetry_config,
-                                   kinematics_config, ui_config, ui_config_path);
+                                   kinematics_config, ui_config, ui_config_path,
+                                   display_config);
         std::cerr << "[ui] starting services\n";
         app.start();
 

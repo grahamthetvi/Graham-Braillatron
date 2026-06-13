@@ -26,10 +26,33 @@ endif
 BACKEND_CXXFLAGS := $(LOUIS_CXXFLAGS) $(A11Y_CXXFLAGS)
 BACKEND_LIBS := $(LOUIS_LIBS) $(A11Y_LIBS)
 
+DISPLAY_LIBS :=
+DISPLAY_CXXFLAGS :=
+ifeq ($(BRAILLATRON_DISPLAY),1)
+DISPLAY_CXXFLAGS += -DBRAILLATRON_DISPLAY
+DISPLAY_LIBS += -lncurses
+endif
+ifeq ($(shell pkg-config --exists libgpiod 2>/dev/null && echo yes),yes)
+DISPLAY_CXXFLAGS += -DBRAILLATRON_GPIOD
+DISPLAY_LIBS += -lgpiod
+endif
+BACKEND_LIBS += $(DISPLAY_LIBS)
+BACKEND_CXXFLAGS += $(DISPLAY_CXXFLAGS)
+
+DISPLAY_OBJS := \
+	src/ui/display/ui_chrome_model.o \
+	src/ui/display/chrome_renderer.o \
+	src/ui/display/display_config.o \
+	src/ui/display/display_backend.o \
+	src/ui/display/font8x8_basic.o \
+	src/ui/display/display_st7789.o \
+	src/ui/display/display_ncurses.o
+
 PLATFORM_OBJS := \
 	src/platform/device_status.o \
 	src/platform/serial_link.o \
-	src/platform/shell_util.o
+	src/platform/shell_util.o \
+	src/platform/audio_output.o
 
 NET_OBJS := \
 	src/net/wikipedia_client.o
@@ -96,6 +119,7 @@ UI_OBJS := \
 	src/telemetry/system_shutdown.o \
 	src/telemetry/telemetry_bridge.o \
 	src/ui/ui_config.o \
+	$(DISPLAY_OBJS) \
 	src/ui/backends/backend.o \
 	src/ui/menu_overlay.o \
 	src/ui/output_hub.o \
@@ -135,11 +159,13 @@ UI_TEST_OBJS := \
 	src/telemetry/system_shutdown.o \
 	src/telemetry/telemetry_bridge.o \
 	src/ui/ui_config.o \
+	$(DISPLAY_OBJS) \
 	src/ui/backends/backend.o \
 	src/ui/menu_overlay.o \
 	src/ui/output_hub.o \
 	src/connect/connect_client.o \
 	src/connect/json_utils.o \
+	src/keyboard/focus_nav.o \
 	src/ui_self_test.o
 
 MOTION_TEST_OBJS := $(KINEMATICS_OBJS) src/motion_gate.o src/motion_self_test.o
@@ -152,6 +178,17 @@ WIKIPEDIA_TEST_OBJS := \
 	src/platform/shell_util.o \
 	src/net/wikipedia_client.o \
 	src/net/wikipedia_self_test.o
+
+AUDIO_OUTPUT_TEST_OBJS := \
+	src/platform/audio_output.o \
+	src/platform/shell_util.o \
+	src/platform/audio_output_self_test.o
+
+DISPLAY_TEST_OBJS := \
+	src/ui/display/ui_chrome_model.o \
+	src/ui/display/chrome_renderer.o \
+	src/ui/menu_overlay.o \
+	src/display_self_test.o
 
 TELEMETRY_OBJS := \
 	../shared/protocol.o \
@@ -174,13 +211,16 @@ LIBLOUIS_TEST_OBJS := \
 	src/documents/liblouis_bridge_louis.o \
 	src/documents/liblouis_self_test.o
 
-.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test liblouis-test sentinel connectd ui-test install a11y liblouis
+.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test liblouis-test sentinel connectd ui-test install a11y liblouis display
 
-all: braillatron-ui braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-sentinel braillatron-connectd braillatron-ui-test
+all: braillatron-ui braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-sentinel braillatron-connectd braillatron-ui-test
 
 keyboard: braillatron-ui
 
 ui: braillatron-ui
+
+display:
+	$(MAKE) BRAILLATRON_DISPLAY=1 braillatron-ui braillatron-display-test
 
 a11y:
 	$(MAKE) BRAILLATRON_A11Y=1 all
@@ -196,6 +236,10 @@ host-chord-test: braillatron-host-chord-test
 
 wikipedia-test: braillatron-wikipedia-test
 
+audio-output-test: braillatron-audio-output-test
+
+display-test: braillatron-display-test
+
 sentinel: braillatron-sentinel
 
 connectd: braillatron-connectd
@@ -206,6 +250,8 @@ check: all
 	./braillatron-motion-test
 	./braillatron-host-chord-test
 	./braillatron-wikipedia-test
+	./braillatron-audio-output-test
+	./braillatron-display-test
 	./braillatron-ui-test
 
 check-liblouis:
@@ -237,6 +283,12 @@ braillatron-host-chord-test: $(HOST_CHORD_TEST_OBJS)
 braillatron-wikipedia-test: $(WIKIPEDIA_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(WIKIPEDIA_TEST_OBJS) -o $@
 
+braillatron-audio-output-test: $(AUDIO_OUTPUT_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(AUDIO_OUTPUT_TEST_OBJS) -o $@
+
+braillatron-display-test: $(DISPLAY_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(DISPLAY_TEST_OBJS) -o $@
+
 braillatron-sentinel: $(TELEMETRY_OBJS)
 	$(CXX) $(CXXFLAGS) $(TELEMETRY_OBJS) -o $@
 
@@ -245,6 +297,9 @@ braillatron-connectd: $(CONNECTD_OBJS)
 
 ../shared/protocol.o: ../shared/protocol.c ../shared/protocol.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c ../shared/protocol.c -o $@
+
+src/display_self_test.o: src/display_self_test.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
 src/%.o: src/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
@@ -285,13 +340,16 @@ src/ui/apps/%.o: src/ui/apps/%.cpp
 src/ui/backends/%.o: src/ui/backends/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
 
+src/ui/display/%.o: src/ui/display/%.cpp
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(BACKEND_CXXFLAGS) -c $< -o $@
+
 src/connect/%.o: src/connect/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \
-		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-liblouis-test braillatron-sentinel braillatron-connectd
+		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-liblouis-test braillatron-sentinel braillatron-connectd
 
 -include $(ALL_OBJS:.o=.d)

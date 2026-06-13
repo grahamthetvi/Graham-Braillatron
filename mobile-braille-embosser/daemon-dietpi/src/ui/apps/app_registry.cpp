@@ -12,6 +12,7 @@ AppRegistry::AppRegistry()
     register_app(make_transcriber_app());
     register_app(make_morse_learn_app());
     register_app(make_network_app());
+    register_app(make_bluetooth_setup_app());
     register_app(make_youtube_app());
     register_app(make_messages_app());
     register_app(make_library_app());
@@ -45,6 +46,9 @@ bool AppRegistry::enter(const std::string &id)
             }
             active_ = app.get();
             active_->on_enter(ctx_);
+            if (ctx_.output != nullptr) {
+                ctx_.output->sync_chrome(false);
+            }
             return true;
         }
     }
@@ -56,6 +60,9 @@ void AppRegistry::exit()
     if (active_ != nullptr) {
         active_->on_exit(ctx_);
         active_ = nullptr;
+        if (ctx_.output != nullptr) {
+            ctx_.output->sync_chrome(false);
+        }
     }
 }
 
@@ -135,6 +142,30 @@ std::vector<MenuItem> AppRegistry::build_launcher_menu()
         },
     });
     return items;
+}
+
+std::vector<std::string> AppRegistry::launcher_labels() const
+{
+    std::vector<std::string> labels;
+    for (const auto &app : apps_) {
+        if (app->kind() != AppKind::Standalone) {
+            continue;
+        }
+        labels.push_back(app->label());
+    }
+    labels.push_back("Settings");
+    labels.push_back("Power");
+    return labels;
+}
+
+std::string AppRegistry::launcher_id_for_label(const std::string &label) const
+{
+    for (const auto &app : apps_) {
+        if (app->kind() == AppKind::Standalone && app->label() == label) {
+            return app->id();
+        }
+    }
+    return "";
 }
 
 std::vector<MenuItem> AppRegistry::build_inline_menu()

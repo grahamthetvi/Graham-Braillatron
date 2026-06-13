@@ -12,19 +12,21 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
              telemetry::TelemetryConfig telemetry_config,
              kinematics::KinematicsConfig kinematics_config,
              UiConfig ui_config,
-             std::string ui_config_path)
+             std::string ui_config_path,
+             DisplayConfig display_config)
     : hardware_(std::move(hardware))
     , keyboard_config_(std::move(keyboard_config))
     , telemetry_config_(std::move(telemetry_config))
     , ui_config_(std::move(ui_config))
     , ui_config_path_(std::move(ui_config_path))
+    , display_config_(std::move(display_config))
     , braille_service_(documents::braille_grade_preset_from_string(ui_config_.braille_table))
     , serial_link_(hardware_.arduino_device, hardware_.baud_rate)
     , motion_service_(std::move(kinematics_config))
     , brf_store_("/var/lib/braillatron/ram/layer1.brf")
     , coord_store_("/var/lib/braillatron/ram/coords.json")
-    , output_hub_(ui_config_, telemetry_config_, ui_config_path_, &motion_service_,
-                  &braille_service_)
+    , output_hub_(ui_config_, telemetry_config_, ui_config_path_, display_config_,
+                  &motion_service_, &braille_service_)
     , connect_client_(braillatron::connect::default_connect_config().socket_path,
                       braillatron::connect::default_connect_config().event_path)
     , keyboard_(keyboard_config_)
@@ -60,8 +62,8 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
         output_hub_.announce_status_report(status_report_);
     });
 
-    keyboard_.focus_nav().set_entries({"Document", "Calculator", "Transcriber", "Wikipedia",
-                                       "Network", "YouTube", "Messages", "Settings", "Power"});
+    keyboard_.focus_nav().set_entries(app_registry_.launcher_labels());
+    output_hub_.set_focus_nav(&keyboard_.focus_nav());
 
     keyboard_.focus_nav().set_focus_changed_handler(
         [this](const std::string &label, bool at_boundary) {
@@ -124,7 +126,7 @@ void UiApp::refresh_status(bool force_log)
     }
 
     last_status_probe_ms_ = now;
-    status_report_ = device_status_.probe(hardware_, telemetry_config_, ui_config_);
+    status_report_ = device_status_.probe(hardware_, telemetry_config_, ui_config_, display_config_);
     device_status_.log_report(status_report_, force_log);
 
     if (!keyboard_.serial_connected() && !serial_missing_announced_) {
@@ -162,11 +164,6 @@ void UiApp::handle_activate(size_t index, const std::string &label)
 {
     (void)index;
 
-    if (label == "System Status") {
-        output_hub_.announce_status_report(status_report_);
-        return;
-    }
-
     if (label == "Settings") {
         output_hub_.on_menu_overlay(true);
         return;
@@ -177,32 +174,9 @@ void UiApp::handle_activate(size_t index, const std::string &label)
         return;
     }
 
-    if (label == "Document") {
-        app_registry_.enter("brailler");
-        return;
-    }
-    if (label == "Calculator") {
-        app_registry_.enter("calculator");
-        return;
-    }
-    if (label == "Transcriber") {
-        app_registry_.enter("transcriber");
-        return;
-    }
-    if (label == "Network") {
-        app_registry_.enter("network");
-        return;
-    }
-    if (label == "Wikipedia") {
-        app_registry_.enter("wikipedia");
-        return;
-    }
-    if (label == "YouTube") {
-        app_registry_.enter("youtube");
-        return;
-    }
-    if (label == "Messages") {
-        app_registry_.enter("messages");
+    const std::string app_id = app_registry_.launcher_id_for_label(label);
+    if (!app_id.empty()) {
+        app_registry_.enter(app_id);
         return;
     }
 

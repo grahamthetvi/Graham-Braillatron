@@ -1,5 +1,7 @@
 #include "menu_overlay.h"
 
+#include "display/ui_chrome_model.h"
+
 #include <utility>
 
 namespace braillatron::ui {
@@ -143,6 +145,29 @@ MenuLevel &MenuOverlay::current_level()
 const MenuLevel &MenuOverlay::current_level() const
 {
     return stack_.back();
+}
+
+size_t MenuOverlay::focus_index() const
+{
+    if (!open_ || stack_.empty()) {
+        return 0;
+    }
+    return current_level().focus_index;
+}
+
+std::vector<std::string> MenuOverlay::current_item_labels() const
+{
+    std::vector<std::string> labels;
+    if (!open_ || stack_.empty()) {
+        return labels;
+    }
+
+    const MenuLevel &level = current_level();
+    labels.reserve(level.items.size());
+    for (const MenuItem &item : level.items) {
+        labels.push_back(resolve_menu_item_label(item));
+    }
+    return labels;
 }
 
 } // namespace braillatron::ui

@@ -70,6 +70,8 @@ UiConfig load_ui_config(const std::string &path)
             config.deaf_blind_menu_parity = parse_bool(value);
         } else if (key == "morse_output_enabled") {
             config.morse_output_enabled = parse_bool(value);
+        } else if (key == "display_enabled") {
+            config.display_enabled = parse_bool(value);
         } else if (key == "spd_voice") {
             config.spd_voice = value;
         } else if (key == "vosk_model_path") {
@@ -112,6 +114,7 @@ void save_ui_config(const std::string &path, const UiConfig &config)
     stream << "deaf_blind_menu_parity=" << (config.deaf_blind_menu_parity ? "true" : "false")
            << "\n";
     stream << "morse_output_enabled=" << (config.morse_output_enabled ? "true" : "false") << "\n";
+    stream << "display_enabled=" << (config.display_enabled ? "true" : "false") << "\n";
     stream << "\n";
     stream << "spd_voice=" << config.spd_voice << "\n";
     stream << "vosk_model_path=" << config.vosk_model_path << "\n";

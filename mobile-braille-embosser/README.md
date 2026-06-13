@@ -11,13 +11,14 @@ This guide gets you from a fresh clone to a working UI on a Linux dev machine us
 | Feature | Works on a dev PC? |
 | --- | --- |
 | Focus navigation (home screen apps) | Yes |
+| Visual display (UI chrome, ncurses bench) | Yes (`make display` or `BRAILLATRON_DISPLAY=1`) |
 | Global menu overlay | Yes |
 | Braille chord timing (40 ms window) | Yes (`make host-chord-test`) |
 | Braille dots → letters | Needs liblouis (see below) |
 | Motion / embossing | No (`motion_enabled=false` in skeleton config) |
 | TTS / braille display / STT | Stub backends log to stderr unless you build with `BRAILLATRON_A11Y=1` |
 
-All UI feedback is printed to the terminal as `[ui]`, `[tts]`, and `[braille]` lines. You do not need speakers or a refreshable display to develop.
+All UI feedback is printed to the terminal as `[ui]`, `[tts]`, `[braille]`, and `[display]` lines. You do not need speakers or a refreshable display to develop. With `make display`, navigation chrome also renders in the terminal via ncurses when stdout is a TTY.
 
 ## Prerequisites
 
@@ -36,7 +37,13 @@ cd mobile-braille-embosser/daemon-dietpi
 make braillatron-ui
 ```
 
-This produces `braillatron-ui` with stub accessibility backends. Other useful targets:
+This produces `braillatron-ui` with stub accessibility backends. For terminal visual chrome during bench development:
+
+```bash
+make display   # BRAILLATRON_DISPLAY=1 — ncurses UI chrome when stdout is a TTY
+```
+
+Other useful targets:
 
 ```bash
 make check                                              # build + run all host self-tests
@@ -172,7 +179,8 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 | `hardware.conf` | Serial device, `allow_missing_arduino`, motion enable |
 | `keyboard.conf` | Serial + evdev bench input |
 | `evdev_map.conf` | USB key → logical key map (edit for non-QWERTY layouts) |
-| `ui.conf` | TTS, braille, STT, haptics toggles |
+| `ui.conf` | TTS, braille, STT, haptics toggles, visual display toggle |
+| `display.conf` | SPI panel backend (`auto`/`spi`/`ncurses`/`stub`), spidev path, GPIO placeholders |
 
 Production paths on the Pi are under `/etc/braillatron/`. See the [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) for deployment, **testing on the Pi** (no GUI, journal + TTS), bench keyboard setup, and rebuild/update steps.
 

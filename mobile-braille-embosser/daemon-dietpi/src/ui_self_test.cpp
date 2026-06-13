@@ -2,6 +2,7 @@
 #include "hardware/hardware_config.h"
 #include "platform/device_status.h"
 #include "telemetry/telemetry_config.h"
+#include "ui/display/display_config.h"
 #include "ui/output_hub.h"
 #include "ui/ui_config.h"
 
@@ -14,17 +15,20 @@ int main()
 
     braillatron::telemetry::TelemetryConfig telemetry {};
     braillatron::ui::UiConfig ui_config {};
+    ui_config.display_enabled = true;
+    braillatron::ui::DisplayConfig display_config {};
 
     braillatron::platform::DeviceStatus status;
     const braillatron::platform::DeviceStatusReport report =
-        status.probe(hardware, telemetry, ui_config);
+        status.probe(hardware, telemetry, ui_config, display_config);
 
     status.log_report(report, true);
 
     braillatron::documents::BrailleTranslationService braille_service(
         braillatron::documents::braille_grade_preset_from_string(ui_config.braille_table));
 
-    braillatron::ui::OutputHub hub(ui_config, telemetry, "", nullptr, &braille_service);
+    braillatron::ui::OutputHub hub(ui_config, telemetry, "", display_config, nullptr,
+                                   &braille_service);
     hub.announce_startup(report);
     hub.announce_focus("Document", false);
     hub.announce_status_report(report);

@@ -3,6 +3,7 @@
 #include "../hardware/hardware_config.h"
 #include "../telemetry/telemetry_config.h"
 #include "../ui/ui_config.h"
+#include "../ui/display/display_config.h"
 
 #include <cstdint>
 #include <string>
@@ -36,7 +37,8 @@ class DeviceStatus {
 public:
     DeviceStatusReport probe(const hardware::HardwareConfig &hardware,
                              const telemetry::TelemetryConfig &telemetry,
-                             const ui::UiConfig &ui_config);
+                             const ui::UiConfig &ui_config,
+                             const ui::DisplayConfig &display_config);
 
     void log_report(const DeviceStatusReport &report, bool force = false) const;
 

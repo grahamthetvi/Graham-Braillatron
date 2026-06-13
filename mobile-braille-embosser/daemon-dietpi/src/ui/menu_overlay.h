@@ -37,6 +37,8 @@ public:
 
     size_t depth() const;
     const std::string &focused_label() const;
+    size_t focus_index() const;
+    std::vector<std::string> current_item_labels() const;
 
 private:
     void refresh_resolved_label();

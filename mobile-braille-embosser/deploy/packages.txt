@@ -8,6 +8,8 @@ alsa-utils
 parted
 e2fsprogs
 gpiod
+libgpiod-dev
+libncurses-dev
 curl
 unzip
 build-essential
@@ -18,11 +20,7 @@ liblouis-dev
 liblouis-data
 network-manager
 bluez
-pipewire
-pipewire-pulse
-pipewire-alsa
-wireplumber
-libpipewire-0.3-0
+bluez-alsa-utils
 yt-dlp
 mpv
 ffmpeg

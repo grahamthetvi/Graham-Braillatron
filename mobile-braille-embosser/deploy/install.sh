@@ -13,19 +13,26 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 echo "Building Braillatron daemons (accessibility backends enabled)..."
-make -C "${DAEMON_DIR}" BRAILLATRON_A11Y=1 clean all
+make -C "${DAEMON_DIR}" BRAILLATRON_A11Y=1 BRAILLATRON_DISPLAY=1 clean all
 
 install -d "${PREFIX}/bin"
 install -m 755 "${DAEMON_DIR}/braillatron-ui" "${PREFIX}/bin/braillatron-ui"
 install -m 755 "${DAEMON_DIR}/braillatron-sentinel" "${PREFIX}/bin/braillatron-sentinel"
 install -m 755 "${DAEMON_DIR}/braillatron-connectd" "${PREFIX}/bin/braillatron-connectd"
 install -m 755 "${ROOT}/deploy/os/sync-documents.sh" "${PREFIX}/bin/braillatron-sync"
+install -m 755 "${ROOT}/deploy/os/braillatron-audio-select.sh" "${PREFIX}/bin/braillatron-audio-select"
+
+install -d /usr/share/braillatron/audio
+install -m 644 "${ROOT}/deploy/os/audio/asound.aux.conf" /usr/share/braillatron/audio/
+install -m 644 "${ROOT}/deploy/os/audio/asound.bluetooth.conf" /usr/share/braillatron/audio/
+install -m 644 "${ROOT}/deploy/os/audio/asound.i2s.conf" /usr/share/braillatron/audio/
 
 install -d "${CONFIG_DIR}"
 install -m 644 "${DAEMON_DIR}/config/hardware.conf" "${CONFIG_DIR}/hardware.conf"
 install -m 644 "${DAEMON_DIR}/config/keyboard.conf" "${CONFIG_DIR}/keyboard.conf"
 install -m 644 "${DAEMON_DIR}/config/telemetry.conf" "${CONFIG_DIR}/telemetry.conf"
 install -m 644 "${DAEMON_DIR}/config/ui.conf" "${CONFIG_DIR}/ui.conf"
+install -m 644 "${DAEMON_DIR}/config/display.conf" "${CONFIG_DIR}/display.conf"
 install -m 644 "${DAEMON_DIR}/config/matrix_map.conf" "${CONFIG_DIR}/matrix_map.conf"
 install -m 644 "${DAEMON_DIR}/config/evdev_map.conf" "${CONFIG_DIR}/evdev_map.conf"
 install -m 644 "${DAEMON_DIR}/config/kinematics.conf" "${CONFIG_DIR}/kinematics.conf"

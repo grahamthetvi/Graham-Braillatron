@@ -2,11 +2,13 @@
 
 #include "../documents/liblouis_bridge.h"
 #include "../motion/motion_service.h"
+#include "../platform/audio_output.h"
 #include "../telemetry/system_shutdown.h"
 #include "../telemetry/telemetry_bridge.h"
 #include "../connect/connect_client.h"
 #include "../connect/json_utils.h"
 #include "apps/app_registry.h"
+#include "../keyboard/focus_nav.h"
 
 extern "C" {
 #include "protocol.h"
@@ -21,19 +23,22 @@ extern "C" {
 namespace braillatron::ui {
 
 OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_config,
-                     std::string ui_config_path, motion::MotionService *motion,
-                     documents::BrailleTranslationService *braille)
+                     std::string ui_config_path, DisplayConfig display_config,
+                     motion::MotionService *motion, documents::BrailleTranslationService *braille)
     : ui_config_(ui_config)
     , telemetry_config_(std::move(telemetry_config))
     , ui_config_path_(std::move(ui_config_path))
+    , display_config_(std::move(display_config))
     , motion_(motion)
     , braille_service_(braille)
+    , chrome_renderer_(8)
     , tts_(create_tts_backend(ui_config_))
     , braille_(create_braille_backend(ui_config_, braille_service_))
     , stt_(create_stt_backend(ui_config_))
     , haptics_(create_haptic_backend(ui_config_, telemetry_config_))
     , embosser_(create_embosser_backend(ui_config_, motion_, braille_service_))
     , morse_(create_morse_backend(ui_config_, telemetry_config_))
+    , display_(create_display_backend(ui_config_, display_config_))
 {
     menu_overlay_.set_root_items(build_root_menu());
 }
@@ -50,6 +55,10 @@ void OutputHub::apply_braille_grade_preset(documents::BrailleGradePreset preset)
 
 void OutputHub::release_backends()
 {
+    if (display_ != nullptr) {
+        display_->shutdown();
+    }
+    display_.reset();
     tts_.reset();
     braille_.reset();
     stt_.reset();
@@ -60,11 +69,15 @@ void OutputHub::release_backends()
 
 OutputHub::~OutputHub() = default;
 
-void OutputHub::emit(const std::string &message)
+void OutputHub::emit(const std::string &message, bool update_display_toast)
 {
     std::cerr << "[ui] " << message << "\n";
 
     if (media_playing_ && ui_config_.tts_enabled) {
+        if (update_display_toast && ui_config_.display_enabled && display_ != nullptr) {
+            chrome_model_.toast = message;
+            render_chrome();
+        }
         return;
     }
 
@@ -84,6 +97,11 @@ void OutputHub::emit(const std::string &message)
 
     if (morse_passive_ && morse_ != nullptr) {
         morse_->play_text(message);
+    }
+
+    if (update_display_toast && ui_config_.display_enabled && display_ != nullptr) {
+        chrome_model_.toast = message;
+        render_chrome();
     }
 }
 
@@ -108,7 +126,8 @@ void OutputHub::announce_focus(const std::string &label, bool at_boundary)
         return;
     }
 
-    emit(label);
+    emit(label, false);
+    sync_chrome(at_boundary);
     if (at_boundary && ui_config_.haptics_enabled && haptics_ != nullptr) {
         haptics_->play_effect(ui_config_.boundary_haptic_effect);
     }
@@ -189,11 +208,14 @@ void OutputHub::on_shift_tts_toggle(bool pressed)
 
     if (pressed) {
         tts_->pause();
+        tts_paused_ = true;
         emit("Speech paused");
     } else {
         tts_->resume();
+        tts_paused_ = false;
         emit("Speech resumed");
     }
+    sync_chrome(false);
 }
 
 void OutputHub::on_speech_ptt_gate(bool open)
@@ -207,8 +229,12 @@ void OutputHub::on_speech_ptt_gate(bool open)
     }
 
     if (open) {
+        dictation_active_ = true;
         emit("Dictation listening");
+    } else {
+        dictation_active_ = false;
     }
+    sync_chrome(false);
 }
 
 void OutputHub::on_menu_overlay(bool open)
@@ -217,6 +243,7 @@ void OutputHub::on_menu_overlay(bool open)
         if (menu_overlay_.is_open()) {
             menu_overlay_.close();
             emit("Menu closed");
+            sync_chrome(false);
         }
         return;
     }
@@ -334,6 +361,69 @@ void OutputHub::set_connect_client(connect::ConnectClient *client)
     connect_client_ = client;
 }
 
+void OutputHub::set_focus_nav(const keyboard::FocusNavigator *focus_nav)
+{
+    focus_nav_ = focus_nav;
+}
+
+void OutputHub::sync_chrome(bool at_boundary)
+{
+    if (!ui_config_.display_enabled || display_ == nullptr) {
+        return;
+    }
+
+    chrome_model_.at_boundary = at_boundary;
+    chrome_model_.tts_paused = tts_paused_;
+    chrome_model_.dictation_active = dictation_active_;
+    chrome_model_.menu_open = menu_overlay_.is_open();
+    chrome_model_.menu_depth = menu_overlay_.depth();
+
+    if (menu_overlay_.is_open()) {
+        chrome_model_.surface = ChromeSurface::Menu;
+        chrome_model_.header = "Menu";
+        chrome_model_.items = menu_overlay_.current_item_labels();
+        chrome_model_.focus_index = menu_overlay_.focus_index();
+        if (menu_overlay_.depth() > 1) {
+            chrome_model_.breadcrumb = "Menu > level " + std::to_string(menu_overlay_.depth());
+        } else {
+            chrome_model_.breadcrumb.clear();
+        }
+    } else if (app_registry_ != nullptr && app_registry_->active() != nullptr) {
+        chrome_model_.surface = ChromeSurface::InApp;
+        chrome_model_.header = app_registry_->active()->label();
+        chrome_model_.items.clear();
+        chrome_model_.focus_index = 0;
+        chrome_model_.breadcrumb.clear();
+    } else if (focus_nav_ != nullptr) {
+        chrome_model_.surface = ChromeSurface::Home;
+        chrome_model_.header = "Braillatron";
+        chrome_model_.items = focus_nav_->entries();
+        chrome_model_.focus_index = focus_nav_->focus_index();
+        chrome_model_.breadcrumb.clear();
+    }
+
+    render_chrome();
+}
+
+void OutputHub::render_chrome()
+{
+    if (!ui_config_.display_enabled || display_ == nullptr) {
+        return;
+    }
+
+    const RenderedChrome frame = chrome_renderer_.build(chrome_model_);
+    display_->render(frame);
+}
+
+void OutputHub::rebuild_display_backend()
+{
+    if (display_ != nullptr) {
+        display_->shutdown();
+    }
+    display_.reset(create_display_backend(ui_config_, display_config_));
+    sync_chrome(false);
+}
+
 void OutputHub::set_media_playing(bool playing)
 {
     media_playing_ = playing;
@@ -400,6 +490,11 @@ void OutputHub::toggle_bool(bool &field, const char *name)
 
     if (name == std::string("Speech to Text") && !field && stt_ != nullptr) {
         stt_->set_ptt_open(false);
+        dictation_active_ = false;
+    }
+
+    if (name == std::string("Visual display")) {
+        rebuild_display_backend();
     }
 
     std::ostringstream stream;
@@ -471,6 +566,16 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             },
         },
         MenuItem {
+            "Visual display",
+            [this]() {
+                return ui_config_.display_enabled ? "Visual display: On" : "Visual display: Off";
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                toggle_bool(ui_config_.display_enabled, "Visual display");
+            },
+        },
+        MenuItem {
             "Braille grade",
             [this]() {
                 if (braille_service_ != nullptr) {
@@ -502,6 +607,72 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                     tts_->set_rate(ui_config_.tts_rate);
                 }
                 emit("TTS rate: " + std::to_string(ui_config_.tts_rate));
+            },
+        },
+        MenuItem {
+            "Audio output",
+            [this]() {
+                return std::string("Audio: ") +
+                       platform::mode_display_label(platform::read_output_mode());
+            },
+            [this](MenuOverlay &mo) { mo.push_level(build_audio_output_menu()); },
+        },
+    };
+}
+
+std::vector<MenuItem> OutputHub::build_audio_output_menu()
+{
+    const std::string current_mode = platform::read_output_mode();
+
+    return {
+        MenuItem {
+            "Aux jack",
+            [current_mode]() {
+                return std::string("Aux jack") + (current_mode == "aux" ? " (current)" : "");
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                emit(platform::switch_output("aux"));
+            },
+        },
+        MenuItem {
+            "Bluetooth speaker",
+            [current_mode]() {
+                return std::string("Bluetooth speaker") +
+                       (current_mode == "bluetooth" ? " (current)" : "");
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                emit(platform::switch_output("bluetooth"));
+            },
+        },
+        MenuItem {
+            "I2S amplifier",
+            [current_mode]() {
+                return std::string("I2S amplifier") + (current_mode == "i2s" ? " (current)" : "");
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                emit(platform::switch_output("i2s"));
+            },
+        },
+        MenuItem {
+            "Connect Bluetooth",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                emit(platform::connect_bluetooth());
+            },
+        },
+        MenuItem {
+            "Pair Bluetooth speaker",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                menu_overlay_.close();
+                if (app_registry_ != nullptr) {
+                    app_registry_->enter("bluetooth_setup");
+                }
             },
         },
     };

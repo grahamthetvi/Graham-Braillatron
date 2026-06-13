@@ -22,6 +22,7 @@ public:
     size_t focus_index() const;
     const std::string &focused_label() const;
     const std::string &input_buffer() const;
+    const std::vector<std::string> &entries() const;
 
     void set_activate_handler(FocusActivateHandler handler);
     void set_focus_changed_handler(FocusChangedHandler handler);

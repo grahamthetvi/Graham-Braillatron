@@ -31,6 +31,8 @@ public:
 
     std::vector<MenuItem> build_launcher_menu();
     std::vector<MenuItem> build_inline_menu();
+    std::vector<std::string> launcher_labels() const;
+    std::string launcher_id_for_label(const std::string &label) const;
 
 private:
     UiContext ctx_;

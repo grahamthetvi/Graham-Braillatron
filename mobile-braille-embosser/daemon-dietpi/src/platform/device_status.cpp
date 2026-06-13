@@ -236,7 +236,8 @@ DeviceEntry DeviceStatus::probe_brlapi() const
 
 DeviceStatusReport DeviceStatus::probe(const hardware::HardwareConfig &hardware,
                                        const telemetry::TelemetryConfig &telemetry,
-                                       const ui::UiConfig &ui_config)
+                                       const ui::UiConfig &ui_config,
+                                       const ui::DisplayConfig &display_config)
 {
     DeviceStatusReport report;
 
@@ -254,6 +255,10 @@ DeviceStatusReport DeviceStatus::probe(const hardware::HardwareConfig &hardware,
         ui_config.vosk_model_path, "vosk_model", "Vosk speech model"));
     report.devices.push_back(probe_spd_socket());
     report.devices.push_back(probe_brlapi());
+    if (ui_config.display_enabled) {
+        report.devices.push_back(probe_file_path(
+            display_config.spidev, "visual_display", "Visual display"));
+    }
 
     return report;
 }
