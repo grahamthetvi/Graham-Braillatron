@@ -236,6 +236,37 @@ With default `allow_missing_arduino=true` in `hardware.conf`, the UI daemon **st
 Status is logged to the journal and announced through the Output Hub (TTS/braille when those backends are available).
 
 
+## Bluetooth speaker (no I2S amp)
+
+Production hardware uses a **MAX98357A I2S amp** (see Skeleton Build Guide). Bootstrap also points ALSA at `hw:1,0` — if that amp is not wired, **TTS will be silent** even though the UI daemon is healthy.
+
+For bench testing with a **Bluetooth speaker** (or USB / 3.5 mm jack), re-route audio through PipeWire:
+
+```bash
+cd ~/braillatron/mobile-braille-embosser   # or your clone path
+sudo bash deploy/os/setup-bluetooth-audio.sh
+```
+
+Then pair the speaker and set it as the default sink:
+
+```bash
+bluetoothctl
+# power on → agent on → default-agent → scan on
+# pair / trust / connect <MAC>
+# quit
+
+wpctl status
+wpctl set-default <sink-id>    # the Bluetooth device
+
+spd-say "Braillatron Bluetooth test"
+sudo systemctl restart braillatron-ui
+```
+
+You should hear startup speech ("Braillatron ready", missing-device notices, "Document"). YouTube playback in connectd also uses Pulse and will follow the same default sink.
+
+To revert to built-in I2S later, restore `/etc/asound.conf` from the `.bak.*` file the script creates and set `AudioOutputMethod "alsa"` in `/etc/speech-dispatcher/speechd.conf`.
+
+
 ## Testing on the Pi
 
 Braillatron has **no graphical UI**. A connected monitor stays blank. After `systemctl restart braillatron-ui`, the command itself prints nothing — that is normal.
@@ -245,7 +276,7 @@ Feedback channels:
 | Channel | How to use |
 | --- | --- |
 | **Journal logs** | `journalctl -u braillatron-ui -f` |
-| **Speech** | TTS on startup and focus changes (requires I2S amp + Speech Dispatcher) |
+| **Speech** | TTS on startup and focus changes (I2S amp, Bluetooth, or other PipeWire sink + Speech Dispatcher) |
 | **Braille display** | BRLTTY when a display is connected |
 
 ### SSH vs physical keyboard
@@ -414,8 +445,8 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | `keyboard: no input sources available` | Set `evdev_enabled=true` or connect Arduino |
 | Build fails on `spd_set_rate` | Update source — Trixie uses `spd_set_voice_rate` (fixed in current tree) |
 | Build fails on `-lvosk` | Re-run `sudo bash deploy/install-vosk-lib.sh`; confirm `aarch64` |
-| No speech | `systemctl status speech-dispatcher`; `spd-say test`; I2S overlay in `/boot/dietpiEnv.txt` |
-| No audio on speaker | `aplay -l`; `/etc/asound.conf`; wiring per Skeleton Guide (I2S1 pins 35/38/40) |
+| No speech | `systemctl status speech-dispatcher`; `spd-say test`; I2S overlay in `/boot/dietpiEnv.txt`; or run `deploy/os/setup-bluetooth-audio.sh` for BT |
+| No audio on speaker | `aplay -l`; `/etc/asound.conf`; I2S wiring (Skeleton Guide) **or** Bluetooth setup script above |
 | DietPi-Upgrade fails: "No space left on device" | Root stayed at the small flashed size; run `sudo bash deploy/os/expand-root-reserve-data.sh`, then `sudo apt-get clean && sudo dpkg --configure -a` |
 | `git: command not found` on fresh DietPi | Install git: `sudo apt update && sudo apt install -y git`, or use Step 3 Option B (rsync) |
 | Bootstrap fails: "Not enough unallocated space" | DietPi filled the card; re-flash and run `sudo python3 deploy/prepare-sd-card.py --shrink-if-needed` on your PC (Step 1) |
