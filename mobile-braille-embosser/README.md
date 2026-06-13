@@ -15,6 +15,8 @@ This guide gets you from a fresh clone to a working UI on a Linux dev machine us
 | Global menu overlay | Yes |
 | Braille chord timing (40 ms window) | Yes (`make host-chord-test`) |
 | Braille dots → letters | Needs liblouis (see below) |
+| Offline apps (Timer, Dictionary, Spelling, Contacts) | Yes — core logic covered by `make check` self-tests |
+| connectd network apps (YouTube, Music, Weather, …) | Partial — UI + IPC self-tests; playback/API needs connectd + network on Pi |
 | Motion / embossing | No (`motion_enabled=false` in skeleton config) |
 | TTS / braille display / STT | Stub backends log to stderr unless you build with `BRAILLATRON_A11Y=1` |
 
@@ -29,6 +31,7 @@ All UI feedback is printed to the terminal as `[ui]`, `[tts]`, `[braille]`, and 
 Optional, for braille-to-text translation on the host:
 
 - `liblouis-devel` (Fedora) or `liblouis-dev` (Debian) — then rebuild with accessibility backends (see **Braille text input** below)
+- `libsqlite3-dev` / `sqlite3` (Fedora/Debian) — required for `make dictionary-test` and Dictionary app on Pi
 
 ## Build
 
@@ -46,10 +49,16 @@ make display   # BRAILLATRON_DISPLAY=1 — ncurses UI chrome when stdout is a TT
 Other useful targets:
 
 ```bash
-make check                                              # build + run all host self-tests
+make check                                              # build + run 18 host self-tests
 make host-chord-test && ./braillatron-host-chord-test   # chord window logic, no keyboard
 make motion-test && ./braillatron-motion-test           # kinematics math only
+make connect-test && ./braillatron-connect-test         # async IPC + connect client
+make timer-test && ./braillatron-timer-test             # TimerService
+make dictionary-test && ./braillatron-dictionary-test   # SQLite dictionary store (needs libsqlite3-dev)
+make spelling-test && ./braillatron-spelling-test       # spelling list store
 ```
+
+Individual targets also exist for contacts, music, weather, podcasts, radio, library, and gmail backends — all are included in `make check`.
 
 Optional liblouis self-test (requires `liblouis-dev` / `liblouis-devel`):
 
@@ -154,10 +163,11 @@ When a chord resolves, the translated character is appended to the focus navigat
 ## Guided walkthrough
 
 1. **Start the UI** (commands above). Confirm `evdev listening` appears in the log.
-2. **Home screen** — press **↓** a few times. Each step announces the focused app (`Document`, `Calculator`, `Wikipedia`, …) on stderr.
-3. **Open the menu** — press **`** (grave). Use **↑ / ↓** to move, **Enter** to select, **Backspace** to go back.
+2. **Home screen** — press **↓** a few times. Each step announces the focused app (`Document`, `Dictionary`, `Spelling`, `Calculator`, `Wikipedia`, `YouTube`, …) on stderr.
+3. **Open the menu** — press **`** (grave). Use **↑ / ↓** to move, **Enter** to select, **Backspace** to go back. With a standalone app active, the overlay includes Quick Status, Timer, Morse, Paper Nav, and Save & Exit.
 4. **Type braille** — on the home screen, chord **F** (letter `a`). With the default stub build, translation is disabled; use `host-chord-test` or an a11y build for full text (next section).
 5. **Activate an app** — focus `Wikipedia` with **↓**, press **Enter**. The app session takes over chord and D-pad routing until you exit.
+6. **Document dictation (optional)** — with `BRAILLATRON_A11Y=1` and Vosk installed, enable **Dictation in Document** in Settings; hold **Right Super** (Speech) to dictate into the BRF.
 
 ## Braille text input on the host
 
@@ -212,10 +222,12 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 | `hardware.conf` | Serial device, `allow_missing_arduino`, motion enable |
 | `keyboard.conf` | Serial + evdev bench input |
 | `evdev_map.conf` | USB key → logical key map (edit for non-QWERTY layouts) |
-| `ui.conf` | TTS, braille, STT, haptics toggles, visual display toggle |
+| `ui.conf` | TTS, braille, STT, haptics toggles, visual display toggle, document dictation |
 | `display.conf` | Display backends (`auto`/`spi`/`fb`/`ncurses`/`stub`), spidev, fbdev, GPIO, HDMI options |
 
-Production paths on the Pi are under `/etc/braillatron/`. See the [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) for deployment, **testing on the Pi** (no GUI, journal + TTS), bench keyboard setup, and rebuild/update steps.
+Production paths on the Pi are under `/etc/braillatron/`. App-specific configs (`dictionary.conf`, `spelling.conf`, `music.conf`, `weather.conf`, `gmail.conf`, etc.) are installed by `deploy/install.sh`. See the [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) for deployment, **testing on the Pi** (no GUI, journal + TTS), bench keyboard setup, and rebuild/update steps.
+
+Network apps require `braillatron-connectd` running (started by `braillatron.target` on the Pi). On-device bring-up: [Connectivity Follow-Up Checklist](specs/Connectivity%20Follow-Up%20Checklist.md).
 
 ## Troubleshooting
 
@@ -245,6 +257,7 @@ Protocol definitions are shared with the Pi daemons in [shared/](shared/) — ed
 ## Next steps
 
 - **Pi deployment** — [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md)
+- **connectd bring-up** — [Connectivity Follow-Up Checklist](specs/Connectivity%20Follow-Up%20Checklist.md)
 - **Architecture** — [Master Software Architecture V9](specs/Master%20Software%20Architecture%20V9.md)
 - **Serial protocol** — [shared/protocol.md](shared/protocol.md)
 - **Firmware** — [firmware-arduino/README.md](firmware-arduino/README.md) (compile and flash with arduino-cli)

@@ -2,9 +2,7 @@
 
 **Project:** Mobile Smart Braille Notetaker & Embosser (Graham Brailler)
 
-**Scope:** Work remaining after Connectd v1 (YouTube audio + Signal messaging)
-
-**Baseline PR:** [PR #1 — braillatron-connectd](https://github.com/grahamthetvi/Graham-Braillatron/pull/1)
+**Scope:** Work remaining after Multi-App Integration v1.2 ([PR #3](https://github.com/grahamthetvi/Graham-Braillatron/pull/3), merged). Original connectd baseline: [PR #1](https://github.com/grahamthetvi/Graham-Braillatron/pull/1).
 
 **Canonical architecture:** [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md)
 
@@ -32,8 +30,8 @@ For a new Cursor conversation, paste the **Suggested agent prompt** at the botto
 - [ ] Run `braillatron-verify-install` after install
 - [ ] Confirm packages installed: `yt-dlp`, `mpv`, `ffmpeg`
 - [ ] Confirm `signal-cli` installed via `deploy/install-signal-cli.sh` (aarch64 native)
-- [ ] Confirm config installed: `/etc/braillatron/connect.conf`, `youtube.conf`, `messages.conf`
-- [ ] Confirm credential dirs exist: `/data/braillatron/credentials/incoming/`, `signal-cli/` (mode `0700`)
+- [ ] Confirm config installed: `/etc/braillatron/connect.conf`, `youtube.conf`, `messages.conf`, `dictionary.conf`, `spelling.conf`, `contacts.conf`, `music.conf`, `weather.conf`, `podcasts.conf`, `radio.conf`, `gmail.conf`, `library.conf`
+- [ ] Confirm credential dirs exist: `/data/braillatron/credentials/incoming/`, `signal-cli/`, `gmail/` (mode `0700`)
 - [ ] `systemctl enable braillatron.target && systemctl start braillatron.target`
 - [ ] Verify service order: `braillatron-connectd` → `braillatron-ui`
 
@@ -131,17 +129,23 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 
 ---
 
-## Reference — v1 file map
+## Reference — v1.2 file map
 
 | Component | Path |
 |-----------|------|
 | connectd daemon | `daemon-dietpi/src/connect/` |
 | connectd entry | `connect_main.cpp` |
-| UI client | `connect_client.cpp` |
+| Async IPC | `connect_job_queue.cpp`, `connect_async.cpp`, `connect_client.cpp` |
+| Shared mpv | `mpv_service.cpp`, `/run/braillatron/mpv.sock` |
+| UI client + global poll | `connect_client.cpp`, `ui_app.cpp` → `OutputHub::on_connect_event` |
 | YouTube app | `daemon-dietpi/src/ui/apps/youtube_app.cpp` |
 | Messages app | `daemon-dietpi/src/ui/apps/messages_app.cpp` |
+| Offline apps | `dictionary_app.cpp`, `spelling_app.cpp`, `contacts_app.cpp`, `timer_inline.cpp` |
+| Network apps | `music_app.cpp`, `weather_app.cpp`, `podcasts_app.cpp`, `radio_app.cpp`, `gmail_app.cpp`, `library_app.cpp` |
 | Accounts menu | `output_hub.cpp` → `build_accounts_menu()` |
-| Config | `deploy/config/connect.conf`, `youtube.conf`, `messages.conf` |
+| Config | `deploy/config/*.conf` |
+| Data install | `deploy/install-dictionary-data.sh`, `install-spelling-data.sh`, `install-gmail-oauth.sh` |
+| Install verify | `deploy/verify-install.sh` → `braillatron-verify-install` |
 | systemd | `deploy/systemd/braillatron-connectd.service` |
 | signal-cli install | `deploy/install-signal-cli.sh` |
 
@@ -189,6 +193,7 @@ Do not edit the Cursor plan file; update the spec checklist as items complete.
 
 | Date | Change |
 |------|--------|
+| 2026-06-13 | Documentation sync: Architecture V9 §2/§6.6, Pi guide, README, packages.txt (sqlite3) |
 | 2026-06-13 | P1 reliability fixes: signal listAccounts fallback, mpv socket wait, yt-dlp shell escape, Shift hold-to-pause |
 | 2026-06-13 | UX polish: Messages thread refresh, Quick Status connectd ping, Document Look up stub, verify-install script |
 | 2026-06-13 | Phases 2–8: Document STT, Contacts, Music, Weather, Podcasts/Radio, Library EPUB/DAISY/Gutendex, Gmail OAuth |

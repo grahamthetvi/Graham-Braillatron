@@ -17,7 +17,8 @@ libgpiod-dev
 libncurses-dev
 curl
 unzip
-build-essential
+sqlite3
+libsqlite3-dev
 g++
 libspeechd-dev
 libbrlapi-dev

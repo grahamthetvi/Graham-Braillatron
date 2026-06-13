@@ -68,14 +68,26 @@ Take primary control of embosser head and paper feed. Launched from the main app
 
 | Application | Description | Code Module |
 |-------------|-------------|-------------|
-| **Brailler** | `.brf` document editor; edit modes; worksheet auto-record | `apps/brailler_app.cpp` |
+| **Brailler (Document)** | `.brf` editor; edit modes; optional PTT dictation; worksheet auto-record | `apps/brailler_app.cpp` |
 | **Calculator** | Nemeth math; char/silent/space-affirm audio modes | `apps/calculator_app.cpp` |
 | **Transcriber** | Vosk STT → liblouis → emboss; buffer failsafe | `apps/transcriber_app.cpp` |
-| **Library** | EPUB/DAISY reading, Gutendex public domain search | `library_app.cpp`, `library_store.cpp`, `library_backend.cpp` |
-| **Morse Learning** | Morse alphabet lessons and quiz via haptics | `apps/morse_learn_app.cpp` |
-| **Network & Devices** | Wi-Fi scan/connect via NetworkManager; BT list stub | `apps/network_app.cpp` |
+| **Dictionary** | Offline SQLite lookup; prefix search; TTS/braille read | `dictionary_store.cpp`, `apps/dictionary_app.cpp` |
+| **Spelling** | Bundled + imported word lists; Learn / Quiz / Review modes | `spelling_list_store.cpp`, `apps/spelling_app.cpp` |
+| **Contacts** | Offline address book; CSV/vCard import; emboss card | `contacts_store.cpp`, `apps/contacts_app.cpp` |
+| **Library** | Local EPUB/DAISY reading; Gutendex public-domain search/download | `library_store.cpp`, `library_backend.cpp`, `apps/library_app.cpp` |
 | **LocalSend** | Local file transfer (scaffold) | `apps/localsend_app.cpp` |
-| **Settings** | TTS rate/volume, braille grade, haptics, language | `output_hub.cpp` settings submenu |
+| **Wikipedia** | Offline-capable article lookup | `apps/wikipedia_app.cpp` |
+| **YouTube** | Search and audio playback via connectd + shared mpv | `apps/youtube_app.cpp`, `youtube_backend.cpp` |
+| **Messages** | Signal chat list, thread read, compose/reply | `apps/messages_app.cpp`, `signal_backend.cpp` |
+| **Music** | Local library scan/play; resume state; shared mpv | `apps/music_app.cpp`, `music_backend.cpp` |
+| **Weather** | Open-Meteo fetch/cache; current/hourly/daily views | `apps/weather_app.cpp`, `weather_backend.cpp` |
+| **Podcasts** | RSS/OPML subscriptions; episode download + mpv playback | `apps/podcasts_app.cpp`, `rss_backend.cpp` |
+| **Radio** | Internet radio streams; favorites; ICY metadata | `apps/radio_app.cpp`, `radio_backend.cpp` |
+| **Gmail** | OAuth device flow; inbox/read/compose/reply; BRF export | `apps/gmail_app.cpp`, `gmail_backend.cpp` |
+| **Morse Learning** | Morse alphabet lessons and quiz via haptics | `apps/morse_learn_app.cpp` |
+| **Network & Devices** | Wi-Fi scan/connect via NetworkManager | `apps/network_app.cpp` |
+| **Bluetooth Setup** | Bluetooth pairing stub | `apps/bluetooth_setup_app.cpp` |
+| **Settings** | TTS rate/volume, braille grade, dictation toggle, accounts | `output_hub.cpp` settings submenu |
 
 Framework: `app_registry.cpp`, `app_session.h`, `ui_context.h`.
 
@@ -85,12 +97,14 @@ Callable while a Standalone app is active. Do **not** advance paper.
 
 | Inline App | Description | Code Module |
 |------------|-------------|-------------|
-| **Quick Status** | Battery, network, date, time | `apps/quick_status_inline.cpp` |
+| **Quick Status** | Battery, Wi-Fi, date/time, weather cache, connect daemon reachability; active timer if running | `apps/quick_status_inline.cpp` |
+| **Timer** | Countdown, stopwatch, Pomodoro setup; alerts via Output Hub while any app is active | `timer_service.cpp`, `apps/timer_inline.cpp` |
 | **Morse Code Output** | Passive text→Morse haptics | `apps/morse_output_inline.cpp` |
 | **Paper Navigation** | Jump Y line index on tractor feed | `apps/paper_nav_inline.cpp` |
 | **Save & Exit** | Force flush coords + BRF; exit app | `apps/save_exit_inline.cpp` |
+| **Look up word** | Document overlay stub (v1.2); directs user to Dictionary app | `app_registry.cpp` overlay item when Document active |
 
-Keyboard routing: `menu open → overlay`; `standalone active → AppSession`; `idle → FocusNavigator`.
+Keyboard routing: `menu open → overlay`; `inline active → inline AppSession` (input); `standalone active → AppSession`; `idle → FocusNavigator`. `TimerService` ticks in `UiApp::poll()` regardless of foreground app.
 
 ---
 
@@ -323,6 +337,10 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 - **STT:** Vosk-API + PipeWire capture.
 - **Braille:** liblouis (UEB G1/G2, Nemeth).
 - **Embosser:** C++ kinematics daemon (`motion_controller`, `emboss_scheduler`).
+- **Dictionary:** SQLite 3 (`libsqlite3`, `sqlite3` CLI for data install).
+- **connectd media:** mpv (shared IPC via `/run/braillatron/mpv.sock`), yt-dlp, ffmpeg.
+- **connectd network:** curl; signal-cli (Messages); OAuth device flow for Gmail (no Google SDK).
+- **Offline data install:** `braillatron-install-dictionary-data`, `braillatron-install-spelling-data` (see Pi SD Image guide).
 
 ---
 

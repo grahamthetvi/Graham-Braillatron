@@ -19,25 +19,49 @@ After bootstrap, the SD card provides:
 | Telemetry sentinel | `/usr/local/bin/braillatron-sentinel` → `braillatron-sentinel.service` |
 | Connectivity sidecar | `/usr/local/bin/braillatron-connectd` → `braillatron-connectd.service` |
 | Document sync (rsync timer) | `/usr/local/bin/braillatron-sync` → `braillatron-sync.timer` |
-| Config | `/etc/braillatron/*.conf` |
+| Install verification | `/usr/local/bin/braillatron-verify-install` |
+| Dictionary data install | `/usr/local/bin/braillatron-install-dictionary-data` |
+| Spelling data install | `/usr/local/bin/braillatron-install-spelling-data` |
+| Gmail OAuth setup helper | `/usr/local/bin/braillatron-install-gmail-oauth` |
+| Config | `/etc/braillatron/*.conf` (see **Config files** below) |
 | Persistent documents | `/data/braillatron/documents/` |
 | Settings overrides (RO root) | `/data/braillatron/settings/` |
-| Network credentials (YouTube, Signal, etc.) | `/data/braillatron/credentials/` |
+| Network credentials (YouTube, Signal, Gmail, etc.) | `/data/braillatron/credentials/` |
+| Offline app data | `/data/braillatron/timer/`, `dictionary/`, `spelling-lists/`, `spelling-sessions/`, `contacts/`, `music/`, `weather/`, `podcasts/`, `radio/`, `library/` |
+| Bundled spelling lists (read-only) | `/usr/share/braillatron/spelling/` |
+| Bundled radio stations | `/usr/share/braillatron/radio/stations.json` |
 | Vosk STT model | `/data/braillatron/vosk-models/vosk-model-small-en-us-0.15/` |
 | RAM document layers (ephemeral tmpfs) | `/var/lib/braillatron/ram/` — lost on reboot; synced to `/data` by `braillatron-sync.timer` |
 | Coordinate session file (ephemeral tmpfs) | `/var/lib/braillatron/ram/coords.json` |
 | Live telemetry (sentinel → UI) | `/run/braillatron/telemetry.json` |
 | Homing status (sentinel) | `/run/braillatron/homing.status` |
 | Connect IPC (connectd ↔ UI) | `/run/braillatron/connect.sock`, `/run/braillatron/connect.events` |
+| Shared media player IPC | `/run/braillatron/mpv.sock` |
 
 All four daemons/timers are pulled in by `braillatron.target`, which is enabled for multi-user boot:
 
-- `braillatron-ui` — keyboard routing, focus navigation, Output Hub (TTS/braille/STT)
+- `braillatron-ui` — keyboard routing, focus navigation, Output Hub (TTS/braille/STT), all apps
 - `braillatron-sentinel` — telemetry, homing, limit sensors (when wired)
-- `braillatron-connectd` — YouTube, Messages, and other network sidecar work
+- `braillatron-connectd` — async network sidecar: YouTube, Signal, Music, Weather, Podcasts, Radio, Library/Gutendex, Gmail
 - `braillatron-sync.timer` — periodic document rsync
 
 The sentinel performs boot homing when `motion_enabled=true` in `hardware.conf` and writes telemetry for Quick Status / battery warnings.
+
+### Config files (v1.2)
+
+Installed to `/etc/braillatron/` by `deploy/install.sh`:
+
+| File | Purpose |
+| --- | --- |
+| `hardware.conf`, `keyboard.conf`, `ui.conf`, `display.conf`, … | Core UI and hardware |
+| `connect.conf` | connectd socket paths, credential dirs |
+| `youtube.conf`, `messages.conf` | YouTube cookies, Signal paths |
+| `dictionary.conf`, `spelling.conf` | Offline Dictionary and Spelling apps |
+| `contacts.conf`, `music.conf`, `weather.conf` | Contacts, local Music, Weather |
+| `podcasts.conf`, `radio.conf`, `gmail.conf` | Podcasts/RSS, Internet Radio, Gmail OAuth |
+| `library.conf`, `localsend.conf` | Library EPUB/DAISY/Gutendex, LocalSend scaffold |
+
+After install, run `sudo braillatron-verify-install` to confirm binaries, configs, and data directories.
 
 
 ## Before you start
@@ -179,12 +203,12 @@ sudo bash deploy/bootstrap-dietpi.sh
 
 This script runs, in order:
 
-1. **`apt install`** — packages from `deploy/packages.txt` (build tools, Speech Dispatcher, BRLTTY, BlueZ, gpiod, parted, rsync, mpv, yt-dlp, etc.)
+1. **`apt install`** — packages from `deploy/packages.txt` (build tools, Speech Dispatcher, BRLTTY, BlueZ, gpiod, parted, rsync, sqlite3, mpv, yt-dlp, ffmpeg, etc.)
 2. **I2S overlay** — adds `rk3566-i2s1-overlay` to the `overlays=` line in `/boot/dietpiEnv.txt` (MAX98357A audio; see Skeleton Build Guide)
 3. **SPI overlay (optional)** — adds `spi-spidev` only when `BRAILLATRON_SPI_PANEL=1` (HAT fitted). Default bootstrap leaves SPI off so `/dev/spidev0.0` is absent and HDMI framebuffer UI works on skeleton bench
 4. **`/data` partition** — `deploy/os/setup-data-partition.sh` creates an ext4 partition labeled `braillatron-data` in unallocated tail space (requires ≥ 768 MB free at the disk end; does not shrink root)
 5. **libvosk** — `deploy/install-vosk-lib.sh` installs the prebuilt aarch64 Vosk library (not in Debian apt)
-6. **Build + install** — `deploy/install.sh` compiles with `BRAILLATRON_A11Y=1`, installs binaries, configs, and systemd units
+6. **Build + install** — `deploy/install.sh` compiles with `BRAILLATRON_A11Y=1`, installs binaries, configs, systemd units, dictionary/spelling seed data, and Gmail OAuth setup helper
 7. **signal-cli (optional)** — `deploy/install-signal-cli.sh` for Messages app; skipped gracefully if it fails
 8. **Vosk model** — downloads `vosk-model-small-en-us-0.15` (~40 MB) to `/data/braillatron/vosk-models/`
 9. **Accessibility stack** — enables `speech-dispatcher`, `brltty`, `NetworkManager`
@@ -219,6 +243,9 @@ systemctl status braillatron.target getty@tty1.service
 systemctl status braillatron-ui braillatron-ui-stub \
   braillatron-sentinel braillatron-connectd braillatron-sync.timer
 
+# Install sanity (binaries, configs, data dirs)
+sudo braillatron-verify-install
+
 # UI service should be active (stub only when headless)
 systemctl is-active braillatron-ui braillatron-ui-stub
 
@@ -242,7 +269,10 @@ aplay -l
 # Data partition
 df -h /data
 ls /data/braillatron/
+ls /data/braillatron/dictionary/ /usr/share/braillatron/spelling/ 2>/dev/null || true
 ```
+
+For connectd and all v1.2 apps (Timer, Dictionary, Spelling, Contacts, Music, Weather, Podcasts, Radio, Library, Gmail), follow the on-device checklist in [Connectivity Follow-Up Checklist](Connectivity%20Follow-Up%20Checklist.md).
 
 ### Expected behavior without hardware
 
@@ -448,6 +478,7 @@ Verify:
 
 ```bash
 systemctl status braillatron-ui braillatron-connectd
+sudo braillatron-verify-install
 journalctl -u braillatron-ui -b --no-pager | tail -20
 ```
 
