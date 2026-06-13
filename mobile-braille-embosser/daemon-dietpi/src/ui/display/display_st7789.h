@@ -24,8 +24,10 @@ private:
     DisplayConfig config_;
     int spi_fd_ = -1;
     void *gpio_chip_ = nullptr;
-    void *gpio_dc_line_ = nullptr;
-    void *gpio_rst_line_ = nullptr;
+    void *gpio_dc_handle_ = nullptr;
+    void *gpio_rst_handle_ = nullptr;
+    int gpio_dc_offset_ = -1;
+    int gpio_rst_offset_ = -1;
     bool ready_ = false;
     std::vector<uint16_t> framebuffer_;
 };

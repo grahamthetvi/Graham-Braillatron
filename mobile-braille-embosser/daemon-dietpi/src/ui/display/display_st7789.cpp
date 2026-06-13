@@ -12,6 +12,10 @@
 
 #ifdef BRAILLATRON_GPIOD
 #include <gpiod.h>
+
+#if defined(GPIOD_LINE_DIRECTION_OUTPUT)
+#define BRAILLATRON_GPIOD_V2 1
+#endif
 #endif
 
 namespace braillatron::ui {
@@ -27,6 +31,70 @@ uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b)
 {
     return static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
 }
+
+#ifdef BRAILLATRON_GPIOD_V2
+
+void *request_gpio_output(const char *consumer, unsigned int offset,
+                          enum gpiod_line_value default_value)
+{
+    struct gpiod_chip *chip = gpiod_chip_open("/dev/gpiochip0");
+    if (chip == nullptr) {
+        return nullptr;
+    }
+
+    struct gpiod_line_settings *settings = gpiod_line_settings_new();
+    if (settings == nullptr) {
+        gpiod_chip_close(chip);
+        return nullptr;
+    }
+    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
+    gpiod_line_settings_set_output_value(settings, default_value);
+
+    struct gpiod_line_config *line_cfg = gpiod_line_config_new();
+    if (line_cfg == nullptr) {
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(chip);
+        return nullptr;
+    }
+
+    const int ret = gpiod_line_config_add_line_settings(line_cfg, &offset, 1, settings);
+    gpiod_line_settings_free(settings);
+    if (ret != 0) {
+        gpiod_line_config_free(line_cfg);
+        gpiod_chip_close(chip);
+        return nullptr;
+    }
+
+    struct gpiod_request_config *req_cfg = gpiod_request_config_new();
+    if (req_cfg != nullptr) {
+        gpiod_request_config_set_consumer(req_cfg, consumer);
+    }
+
+    struct gpiod_line_request *request = gpiod_chip_request_lines(chip, req_cfg, line_cfg);
+    gpiod_request_config_free(req_cfg);
+    gpiod_line_config_free(line_cfg);
+    gpiod_chip_close(chip);
+    return request;
+}
+
+void set_gpio_output(void *handle, unsigned int offset, enum gpiod_line_value value)
+{
+    if (handle == nullptr) {
+        return;
+    }
+    gpiod_line_request_set_value(static_cast<struct gpiod_line_request *>(handle), offset,
+                                 value);
+}
+
+void release_gpio_handle(void *handle)
+{
+    if (handle == nullptr) {
+        return;
+    }
+    gpiod_line_request_release(static_cast<struct gpiod_line_request *>(handle));
+}
+
+#endif // BRAILLATRON_GPIOD_V2
 
 } // namespace
 
@@ -47,37 +115,66 @@ St7789DisplayBackend::St7789DisplayBackend(const DisplayConfig &config)
     ioctl(spi_fd_, SPI_IOC_WR_MAX_SPEED_HZ, &speed);
 
 #ifdef BRAILLATRON_GPIOD
+#if defined(BRAILLATRON_GPIOD_V2)
+    if (config.gpio_dc >= 0) {
+        gpio_dc_offset_ = config.gpio_dc;
+        gpio_dc_handle_ = request_gpio_output("braillatron-dc",
+                                              static_cast<unsigned int>(gpio_dc_offset_),
+                                              GPIOD_LINE_VALUE_INACTIVE);
+        if (gpio_dc_handle_ == nullptr) {
+            gpio_dc_offset_ = -1;
+        }
+    }
+
+    if (config.gpio_rst >= 0) {
+        gpio_rst_offset_ = config.gpio_rst;
+        gpio_rst_handle_ = request_gpio_output("braillatron-rst",
+                                               static_cast<unsigned int>(gpio_rst_offset_),
+                                               GPIOD_LINE_VALUE_ACTIVE);
+        if (gpio_rst_handle_ != nullptr) {
+            set_gpio_output(gpio_rst_handle_, static_cast<unsigned int>(gpio_rst_offset_),
+                            GPIOD_LINE_VALUE_INACTIVE);
+            usleep(10000);
+            set_gpio_output(gpio_rst_handle_, static_cast<unsigned int>(gpio_rst_offset_),
+                            GPIOD_LINE_VALUE_ACTIVE);
+            usleep(120000);
+        } else {
+            gpio_rst_offset_ = -1;
+        }
+    }
+#else
     if (config.gpio_dc >= 0) {
         gpio_chip_ = gpiod_chip_open_by_name("gpiochip0");
         if (gpio_chip_ != nullptr) {
-            gpio_dc_line_ =
+            gpio_dc_handle_ =
                 gpiod_chip_get_line(static_cast<gpiod_chip *>(gpio_chip_), config.gpio_dc);
-            if (gpio_dc_line_ != nullptr &&
-                gpiod_line_request_output(static_cast<gpiod_line *>(gpio_dc_line_),
+            if (gpio_dc_handle_ != nullptr &&
+                gpiod_line_request_output(static_cast<gpiod_line *>(gpio_dc_handle_),
                                           "braillatron-dc", 0) == 0) {
                 // DC line ready.
             } else {
-                gpiod_line_release(static_cast<gpiod_line *>(gpio_dc_line_));
-                gpio_dc_line_ = nullptr;
+                gpiod_line_release(static_cast<gpiod_line *>(gpio_dc_handle_));
+                gpio_dc_handle_ = nullptr;
             }
         }
     }
 
     if (config.gpio_rst >= 0 && gpio_chip_ != nullptr) {
-        gpio_rst_line_ =
+        gpio_rst_handle_ =
             gpiod_chip_get_line(static_cast<gpiod_chip *>(gpio_chip_), config.gpio_rst);
-        if (gpio_rst_line_ != nullptr &&
-            gpiod_line_request_output(static_cast<gpiod_line *>(gpio_rst_line_),
+        if (gpio_rst_handle_ != nullptr &&
+            gpiod_line_request_output(static_cast<gpiod_line *>(gpio_rst_handle_),
                                       "braillatron-rst", 1) == 0) {
-            gpiod_line_set_value(static_cast<gpiod_line *>(gpio_rst_line_), 0);
+            gpiod_line_set_value(static_cast<gpiod_line *>(gpio_rst_handle_), 0);
             usleep(10000);
-            gpiod_line_set_value(static_cast<gpiod_line *>(gpio_rst_line_), 1);
+            gpiod_line_set_value(static_cast<gpiod_line *>(gpio_rst_handle_), 1);
             usleep(120000);
         } else {
-            gpiod_line_release(static_cast<gpiod_line *>(gpio_rst_line_));
-            gpio_rst_line_ = nullptr;
+            gpiod_line_release(static_cast<gpiod_line *>(gpio_rst_handle_));
+            gpio_rst_handle_ = nullptr;
         }
     }
+#endif
 #else
     (void)config_;
 #endif
@@ -171,24 +268,33 @@ void St7789DisplayBackend::render(const RenderedChrome &frame)
     }
 
     (void)spi_fd_;
-    (void)gpio_dc_line_;
+    (void)gpio_dc_handle_;
 }
 
 void St7789DisplayBackend::shutdown()
 {
 #ifdef BRAILLATRON_GPIOD
-    if (gpio_rst_line_ != nullptr) {
-        gpiod_line_release(static_cast<gpiod_line *>(gpio_rst_line_));
-        gpio_rst_line_ = nullptr;
+#if defined(BRAILLATRON_GPIOD_V2)
+    release_gpio_handle(gpio_rst_handle_);
+    gpio_rst_handle_ = nullptr;
+    gpio_rst_offset_ = -1;
+    release_gpio_handle(gpio_dc_handle_);
+    gpio_dc_handle_ = nullptr;
+    gpio_dc_offset_ = -1;
+#else
+    if (gpio_rst_handle_ != nullptr) {
+        gpiod_line_release(static_cast<gpiod_line *>(gpio_rst_handle_));
+        gpio_rst_handle_ = nullptr;
     }
-    if (gpio_dc_line_ != nullptr) {
-        gpiod_line_release(static_cast<gpiod_line *>(gpio_dc_line_));
-        gpio_dc_line_ = nullptr;
+    if (gpio_dc_handle_ != nullptr) {
+        gpiod_line_release(static_cast<gpiod_line *>(gpio_dc_handle_));
+        gpio_dc_handle_ = nullptr;
     }
     if (gpio_chip_ != nullptr) {
         gpiod_chip_close(static_cast<gpiod_chip *>(gpio_chip_));
         gpio_chip_ = nullptr;
     }
+#endif
 #endif
     if (spi_fd_ >= 0) {
         close(spi_fd_);
