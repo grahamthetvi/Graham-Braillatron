@@ -29,6 +29,14 @@ while IFS= read -r unit; do
   systemctl disable --now "${unit}" 2>/dev/null || true
 done < <(systemctl list-unit-files 'serial-getty@*.service' --no-legend 2>/dev/null | awk '{print $1}')
 
+echo "Suppressing DietPi console login banner..."
+AUTOLOGIN_DROPIN="/etc/systemd/system/getty@tty1.service.d/dietpi-autologin.conf"
+mkdir -p "$(dirname "${AUTOLOGIN_DROPIN}")"
+cat >"${AUTOLOGIN_DROPIN}" <<'EOF'
+# Braillatron appliance mode: DietPi postboot skips the login banner when this file exists.
+# getty@tty1 remains disabled; no local console login.
+EOF
+
 echo "Configuring read-only root and volatile tmpfs mounts..."
 bash "${SCRIPT_DIR}/setup-overlay-ro.sh"
 

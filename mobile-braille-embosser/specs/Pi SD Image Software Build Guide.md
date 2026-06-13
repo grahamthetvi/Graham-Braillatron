@@ -512,6 +512,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | USB keyboard ignored | `evdev_enabled=true`; `ls /dev/input/event*`; `SupplementaryGroups=input` in unit; restart `braillatron-ui` |
 | YouTube/Messages unavailable | `systemctl status braillatron-connectd`; `journalctl -u braillatron-connectd -b` |
 | Config changes lost after rebuild | `make install` overwrites `/etc/braillatron/` — back up before install |
+| Monitor shows DietPi "hit return to login" but Enter does nothing | Expected when appliance mode disabled getty — not a login failure; use USB keyboard on Pi + TTS; verify `braillatron-ui` over SSH |
 | No local login prompt after bootstrap | Expected in appliance mode — use SSH; re-flash or `BRAILLATRON_APPLIANCE=0` bootstrap for dev image |
 | SSH unreachable after bootstrap | Check IP and network (`nmcli dev wifi`); confirm `systemctl status ssh`; if locked out entirely, re-flash SD and use `BRAILLATRON_APPLIANCE=0` bootstrap for a dev image with local login |
 | Cannot edit `/etc/braillatron/` over SSH | Run `sudo braillatron-remount-rw` first, then `sudo braillatron-remount-ro` when done |
