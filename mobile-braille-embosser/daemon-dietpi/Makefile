@@ -79,6 +79,8 @@ DOCUMENT_OBJS := \
 	src/documents/coordinate_state.o \
 	src/documents/dictionary_store.o \
 	src/documents/spelling_list_store.o \
+	src/documents/contacts_store.o \
+	src/documents/library_store.o \
 	src/documents/edit_session.o \
 	src/documents/liblouis_bridge.o \
 	src/documents/paper_separator.o
@@ -108,6 +110,12 @@ APP_OBJS := \
 	src/ui/apps/messages_app.o \
 	src/ui/apps/dictionary_app.o \
 	src/ui/apps/spelling_app.o \
+	src/ui/apps/contacts_app.o \
+	src/ui/apps/music_app.o \
+	src/ui/apps/weather_app.o \
+	src/ui/apps/podcasts_app.o \
+	src/ui/apps/radio_app.o \
+	src/ui/apps/gmail_app.o \
 	src/ui/apps/timer_inline.o
 
 CONNECT_COMMON_OBJS := \
@@ -120,7 +128,14 @@ CONNECT_COMMON_OBJS := \
 	src/connect/event_writer.o \
 	src/connect/socket_server.o \
 	src/connect/mpv_ipc.o \
+	src/connect/mpv_service.o \
 	src/connect/youtube_backend.o \
+	src/connect/music_backend.o \
+	src/connect/weather_backend.o \
+	src/connect/rss_backend.o \
+	src/connect/radio_backend.o \
+	src/connect/library_backend.o \
+	src/connect/gmail_backend.o \
 	src/connect/signal_backend.o \
 	src/connect/connect_client.o
 
@@ -158,6 +173,8 @@ UI_OBJS := \
 	src/connect/event_writer.o \
 	src/connect/connect_defaults.o \
 	src/connect/connect_config.o \
+	src/connect/subprocess.o \
+	src/connect/gmail_backend.o \
 	src/ui_main.o \
 	src/keyboard/chord_engine.o \
 	src/keyboard/evdev_input.o \
@@ -200,6 +217,8 @@ UI_TEST_OBJS := \
 	src/connect/event_writer.o \
 	src/connect/connect_config.o \
 	src/connect/connect_defaults.o \
+	src/connect/subprocess.o \
+	src/connect/gmail_backend.o \
 	src/keyboard/focus_nav.o \
 	src/ui_self_test.o
 
@@ -279,7 +298,67 @@ SPELLING_TEST_OBJS := \
 	src/documents/spelling_list_store.o \
 	src/documents/spelling_self_test.o
 
-.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test liblouis-test timer-test dictionary-test spelling-test sentinel connectd connect-test ui-test install a11y liblouis display
+CONTACTS_TEST_OBJS := \
+	src/documents/contacts_store.o \
+	src/documents/contacts_self_test.o
+
+MUSIC_TEST_OBJS := \
+	src/connect/connect_config.o \
+	src/connect/json_utils.o \
+	src/connect/subprocess.o \
+	src/connect/event_writer.o \
+	src/connect/mpv_ipc.o \
+	src/connect/mpv_service.o \
+	src/connect/music_backend.o \
+	src/connect/music_self_test.o
+
+WEATHER_TEST_OBJS := \
+	src/connect/connect_config.o \
+	src/connect/json_utils.o \
+	src/connect/subprocess.o \
+	src/connect/weather_backend.o \
+	src/connect/weather_self_test.o
+
+PODCASTS_TEST_OBJS := \
+	src/connect/connect_config.o \
+	src/connect/json_utils.o \
+	src/connect/subprocess.o \
+	src/connect/event_writer.o \
+	src/connect/mpv_ipc.o \
+	src/connect/mpv_service.o \
+	src/connect/rss_backend.o \
+	src/connect/podcasts_self_test.o
+
+RADIO_TEST_OBJS := \
+	src/connect/connect_config.o \
+	src/connect/json_utils.o \
+	src/connect/subprocess.o \
+	src/connect/event_writer.o \
+	src/connect/mpv_ipc.o \
+	src/connect/mpv_service.o \
+	src/connect/radio_backend.o \
+	src/connect/radio_self_test.o
+
+LIBRARY_TEST_OBJS := \
+	src/documents/library_store.o \
+	src/documents/library_self_test.o
+
+LIBRARY_BACKEND_TEST_OBJS := \
+	src/connect/connect_config.o \
+	src/connect/json_utils.o \
+	src/connect/subprocess.o \
+	src/connect/library_backend.o \
+	src/connect/library_self_test.o
+
+GMAIL_TEST_OBJS := \
+	src/connect/connect_config.o \
+	src/connect/json_utils.o \
+	src/connect/subprocess.o \
+	src/connect/event_writer.o \
+	src/connect/gmail_backend.o \
+	src/connect/gmail_self_test.o
+
+.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test liblouis-test timer-test dictionary-test spelling-test contacts-test music-test library-test gmail-test sentinel connectd connect-test ui-test install a11y liblouis display
 
 all: braillatron-ui braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-sentinel braillatron-connectd braillatron-ui-test braillatron-connect-test
 
@@ -324,7 +403,21 @@ dictionary-test: braillatron-dictionary-test
 
 spelling-test: braillatron-spelling-test
 
-check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test
+contacts-test: braillatron-contacts-test
+
+music-test: braillatron-music-test
+
+weather-test: braillatron-weather-test
+
+podcasts-test: braillatron-podcasts-test
+
+radio-test: braillatron-radio-test
+
+library-test: braillatron-library-test braillatron-library-backend-test
+
+gmail-test: braillatron-gmail-test
+
+check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-gmail-test
 	./braillatron-motion-test
 	./braillatron-motion-gate-sync-test
 	./braillatron-host-chord-test
@@ -336,6 +429,14 @@ check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelli
 	./braillatron-timer-test
 	./braillatron-dictionary-test
 	./braillatron-spelling-test
+	./braillatron-contacts-test
+	./braillatron-music-test
+	./braillatron-weather-test
+	./braillatron-podcasts-test
+	./braillatron-radio-test
+	./braillatron-library-test
+	./braillatron-library-backend-test
+	./braillatron-gmail-test
 
 check-liblouis:
 	$(MAKE) BRAILLATRON_LIBLOUIS=1 braillatron-liblouis-test
@@ -364,6 +465,30 @@ braillatron-dictionary-test: $(DICTIONARY_TEST_OBJS)
 
 braillatron-spelling-test: $(SPELLING_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(SPELLING_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-contacts-test: $(CONTACTS_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(CONTACTS_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-music-test: $(MUSIC_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(MUSIC_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-weather-test: $(WEATHER_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(WEATHER_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-podcasts-test: $(PODCASTS_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(PODCASTS_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-radio-test: $(RADIO_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(RADIO_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-library-test: $(LIBRARY_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(LIBRARY_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-library-backend-test: $(LIBRARY_BACKEND_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(LIBRARY_BACKEND_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-gmail-test: $(GMAIL_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(GMAIL_TEST_OBJS) $(LDFLAGS) -o $@
 
 # Dedicated object so check-liblouis never reuses liblouis_bridge.o from a stub build.
 src/documents/liblouis_bridge_louis.o: src/documents/liblouis_bridge.cpp
@@ -444,10 +569,10 @@ src/ui/display/%.o: src/ui/display/%.cpp
 src/connect/%.o: src/connect/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \
-		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-liblouis-test braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-connect-test braillatron-sentinel braillatron-connectd
+		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-liblouis-test braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-gmail-test braillatron-connect-test braillatron-sentinel braillatron-connectd
 
 -include $(ALL_OBJS:.o=.d)

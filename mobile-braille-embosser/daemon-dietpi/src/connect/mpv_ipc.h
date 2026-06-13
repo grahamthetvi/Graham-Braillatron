@@ -10,6 +10,7 @@ public:
 
     bool send_command(const std::string &command_json);
     bool load_url(const std::string &url);
+    bool seek_seconds(double seconds);
     bool pause();
     bool resume();
     bool stop();

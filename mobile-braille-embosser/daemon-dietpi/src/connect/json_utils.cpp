@@ -105,6 +105,28 @@ bool json_get_bool(const std::string &json, const std::string &key, bool default
     return default_value;
 }
 
+std::string json_get_array_body(const std::string &json, const std::string &key)
+{
+    const std::string needle = "\"" + key + "\":";
+    const size_t pos = json.find(needle);
+    if (pos == std::string::npos) {
+        return {};
+    }
+    size_t start = pos + needle.size();
+    while (start < json.size() && std::isspace(static_cast<unsigned char>(json[start]))) {
+        ++start;
+    }
+    if (start >= json.size() || json[start] != '[') {
+        return {};
+    }
+    ++start;
+    const size_t end = json.find(']', start);
+    if (end == std::string::npos) {
+        return {};
+    }
+    return json.substr(start, end - start);
+}
+
 std::vector<std::string> json_split_objects(const std::string &array_json)
 {
     std::vector<std::string> objects;

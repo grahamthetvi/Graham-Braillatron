@@ -37,7 +37,12 @@ std::string request_id_from_json(const std::string &request)
 bool is_async_command(const std::string &cmd)
 {
     return cmd == "signal.start_link" || cmd == "signal.finish_link" || cmd == "signal.list_chats" ||
-           cmd == "signal.list_messages" || cmd == "signal.send" || cmd == "youtube.search";
+           cmd == "signal.list_messages" || cmd == "signal.send" || cmd == "youtube.search" ||
+           cmd == "music.scan" || cmd == "weather.fetch" || cmd == "podcasts.refresh" ||
+           cmd == "podcasts.download" || cmd == "radio.search" || cmd == "library.search" ||
+           cmd == "library.download" || cmd == "gmail.start_link" || cmd == "gmail.list_inbox" ||
+           cmd == "gmail.read_message" || cmd == "gmail.send" || cmd == "gmail.reply" ||
+           cmd == "gmail.archive" || cmd == "gmail.delete" || cmd == "gmail.star";
 }
 
 std::string make_pending_response(const std::string &request_id)

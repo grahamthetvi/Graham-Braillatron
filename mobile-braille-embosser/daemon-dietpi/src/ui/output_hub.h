@@ -109,6 +109,7 @@ private:
     bool tts_paused_ = false;
     bool dictation_active_ = false;
     bool signal_link_pending_ = false;
+    bool gmail_link_pending_ = false;
 
     motion::MotionService *motion_ = nullptr;
     documents::BrailleTranslationService *braille_service_ = nullptr;

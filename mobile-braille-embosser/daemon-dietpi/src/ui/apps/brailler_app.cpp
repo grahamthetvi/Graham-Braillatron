@@ -2,9 +2,13 @@
 #include "app_util.h"
 #include "ui_context.h"
 
+#include "../output_hub.h"
+
 #include "../../documents/edit_session.h"
 #include "../../motion/motion_service.h"
 
+#include <cctype>
+#include <deque>
 #include <memory>
 #include <regex>
 #include <string>
@@ -20,6 +24,10 @@ public:
 
     void on_enter(UiContext &ctx) override
     {
+        brf_ = ctx.brf;
+        edit_ = ctx.edit;
+        output_ = ctx.output;
+
         if (ctx.brf != nullptr) {
             ctx.brf->load();
         }
@@ -38,11 +46,29 @@ public:
                 });
             }
         }
-        announce(ctx, "Brailler ready");
+
+        dictation_queue_.clear();
+        dictation_paused_announced_ = false;
+        register_dictation_handler();
+
+        if (output_ != nullptr && output_->ui_config().document_dictation_enabled) {
+            announce(ctx, "Brailler ready. Hold speech button to dictate.");
+        } else {
+            announce(ctx, "Brailler ready");
+        }
     }
 
     void on_exit(UiContext &ctx) override
     {
+        if (output_ != nullptr) {
+            output_->set_stt_transcript_handler(nullptr);
+        }
+        dictation_queue_.clear();
+        dictation_paused_announced_ = false;
+        brf_ = nullptr;
+        edit_ = nullptr;
+        output_ = nullptr;
+
         if (ctx.brf != nullptr) {
             ctx.brf->save();
         }
@@ -53,7 +79,10 @@ public:
         announce(ctx, "Brailler closed");
     }
 
-    void on_poll(UiContext &) override {}
+    void on_poll(UiContext &) override
+    {
+        flush_dictation_queue();
+    }
 
     void on_chord(uint8_t dot_mask, UiContext &ctx) override
     {
@@ -92,6 +121,95 @@ public:
             ctx.edit->begin_line_review(ctx.brf->line_count() > 0 ? ctx.brf->line_count() - 1 : 0);
         }
     }
+
+private:
+    bool dictation_enabled() const
+    {
+        return output_ != nullptr && output_->ui_config().document_dictation_enabled
+               && output_->ui_config().stt_enabled;
+    }
+
+    bool can_inject_dictation() const
+    {
+        if (edit_ == nullptr) {
+            return true;
+        }
+        const documents::EditState state = edit_->state();
+        return state != documents::EditState::ReplacementLine
+               && state != documents::EditState::LineReview
+               && state != documents::EditState::AwaitFullCell;
+    }
+
+    void register_dictation_handler()
+    {
+        if (output_ == nullptr || !dictation_enabled()) {
+            return;
+        }
+
+        output_->set_stt_transcript_handler([this](const std::string &text, bool is_final) {
+            if (!is_final || text.empty() || !dictation_enabled()) {
+                return;
+            }
+
+            if (!can_inject_dictation()) {
+                if (dictation_queue_.size() >= queue_limit_) {
+                    if (output_ != nullptr) {
+                        output_->announce_message("Dictation buffer full.");
+                        output_->play_boundary_haptic();
+                    }
+                    return;
+                }
+                dictation_queue_.push_back(text);
+                if (!dictation_paused_announced_ && output_ != nullptr) {
+                    output_->announce_message("Dictation paused during edit.");
+                    dictation_paused_announced_ = true;
+                }
+                return;
+            }
+
+            inject_dictation_text(text);
+        });
+    }
+
+    void inject_dictation_text(const std::string &text)
+    {
+        if (text.empty() || brf_ == nullptr) {
+            return;
+        }
+
+        if (!brf_->lines().empty()) {
+            const std::string &current = brf_->lines().back();
+            if (!current.empty() && !std::isspace(static_cast<unsigned char>(current.back()))
+                && !std::isspace(static_cast<unsigned char>(text.front()))) {
+                brf_->append_char(' ');
+            }
+        }
+
+        for (char ch : text) {
+            brf_->append_char(ch);
+        }
+        brf_->save();
+        dictation_paused_announced_ = false;
+    }
+
+    void flush_dictation_queue()
+    {
+        if (!can_inject_dictation() || dictation_queue_.empty()) {
+            return;
+        }
+
+        while (!dictation_queue_.empty() && can_inject_dictation()) {
+            inject_dictation_text(dictation_queue_.front());
+            dictation_queue_.pop_front();
+        }
+    }
+
+    documents::BrfStore *brf_ = nullptr;
+    documents::EditSession *edit_ = nullptr;
+    OutputHub *output_ = nullptr;
+    std::deque<std::string> dictation_queue_;
+    bool dictation_paused_announced_ = false;
+    static constexpr size_t queue_limit_ = 8;
 };
 
 } // namespace

@@ -72,6 +72,8 @@ UiConfig load_ui_config(const std::string &path)
             config.morse_output_enabled = parse_bool(value);
         } else if (key == "display_enabled") {
             config.display_enabled = parse_bool(value);
+        } else if (key == "document_dictation_enabled") {
+            config.document_dictation_enabled = parse_bool(value);
         } else if (key == "spd_voice") {
             config.spd_voice = value;
         } else if (key == "vosk_model_path") {
@@ -115,6 +117,8 @@ void save_ui_config(const std::string &path, const UiConfig &config)
            << "\n";
     stream << "morse_output_enabled=" << (config.morse_output_enabled ? "true" : "false") << "\n";
     stream << "display_enabled=" << (config.display_enabled ? "true" : "false") << "\n";
+    stream << "document_dictation_enabled="
+           << (config.document_dictation_enabled ? "true" : "false") << "\n";
     stream << "\n";
     stream << "spd_voice=" << config.spd_voice << "\n";
     stream << "vosk_model_path=" << config.vosk_model_path << "\n";

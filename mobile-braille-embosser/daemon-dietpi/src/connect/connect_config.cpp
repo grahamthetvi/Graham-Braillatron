@@ -138,4 +138,178 @@ MessagesConfig load_messages_config(const std::string &path)
     return config;
 }
 
+MusicConfig load_music_config(const std::string &path)
+{
+    MusicConfig config;
+    load_key_value_file(path,
+                        [](const std::string &key, const std::string &value, MusicConfig &cfg) {
+                            if (key == "enabled") {
+                                cfg.enabled = parse_bool(value);
+                            } else if (key == "music_dir") {
+                                cfg.music_dir = value;
+                            } else if (key == "state_path") {
+                                cfg.state_path = value;
+                            } else if (key == "mpv_path") {
+                                cfg.mpv_path = value;
+                            } else if (key == "mpv_ao") {
+                                cfg.mpv_ao = value;
+                            } else if (key == "extensions") {
+                                cfg.extensions.clear();
+                                std::istringstream stream(value);
+                                std::string token;
+                                while (std::getline(stream, token, ',')) {
+                                    token = trim(token);
+                                    if (!token.empty()) {
+                                        if (token[0] != '.') {
+                                            token = "." + token;
+                                        }
+                                        cfg.extensions.push_back(token);
+                                    }
+                                }
+                            }
+                        },
+                        config);
+    return config;
+}
+
+WeatherConfig load_weather_config(const std::string &path)
+{
+    WeatherConfig config;
+    load_key_value_file(path,
+                        [](const std::string &key, const std::string &value, WeatherConfig &cfg) {
+                            if (key == "enabled") {
+                                cfg.enabled = parse_bool(value);
+                            } else if (key == "latitude") {
+                                cfg.latitude = std::stod(value);
+                            } else if (key == "longitude") {
+                                cfg.longitude = std::stod(value);
+                            } else if (key == "city_name") {
+                                cfg.city_name = value;
+                            } else if (key == "provider_url") {
+                                cfg.provider_url = value;
+                            } else if (key == "geocoding_url") {
+                                cfg.geocoding_url = value;
+                            } else if (key == "cache_path") {
+                                cfg.cache_path = value;
+                            } else if (key == "cache_ttl_sec") {
+                                cfg.cache_ttl_sec = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "temperature_unit") {
+                                cfg.temperature_unit = value;
+                            } else if (key == "hourly_limit") {
+                                cfg.hourly_limit = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "daily_limit") {
+                                cfg.daily_limit = static_cast<uint32_t>(std::stoul(value));
+                            }
+                        },
+                        config);
+    return config;
+}
+
+PodcastsConfig load_podcasts_config(const std::string &path)
+{
+    PodcastsConfig config;
+    load_key_value_file(path,
+                        [](const std::string &key, const std::string &value, PodcastsConfig &cfg) {
+                            if (key == "enabled") {
+                                cfg.enabled = parse_bool(value);
+                            } else if (key == "feeds_path") {
+                                cfg.feeds_path = value;
+                            } else if (key == "download_dir") {
+                                cfg.download_dir = value;
+                            } else if (key == "import_dir") {
+                                cfg.import_dir = value;
+                            } else if (key == "refresh_interval_sec") {
+                                cfg.refresh_interval_sec = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "max_episodes_per_feed") {
+                                cfg.max_episodes_per_feed =
+                                    static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "user_agent") {
+                                cfg.user_agent = value;
+                            }
+                        },
+                        config);
+    return config;
+}
+
+RadioConfig load_radio_config(const std::string &path)
+{
+    RadioConfig config;
+    load_key_value_file(path,
+                        [](const std::string &key, const std::string &value, RadioConfig &cfg) {
+                            if (key == "enabled") {
+                                cfg.enabled = parse_bool(value);
+                            } else if (key == "stations_path") {
+                                cfg.stations_path = value;
+                            } else if (key == "favorites_path") {
+                                cfg.favorites_path = value;
+                            } else if (key == "radio_browser_url") {
+                                cfg.radio_browser_url = value;
+                            } else if (key == "default_country") {
+                                cfg.default_country = value;
+                            } else if (key == "search_limit") {
+                                cfg.search_limit = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "metadata_poll_sec") {
+                                cfg.metadata_poll_sec = static_cast<uint32_t>(std::stoul(value));
+                            }
+                        },
+                        config);
+    return config;
+}
+
+LibraryConfig load_library_config(const std::string &path)
+{
+    LibraryConfig config;
+    load_key_value_file(path,
+                        [](const std::string &key, const std::string &value, LibraryConfig &cfg) {
+                            if (key == "enabled") {
+                                cfg.enabled = parse_bool(value);
+                            } else if (key == "gutendex_url") {
+                                cfg.gutendex_url = value;
+                            } else if (key == "download_dir") {
+                                cfg.download_dir = value;
+                            } else if (key == "catalog_path") {
+                                cfg.catalog_path = value;
+                            } else if (key == "search_limit") {
+                                cfg.search_limit = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "user_agent") {
+                                cfg.user_agent = value;
+                            } else if (key == "preferred_format") {
+                                cfg.preferred_format = value;
+                            } else if (key == "books_dir") {
+                                cfg.download_dir = value;
+                            }
+                        },
+                        config);
+    return config;
+}
+
+GmailConfig load_gmail_config(const std::string &path)
+{
+    GmailConfig config;
+    load_key_value_file(path,
+                        [](const std::string &key, const std::string &value, GmailConfig &cfg) {
+                            if (key == "enabled") {
+                                cfg.enabled = parse_bool(value);
+                            } else if (key == "credentials_dir") {
+                                cfg.credentials_dir = value;
+                            } else if (key == "client_id_path") {
+                                cfg.client_id_path = value;
+                            } else if (key == "token_path") {
+                                cfg.token_path = value;
+                            } else if (key == "scopes") {
+                                cfg.scopes = value;
+                            } else if (key == "link_timeout_sec") {
+                                cfg.link_timeout_sec = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "inbox_limit") {
+                                cfg.inbox_limit = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "export_dir") {
+                                cfg.export_dir = value;
+                            } else if (key == "user_agent") {
+                                cfg.user_agent = value;
+                            }
+                        },
+                        config);
+    return config;
+}
+
 } // namespace braillatron::connect

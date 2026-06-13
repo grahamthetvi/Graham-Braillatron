@@ -15,12 +15,78 @@ extern "C" {
 }
 
 #include <chrono>
+#include <cstdint>
 #include <ctime>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <utility>
 
 namespace braillatron::ui {
+
+namespace {
+
+constexpr const char *kWeatherCachePath = "/data/braillatron/weather/cache.json";
+constexpr uint32_t kWeatherCacheTtlSec = 1800;
+
+std::string load_weather_cache_file()
+{
+    std::ifstream in(kWeatherCachePath);
+    if (!in.is_open()) {
+        return {};
+    }
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
+}
+
+bool weather_cache_is_fresh(const std::string &cache_json)
+{
+    const std::string fetched_at = connect::json_get_string(cache_json, "fetched_at");
+    if (fetched_at.empty()) {
+        return false;
+    }
+    const uint64_t fetched = static_cast<uint64_t>(std::stoull(fetched_at));
+    const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+    return now >= fetched && now - fetched <= kWeatherCacheTtlSec;
+}
+
+std::string weather_quick_status_line()
+{
+    const std::string cache = load_weather_cache_file();
+    if (cache.empty() || !weather_cache_is_fresh(cache)) {
+        return {};
+    }
+
+    const size_t current_key = cache.find("\"current\"");
+    if (current_key == std::string::npos) {
+        return {};
+    }
+    const size_t current_pos = cache.find('{', current_key);
+    if (current_pos == std::string::npos) {
+        return {};
+    }
+    const size_t current_end = cache.find('}', current_pos);
+    const std::string current_block = cache.substr(current_pos, current_end - current_pos + 1);
+    const std::string temp = connect::json_get_string(current_block, "temperature");
+    const std::string description = connect::json_get_string(current_block, "weather_description");
+    if (temp.empty() || description.empty()) {
+        return {};
+    }
+
+    const std::string unit = connect::json_get_string(cache, "temperature_unit");
+    std::ostringstream out;
+    out << "Weather " << temp;
+    if (unit == "fahrenheit") {
+        out << " Fahrenheit";
+    } else {
+        out << " Celsius";
+    }
+    out << ", " << description << ". ";
+    return out.str();
+}
+
+} // namespace
 
 OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_config,
                      std::string ui_config_path, DisplayConfig display_config,
@@ -178,6 +244,11 @@ void OutputHub::announce_quick_status()
         stream << "Time " << time_buf << ". ";
     }
 
+    const std::string weather_line = weather_quick_status_line();
+    if (!weather_line.empty()) {
+        stream << weather_line;
+    }
+
     emit(stream.str());
 }
 
@@ -202,7 +273,7 @@ void OutputHub::check_battery_warning()
 void OutputHub::on_shift_tts_toggle(bool pressed)
 {
     if (media_playing_ && connect_client_ != nullptr) {
-        connect_client_->request("youtube.pause");
+        connect_client_->request("media.pause");
         emit(pressed ? "Playback paused" : "Playback resumed");
         return;
     }
@@ -400,6 +471,33 @@ void OutputHub::on_connect_event(const connect::ConnectEvent &event)
     if (event.type == "signal.link_failed") {
         signal_link_pending_ = false;
         emit("Signal link not completed. Try again after approving on phone.");
+        return;
+    }
+
+    if (event.type == "gmail.link_pending") {
+        gmail_link_pending_ = true;
+        const std::string user_code = connect::json_get_string(event.data_json, "user_code");
+        const std::string url = connect::json_get_string(event.data_json, "verification_url");
+        emit("Link Gmail at google.com/device");
+        if (!user_code.empty()) {
+            emit("User code: " + user_code);
+        }
+        if (!url.empty()) {
+            emit(url);
+        }
+        return;
+    }
+
+    if (event.type == "gmail.link_completed") {
+        gmail_link_pending_ = false;
+        const std::string email = connect::json_get_string(event.data_json, "email");
+        emit(email.empty() ? "Gmail linked" : "Gmail linked as " + email);
+        return;
+    }
+
+    if (event.type == "gmail.link_failed") {
+        gmail_link_pending_ = false;
+        emit("Gmail link not completed. Try again.");
     }
 }
 
@@ -591,6 +689,17 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             [this](MenuOverlay &mo) {
                 (void)mo;
                 toggle_bool(ui_config_.stt_enabled, "Speech to Text");
+            },
+        },
+        MenuItem {
+            "Dictation in Document",
+            [this]() {
+                return ui_config_.document_dictation_enabled ? "Dictation in Document: On"
+                                                             : "Dictation in Document: Off";
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                toggle_bool(ui_config_.document_dictation_enabled, "Dictation in Document");
             },
         },
         MenuItem {
@@ -798,6 +907,50 @@ std::vector<MenuItem> OutputHub::build_accounts_menu()
                 const std::string status = connect_client_->request("accounts.status");
                 const bool linked = connect::json_get_bool(status, "signal_linked", false);
                 emit(linked ? "Signal linked" : "Signal not linked");
+            },
+        },
+        MenuItem {
+            "Link Gmail",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                gmail_link_pending_ = true;
+                connect_client_->request_async("gmail.start_link", "", [this](const std::string &response) {
+                    if (connect::json_get_bool(response, "linked", false)) {
+                        gmail_link_pending_ = false;
+                        const std::string email = connect::json_get_string(response, "email");
+                        emit(email.empty() ? "Gmail linked" : "Gmail linked as " + email);
+                        return;
+                    }
+                    if (connect::json_get_bool(response, "ok", false)) {
+                        const std::string user_code = connect::json_get_string(response, "user_code");
+                        if (!user_code.empty()) {
+                            emit("User code: " + user_code);
+                        }
+                        emit("Visit google.com/device and approve. Completion will be announced.");
+                    } else {
+                        gmail_link_pending_ = false;
+                        emit("Gmail link failed to start");
+                    }
+                });
+            },
+        },
+        MenuItem {
+            "Gmail status",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                const std::string status = connect_client_->request("accounts.status");
+                const bool linked = connect::json_get_bool(status, "gmail_linked", false);
+                emit(linked ? "Gmail linked" : "Gmail not linked");
             },
         },
     };

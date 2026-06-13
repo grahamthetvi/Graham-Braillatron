@@ -1,0 +1,25 @@
+{
+  "stations": [
+    {
+      "id": "bbc-radio-4",
+      "name": "BBC Radio 4",
+      "url": "http://stream.live.vc.bbcmedia.co.uk/bbc_radio_fourfm",
+      "country": "UK",
+      "tags": "news,talk"
+    },
+    {
+      "id": "npr-news",
+      "name": "NPR 24 Hour Program Stream",
+      "url": "https://npr-ice.streamguys1.com/live.mp3",
+      "country": "US",
+      "tags": "news"
+    },
+    {
+      "id": "classical-mpr",
+      "name": "Classical MPR",
+      "url": "https://classicalstreams.wcal.org/classical_mpr",
+      "country": "US",
+      "tags": "classical"
+    }
+  ]
+}

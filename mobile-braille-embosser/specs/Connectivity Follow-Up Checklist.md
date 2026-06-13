@@ -114,13 +114,17 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 
 ### Library (from earlier feasibility work)
 
-- [ ] Public domain books — Gutendex search + Gutenberg download + BRF import (`library.conf`, `LibraryApp`)
+- [x] Public domain books — Gutendex search + Gutenberg download + EPUB/DAISY reading (`library.conf`, `LibraryApp`, `library_backend.cpp`)
+- [ ] BARD Public API integration
+- [ ] BARD patron-authenticated downloads
+- [ ] Bookshare integration
 - [ ] BARD Public API metadata search (`api.nlsbard.loc.gov`)
 - [ ] BARD patron-authenticated downloads (requires user account)
 
 ### Deferred integrations (not started)
 
-- [ ] Gmail / Delta Chat (email-shaped messaging)
+- [x] Gmail — OAuth device flow, inbox/read/compose/reply, archive/star/delete, BRF export (`gmail_backend.cpp`, `gmail_app.cpp`)
+- [ ] Delta Chat (email-shaped messaging)
 - [ ] WhatsApp / iMessage — not feasible on this platform; do not pursue unless product direction changes
 - [ ] YouTube Data API v3 OAuth — wrong API for playback; cookies remain the path
 
@@ -184,5 +188,6 @@ Do not edit the Cursor plan file; update the spec checklist as items complete.
 
 | Date | Change |
 |------|--------|
+| 2026-06-13 | Phases 2–8: Document STT, Contacts, Music, Weather, Podcasts/Radio, Library EPUB/DAISY/Gutendex, Gmail OAuth |
 | 2026-06-13 | Phase 0 connectd hardening: async IPC, non-blocking Signal link, global event polling |
 | 2026-06-11 | Initial checklist after Connectd v1 implementation |
