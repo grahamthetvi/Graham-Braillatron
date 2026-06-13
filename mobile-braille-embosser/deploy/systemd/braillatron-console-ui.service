@@ -12,6 +12,7 @@ Type=simple
 SupplementaryGroups=input
 EnvironmentFile=-/etc/braillatron/appliance.env
 Environment=BRAILLATRON_CONFIG=/etc/braillatron
+Environment=TERM=linux
 Environment=SPEECHD_ADDRESS=unix_socket:/run/speech-dispatcher/speechd.sock
 ExecStartPre=/usr/local/sbin/braillatron-console-ready.sh --no-wait
 ExecStart=/usr/bin/openvt -c 1 -s -w -f -- /usr/local/bin/braillatron-ui /etc/braillatron/hardware.conf

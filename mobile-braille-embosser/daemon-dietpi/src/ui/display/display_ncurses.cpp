@@ -2,6 +2,7 @@
 
 #include "display_ncurses.h"
 
+#include <cstdlib>
 #include <curses.h>
 #include <string>
 
@@ -25,6 +26,11 @@ std::string status_suffix(const RenderedChrome &frame)
 
 NcursesDisplayBackend::NcursesDisplayBackend()
 {
+    const char *term = std::getenv("TERM");
+    if (term == nullptr || term[0] == '\0' || std::string(term) == "unknown") {
+        setenv("TERM", "linux", 1);
+    }
+
     if (initscr() == nullptr) {
         return;
     }

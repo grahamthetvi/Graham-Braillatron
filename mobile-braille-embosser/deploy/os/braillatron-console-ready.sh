@@ -48,24 +48,29 @@ wait_for_ui() {
 }
 
 print_banner() {
-  local use_figlet=0
-  if command -v figlet >/dev/null 2>&1; then
-    use_figlet=1
-  fi
+  # Linux console on tty1 — figlet and follow-on ncurses need a real TERM type.
+  export TERM="${TERM:-linux}"
 
   printf '\033[H\033[2J\033[?25l'
   printf '\033[1;36m'
 
-  if (( use_figlet )); then
-    figlet -f slant 'Graham'
-    figlet -f slant 'Braillatron'
+  if command -v figlet >/dev/null 2>&1; then
+    local figlet_font="slant"
+    if ! figlet -I2 2>/dev/null | grep -qx "${figlet_font}"; then
+      figlet_font="standard"
+    fi
+    figlet -f "${figlet_font}" 'Graham Braillatron' 2>/dev/null \
+      || figlet 'Graham Braillatron' 2>/dev/null \
+      || printf '  Graham Braillatron\n'
   else
     cat <<'EOF'
-     ____                       _              _              _
-    |  _ \ __ _ _ __ _ __ _   _| |_ _ __ _   _| |_ _   _ _ __| |_ ___ _ __ ___
-    | |_) / _` | '__| '_ \ | | | __| '__| | | | __| | | | '__| __/ _ \ '__/ __|
-    |  _ < (_| | |  | | | |_| | |_| |  | |_| | |_| |_| | |  | ||  __/ |  \__ \
-    |_| \_\__,_|_|  |_|  \__,_|\__|_|   \__,_|\__|\__,_|_|   \__\___|_|  |___/
+     ____                       _              _
+    |  _ \ __ _ _ __ _ __ _   _| |_ _ __ _   _| |_ _   _ _ __ ___
+    | |_) / _` | '__| '_ \ | | | __| '__| | | | __| | | | '__/ __|
+    |  _ < (_| | |  | | | |_| | |_| |  | |_| | |_| |_| | |  \__ \
+    |_| \_\__,_|_|  |_|  \__,_|\__|_|   \__,_|\__|\__,_|_|   |___/
+
+      Graham Braillatron
 EOF
   fi
 

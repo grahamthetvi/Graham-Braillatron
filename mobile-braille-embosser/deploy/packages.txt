@@ -3,6 +3,7 @@ speech-dispatcher-espeak-ng
 espeak-ng
 espeak-ng-data
 brltty
+figlet
 rsync
 alsa-utils
 parted
