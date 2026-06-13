@@ -37,6 +37,12 @@ DisplayBackendKind parse_backend_kind(const std::string &value)
     if (lower == "ncurses") {
         return DisplayBackendKind::Ncurses;
     }
+    if (lower == "fb" || lower == "fbdev" || lower == "hdmi") {
+        return DisplayBackendKind::Fb;
+    }
+    if (lower == "multi" || lower == "composite") {
+        return DisplayBackendKind::Multi;
+    }
     if (lower == "stub") {
         return DisplayBackendKind::Stub;
     }
@@ -84,6 +90,12 @@ DisplayConfig load_display_config(const std::string &path)
             config.gpio_cs = std::stoi(value);
         } else if (key == "ncurses_enabled") {
             config.ncurses_enabled = parse_bool(value);
+        } else if (key == "fbdev") {
+            config.fbdev = value;
+        } else if (key == "hdmi_enabled") {
+            config.hdmi_enabled = parse_bool(value);
+        } else if (key == "hdmi_font_scale") {
+            config.hdmi_font_scale = std::stoi(value);
         }
     }
 

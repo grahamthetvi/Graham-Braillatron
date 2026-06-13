@@ -5,13 +5,17 @@
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <unistd.h>
+#include <vector>
 
 #ifdef BRAILLATRON_DISPLAY
 #include "display_ncurses.h"
 #endif
 
+#include "display_composite.h"
+#include "display_fbdev.h"
 #include "display_st7789.h"
 
 namespace braillatron::ui {
@@ -21,6 +25,11 @@ namespace {
 bool path_exists(const std::string &path)
 {
     return !path.empty() && access(path.c_str(), F_OK) == 0;
+}
+
+bool path_readable(const std::string &path)
+{
+    return !path.empty() && access(path.c_str(), R_OK) == 0;
 }
 
 bool stdout_is_tty()
@@ -37,8 +46,10 @@ class StubDisplayBackend : public DisplayBackend {
 public:
     bool available() const override { return false; }
 
-    void render(const RenderedChrome &frame) override
+    void render(const UiChromeModel &model) override
     {
+        ChromeRenderer renderer(8);
+        const RenderedChrome frame = renderer.build(model);
         std::ostringstream stream;
         stream << frame.header;
         if (!frame.breadcrumb.empty()) {
@@ -55,11 +66,26 @@ public:
     }
 
     void shutdown() override {}
+
+    std::string backend_label() const override { return "stub"; }
 };
 
 DisplayBackend *try_create_spi(const DisplayConfig &config)
 {
     auto *backend = new St7789DisplayBackend(config);
+    if (!backend->available()) {
+        delete backend;
+        return nullptr;
+    }
+    return backend;
+}
+
+DisplayBackend *try_create_fb(const DisplayConfig &config)
+{
+    if (!config.hdmi_enabled) {
+        return nullptr;
+    }
+    auto *backend = new FbdevDisplayBackend(config);
     if (!backend->available()) {
         delete backend;
         return nullptr;
@@ -83,6 +109,38 @@ DisplayBackend *try_create_ncurses(const DisplayConfig &config)
 }
 #endif
 
+DisplayBackend *assemble_auto_backends(const DisplayConfig &display_config)
+{
+    std::vector<std::unique_ptr<DisplayBackend>> backends;
+
+    if (path_exists(display_config.spidev) && spi_panel_gpio_configured(display_config)) {
+        if (DisplayBackend *spi = try_create_spi(display_config)) {
+            backends.emplace_back(spi);
+        }
+    }
+
+    if (path_readable(display_config.fbdev)) {
+        if (DisplayBackend *fb = try_create_fb(display_config)) {
+            backends.emplace_back(fb);
+        }
+    }
+
+    if (backends.empty()) {
+#ifdef BRAILLATRON_DISPLAY
+        if (DisplayBackend *ncurses = try_create_ncurses(display_config)) {
+            return ncurses;
+        }
+#endif
+        return new StubDisplayBackend();
+    }
+
+    if (backends.size() == 1) {
+        return backends.front().release();
+    }
+
+    return new CompositeDisplayBackend(std::move(backends));
+}
+
 } // namespace
 
 DisplayBackend *create_display_backend(const UiConfig &ui_config, const DisplayConfig &display_config)
@@ -95,6 +153,8 @@ DisplayBackend *create_display_backend(const UiConfig &ui_config, const DisplayC
         switch (kind) {
         case DisplayBackendKind::Spi:
             return try_create_spi(display_config);
+        case DisplayBackendKind::Fb:
+            return try_create_fb(display_config);
         case DisplayBackendKind::Ncurses:
 #ifdef BRAILLATRON_DISPLAY
             return try_create_ncurses(display_config);
@@ -104,34 +164,25 @@ DisplayBackend *create_display_backend(const UiConfig &ui_config, const DisplayC
 #endif
         case DisplayBackendKind::Stub:
             return new StubDisplayBackend();
+        case DisplayBackendKind::Multi:
         case DisplayBackendKind::Auto:
             break;
         }
         return nullptr;
     };
 
-    if (display_config.backend != DisplayBackendKind::Auto) {
-        DisplayBackend *backend = pick(display_config.backend);
-        if (backend != nullptr) {
-            return backend;
-        }
-        return new StubDisplayBackend();
+    if (display_config.backend == DisplayBackendKind::Auto) {
+        return assemble_auto_backends(display_config);
     }
 
-    if (path_exists(display_config.spidev) && spi_panel_gpio_configured(display_config)) {
-        DisplayBackend *backend = try_create_spi(display_config);
-        if (backend != nullptr) {
-            return backend;
-        }
+    if (display_config.backend == DisplayBackendKind::Multi) {
+        return assemble_auto_backends(display_config);
     }
 
-#ifdef BRAILLATRON_DISPLAY
-    DisplayBackend *ncurses = try_create_ncurses(display_config);
-    if (ncurses != nullptr) {
-        return ncurses;
+    DisplayBackend *backend = pick(display_config.backend);
+    if (backend != nullptr) {
+        return backend;
     }
-#endif
-
     return new StubDisplayBackend();
 }
 
@@ -140,15 +191,7 @@ std::string display_backend_name(const DisplayBackend *backend)
     if (backend == nullptr) {
         return "none";
     }
-    if (dynamic_cast<const St7789DisplayBackend *>(backend) != nullptr) {
-        return "spi";
-    }
-#ifdef BRAILLATRON_DISPLAY
-    if (dynamic_cast<const NcursesDisplayBackend *>(backend) != nullptr) {
-        return "ncurses";
-    }
-#endif
-    return "stub";
+    return backend->backend_label();
 }
 
 } // namespace braillatron::ui

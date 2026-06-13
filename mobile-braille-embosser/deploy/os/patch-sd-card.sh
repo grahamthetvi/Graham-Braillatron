@@ -148,7 +148,7 @@ mkdir -p "${WANTS}"
 enable_unit braillatron.target
 enable_unit braillatron-ui.service
 enable_unit braillatron-ui-stub.service
-enable_unit braillatron-console-ready.service
+rm -f "${WANTS}/braillatron-console-ready.service"
 enable_unit getty@tty1.service
 enable_unit braillatron-sentinel.service
 enable_unit braillatron-connectd.service
@@ -238,11 +238,11 @@ else
   checks=1
 fi
 if [[ -x "${PI}/usr/bin/openvt" ]]; then
-  echo "  OK  openvt present (legacy console-ui path)"
+  echo "  note: openvt present (legacy; not used by current UI path)"
 else
-  echo "  note: openvt missing — not required when getty drop-in is installed"
+  echo "  note: openvt missing — not required for framebuffer UI"
 fi
-grep -q 'Environment=TERM=linux' "${SYSTEMD}/braillatron-console-ui.service" && echo "  OK  TERM=linux in console-ui" || { echo "  MISSING TERM=linux"; checks=1; }
+grep -q 'SupplementaryGroups=input video' "${SYSTEMD}/braillatron-ui.service" && echo "  OK  braillatron-ui video group" || { echo "  MISSING video group in braillatron-ui.service"; checks=1; }
 grep -q "Graham Braillatron" "${PI}/usr/local/sbin/braillatron-console-ready.sh" && echo "  OK  console-ready banner script" || { echo "  MISSING banner script"; checks=1; }
 [[ -L "${SYSTEMD}/ifup@wlan0.service" ]] && echo "  OK  ifup@wlan0 masked" || { echo "  MISSING ifup@wlan0 mask"; checks=1; }
 [[ -L "${SYSTEMD}/ifup@eth0.service" ]] && echo "  OK  ifup@eth0 masked" || echo "  note: ifup@eth0 not masked (end0 may be used instead)"

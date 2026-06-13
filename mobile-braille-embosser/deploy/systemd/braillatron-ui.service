@@ -1,15 +1,15 @@
 [Unit]
-Description=Braillatron ScreenReader UI (SPI panel)
+Description=Braillatron ScreenReader UI
 EnvironmentFile=-/etc/braillatron/appliance.env
-ConditionPathExists=/etc/braillatron/appliance-spi
+ConditionPathExists=!/etc/braillatron/appliance-headless
 After=local-fs.target sound.target speech-dispatcher.service
-Conflicts=braillatron-console-ui.service
+Conflicts=braillatron-ui-stub.service
 Requires=speech-dispatcher.service
 Wants=brltty.service braillatron-connectd.service
 
 [Service]
 Type=simple
-SupplementaryGroups=input
+SupplementaryGroups=input video
 EnvironmentFile=-/etc/braillatron/appliance.env
 Environment=BRAILLATRON_CONFIG=/etc/braillatron
 Environment=SPEECHD_ADDRESS=unix_socket:/run/speech-dispatcher/speechd.sock

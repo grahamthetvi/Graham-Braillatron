@@ -60,7 +60,7 @@ HEADLESS="${BRAILLATRON_HEADLESS:-0}"
 SPI_PANEL="${BRAILLATRON_SPI_PANEL:-0}"
 install -d /etc/braillatron
 cat >/etc/braillatron/appliance.env <<EOF
-# Managed by setup-appliance-mode.sh — BRAILLATRON_HEADLESS=1 forces TTS-only (no HDMI ncurses).
+# Managed by setup-appliance-mode.sh — BRAILLATRON_HEADLESS=1 forces TTS-only (no visual UI).
 BRAILLATRON_HEADLESS=${HEADLESS}
 EOF
 if [[ "${HEADLESS}" == "1" ]]; then
@@ -82,7 +82,7 @@ echo "Appliance env: BRAILLATRON_HEADLESS=${HEADLESS} BRAILLATRON_SPI_PANEL=${SP
 echo "Configuring NetworkManager Wi-Fi (mask DietPi ifup@wlan0)..."
 bash "${SCRIPT_DIR}/setup-networkmanager.sh"
 
-echo "Installing display routing (SPI / HDMI ncurses / headless stub)..."
+echo "Installing display routing (SPI + HDMI framebuffer / headless stub)..."
 install -m 755 "${SCRIPT_DIR}/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-console-ready.service" /etc/systemd/system/
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-console-ui.service" /etc/systemd/system/
@@ -94,7 +94,7 @@ systemctl enable braillatron-ui.service
 systemctl disable braillatron-console-ui.service 2>/dev/null || true
 systemctl mask braillatron-console-ui.service 2>/dev/null || true
 systemctl enable braillatron-ui-stub.service
-systemctl enable braillatron-console-ready.service
+systemctl disable braillatron-console-ready.service 2>/dev/null || true
 
 echo "Configuring read-only root and volatile tmpfs mounts..."
 bash "${SCRIPT_DIR}/setup-overlay-ro.sh"
@@ -111,8 +111,8 @@ cat <<EOF
 
 Appliance mode configured.
   - Power on: Braillatron starts automatically (no login required)
-  - No SPI panel: getty@tty1 shows banner then ncurses UI (unless BRAILLATRON_HEADLESS=1)
-  - SPI panel present: UI on panel; HDMI shows ready banner
+  - Visual UI: braillatron-ui.service (HDMI /dev/fb0 and/or SPI panel when configured)
+  - tty1: cleared on success; UI on framebuffer/panel (unless BRAILLATRON_HEADLESS=1)
   - HDMI blank? SSH: sudo braillatron-boot-diagnose.sh
   - SSH: enabled for development and maintenance
 

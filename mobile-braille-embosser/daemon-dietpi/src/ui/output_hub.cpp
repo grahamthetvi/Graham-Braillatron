@@ -31,7 +31,6 @@ OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_c
     , display_config_(std::move(display_config))
     , motion_(motion)
     , braille_service_(braille)
-    , chrome_renderer_(8)
     , tts_(create_tts_backend(ui_config_))
     , braille_(create_braille_backend(ui_config_, braille_service_))
     , stt_(create_stt_backend(ui_config_))
@@ -41,6 +40,9 @@ OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_c
     , display_(create_display_backend(ui_config_, display_config_))
 {
     menu_overlay_.set_root_items(build_root_menu());
+    if (ui_config_.display_enabled && display_ != nullptr) {
+        std::cerr << "[display] backend=" << display_backend_name(display_.get()) << "\n";
+    }
 }
 
 void OutputHub::apply_braille_grade_preset(documents::BrailleGradePreset preset)
@@ -414,8 +416,7 @@ void OutputHub::render_chrome()
         return;
     }
 
-    const RenderedChrome frame = chrome_renderer_.build(chrome_model_);
-    display_->render(frame);
+    display_->render(chrome_model_);
 }
 
 void OutputHub::rebuild_display_backend()

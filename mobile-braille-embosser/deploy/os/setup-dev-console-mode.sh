@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Enable HDMI ncurses fallback on Pi (disable BRAILLATRON_HEADLESS override).
+# Enable visual UI on Pi (disable BRAILLATRON_HEADLESS override).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,10 +22,10 @@ BRAILLATRON_HEADLESS=0
 EOF
 rm -f /etc/braillatron/appliance-headless
 
-echo "HDMI ncurses fallback enabled (BRAILLATRON_HEADLESS=0)."
+echo "Visual UI enabled (BRAILLATRON_HEADLESS=0)."
 echo "Re-applying appliance console lockdown..."
 BRAILLATRON_HEADLESS=0 bash "${SCRIPT_DIR}/setup-appliance-mode.sh"
 
 echo ""
-echo "Dev console mode active. Reboot to show ncurses on HDMI when SPI panel is absent:"
+echo "Dev console mode active. Reboot to show UI on HDMI framebuffer and/or SPI panel:"
 echo "  reboot"

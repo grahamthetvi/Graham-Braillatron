@@ -48,8 +48,11 @@ BACKEND_CXXFLAGS += $(DISPLAY_CXXFLAGS)
 DISPLAY_OBJS := \
 	src/ui/display/ui_chrome_model.o \
 	src/ui/display/chrome_renderer.o \
+	src/ui/display/chrome_rasterizer.o \
 	src/ui/display/display_config.o \
 	src/ui/display/display_backend.o \
+	src/ui/display/display_composite.o \
+	src/ui/display/display_fbdev.o \
 	src/ui/display/font8x8_basic.o \
 	src/ui/display/display_st7789.o \
 	src/ui/display/display_ncurses.o
@@ -209,6 +212,15 @@ AUDIO_OUTPUT_TEST_OBJS := \
 DISPLAY_TEST_OBJS := \
 	src/ui/display/ui_chrome_model.o \
 	src/ui/display/chrome_renderer.o \
+	src/ui/display/chrome_rasterizer.o \
+	src/ui/display/display_config.o \
+	src/ui/display/display_backend.o \
+	src/ui/display/display_composite.o \
+	src/ui/display/display_fbdev.o \
+	src/ui/display/display_st7789.o \
+	src/ui/display/display_ncurses.o \
+	src/ui/display/font8x8_basic.o \
+	src/ui/ui_config.o \
 	src/ui/menu_overlay.o \
 	src/display_self_test.o
 
@@ -315,7 +327,7 @@ braillatron-audio-output-test: $(AUDIO_OUTPUT_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(AUDIO_OUTPUT_TEST_OBJS) -o $@
 
 braillatron-display-test: $(DISPLAY_TEST_OBJS)
-	$(CXX) $(CXXFLAGS) $(DISPLAY_TEST_OBJS) -o $@
+	$(CXX) $(CXXFLAGS) $(DISPLAY_TEST_OBJS) $(LDFLAGS) $(DISPLAY_LIBS) -o $@
 
 braillatron-sentinel: $(TELEMETRY_OBJS)
 	$(CXX) $(CXXFLAGS) $(TELEMETRY_OBJS) -o $@

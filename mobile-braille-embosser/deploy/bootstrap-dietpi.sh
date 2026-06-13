@@ -34,7 +34,7 @@ if [[ "${BRAILLATRON_SPI_PANEL:-0}" == "1" ]]; then
     fi
   fi
 else
-  echo "SPI overlay skipped (default skeleton bench — HDMI ncurses on tty1)."
+  echo "SPI overlay skipped (default skeleton bench — HDMI framebuffer UI via braillatron-ui.service)."
   echo "  Re-bootstrap with BRAILLATRON_SPI_PANEL=1 when the SPI HAT is fitted."
 fi
 

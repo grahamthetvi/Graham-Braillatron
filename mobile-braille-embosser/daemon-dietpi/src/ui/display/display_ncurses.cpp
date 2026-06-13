@@ -2,6 +2,9 @@
 
 #include "display_ncurses.h"
 
+#include "chrome_renderer.h"
+
+#include <algorithm>
 #include <cstdlib>
 #include <curses.h>
 #include <string>
@@ -58,7 +61,30 @@ bool NcursesDisplayBackend::available() const
     return initialized_;
 }
 
-void NcursesDisplayBackend::render(const RenderedChrome &frame)
+std::string NcursesDisplayBackend::backend_label() const
+{
+    return "ncurses";
+}
+
+int NcursesDisplayBackend::max_body_rows() const
+{
+    if (!initialized_ || LINES <= 6) {
+        return 8;
+    }
+    return std::max(1, LINES - 6);
+}
+
+void NcursesDisplayBackend::render(const UiChromeModel &model)
+{
+    if (!initialized_) {
+        return;
+    }
+
+    ChromeRenderer renderer(max_body_rows());
+    render_frame(renderer.build(model));
+}
+
+void NcursesDisplayBackend::render_frame(const RenderedChrome &frame)
 {
     if (!initialized_) {
         return;

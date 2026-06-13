@@ -13,10 +13,14 @@ public:
     NcursesDisplayBackend &operator=(const NcursesDisplayBackend &) = delete;
 
     bool available() const override;
-    void render(const RenderedChrome &frame) override;
+    void render(const UiChromeModel &model) override;
     void shutdown() override;
+    std::string backend_label() const override;
 
 private:
+    int max_body_rows() const;
+    void render_frame(const RenderedChrome &frame);
+
     bool initialized_ = false;
 };
 

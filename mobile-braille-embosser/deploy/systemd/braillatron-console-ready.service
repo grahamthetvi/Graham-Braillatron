@@ -1,7 +1,7 @@
 [Unit]
-Description=Braillatron ready banner on local console (SPI headless path)
+Description=Braillatron ready banner on local console
 EnvironmentFile=-/etc/braillatron/appliance.env
-ConditionPathExists=/etc/braillatron/appliance-spi
+ConditionPathExists=!/etc/braillatron/appliance-headless
 After=braillatron-ui.service
 PartOf=braillatron.target
 ConditionPathExists=/usr/local/sbin/braillatron-console-ready.sh

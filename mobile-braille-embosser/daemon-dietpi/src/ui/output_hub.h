@@ -3,7 +3,6 @@
 #include "../documents/liblouis_bridge.h"
 #include "../platform/device_status.h"
 #include "backends/backend.h"
-#include "display/chrome_renderer.h"
 #include "display/display_backend.h"
 #include "display/display_config.h"
 #include "display/ui_chrome_model.h"
@@ -112,7 +111,6 @@ private:
     documents::BrailleTranslationService *braille_service_ = nullptr;
 
     UiChromeModel chrome_model_;
-    ChromeRenderer chrome_renderer_;
 
     std::unique_ptr<TtsBackend> tts_;
     std::unique_ptr<BrailleBackend> braille_;

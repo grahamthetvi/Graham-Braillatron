@@ -196,13 +196,12 @@ For a similar local-console experience on a **dev PC** (ncurses bench), use [`de
 
 | Surface | When | What you see |
 | --- | --- | --- |
-| **SPI panel** | `/dev/spidev0.0` present (bootstrap with `BRAILLATRON_SPI_PANEL=1`) | UI chrome on the HAT display (`braillatron-ui.service`) |
-| **HDMI tty1** | SPI absent (default bootstrap) | Graham Braillatron banner, then ncurses UI (`braillatron-console-ui.service`) |
+| **HDMI** | `/dev/fb0` present, `hdmi_enabled=true` | UI chrome at native resolution via framebuffer (`braillatron-ui.service`) |
+| **SPI panel** | `/dev/spidev0.0` + GPIO configured | Same UI chrome on the HAT display (simultaneous with HDMI when both are available) |
+| **tty1** | Always (non-headless) | Cleared text console on success; UI on framebuffer |
 | **SSH** | Always | Admin shell only — not the product UI |
 
-**TTY note:** HDMI uses a real virtual console (`tty1`). SSH uses a pseudo-TTY (`pts/0`). Ncurses needs a real tty, so the HDMI path runs `braillatron-ui` via `openvt` on tty1; the headless systemd service cannot draw ncurses on a monitor.
-
-Force TTS-only (no HDMI ncurses): `BRAILLATRON_HEADLESS=1` at bootstrap or set in `/etc/braillatron/appliance.env`, then `systemctl restart braillatron.target`. Re-enable HDMI UI: [`deploy/os/setup-dev-console-mode.sh`](deploy/os/setup-dev-console-mode.sh).
+Force TTS-only (no visual UI): `BRAILLATRON_HEADLESS=1` at bootstrap or set in `/etc/braillatron/appliance.env`, then `systemctl restart braillatron.target`. Re-enable visual UI: [`deploy/os/setup-dev-console-mode.sh`](deploy/os/setup-dev-console-mode.sh).
 
 ## Configuration layout
 
@@ -214,7 +213,7 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 | `keyboard.conf` | Serial + evdev bench input |
 | `evdev_map.conf` | USB key → logical key map (edit for non-QWERTY layouts) |
 | `ui.conf` | TTS, braille, STT, haptics toggles, visual display toggle |
-| `display.conf` | SPI panel backend (`auto`/`spi`/`ncurses`/`stub`), spidev path, GPIO placeholders |
+| `display.conf` | Display backends (`auto`/`spi`/`fb`/`ncurses`/`stub`), spidev, fbdev, GPIO, HDMI options |
 
 Production paths on the Pi are under `/etc/braillatron/`. See the [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) for deployment, **testing on the Pi** (no GUI, journal + TTS), bench keyboard setup, and rebuild/update steps.
 
