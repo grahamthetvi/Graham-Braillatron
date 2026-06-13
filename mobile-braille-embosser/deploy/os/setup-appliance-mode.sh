@@ -80,6 +80,9 @@ else
 fi
 echo "Appliance env: BRAILLATRON_HEADLESS=${HEADLESS} BRAILLATRON_SPI_PANEL=${SPI_PANEL}"
 
+echo "Configuring NetworkManager Wi-Fi (mask DietPi ifup@wlan0)..."
+bash "${SCRIPT_DIR}/setup-networkmanager.sh"
+
 echo "Installing display routing (SPI / HDMI ncurses / headless stub)..."
 install -m 755 "${SCRIPT_DIR}/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-console-ready.service" /etc/systemd/system/

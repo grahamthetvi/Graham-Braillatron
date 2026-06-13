@@ -70,8 +70,7 @@ systemctl enable braillatron-ui-stub.service
 systemctl enable braillatron-console-ready.service
 systemctl enable braillatron-sync.timer
 systemctl enable braillatron-bluetooth-autoconnect.timer
-systemctl disable NetworkManager-wait-online.service 2>/dev/null || true
-systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
+bash "${ROOT}/deploy/os/setup-networkmanager.sh"
 
 echo "Installed Braillatron to ${PREFIX}/bin and ${CONFIG_DIR}"
 echo "Start with: systemctl start braillatron.target"
