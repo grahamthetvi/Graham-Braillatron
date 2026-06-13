@@ -247,6 +247,14 @@ cd ~/braillatron/mobile-braille-embosser   # or your clone path
 sudo bash deploy/os/setup-bluetooth-audio.sh
 ```
 
+If you see `failed to connect to user scope bus`, enable linger and start the user manager, then re-run (or reboot once after the first run):
+
+```bash
+sudo loginctl enable-linger root
+sudo systemctl start user@0.service
+sudo bash deploy/os/setup-bluetooth-audio.sh
+```
+
 Then pair the speaker and set it as the default sink:
 
 ```bash
@@ -257,6 +265,9 @@ bluetoothctl
 
 wpctl status
 wpctl set-default <sink-id>    # the Bluetooth device
+
+# If wpctl cannot connect, prefix runtime dir (headless SSH):
+# XDG_RUNTIME_DIR=/run/user/0 wpctl status
 
 spd-say "Braillatron Bluetooth test"
 sudo systemctl restart braillatron-ui
