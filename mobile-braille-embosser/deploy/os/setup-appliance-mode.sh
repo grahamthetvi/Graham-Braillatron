@@ -10,6 +10,12 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
+if findmnt -n -o OPTIONS / | grep -q ',ro,'; then
+  echo "Root is read-only; remounting read-write for appliance setup..."
+  cd /
+  mount -o remount,rw /
+fi
+
 echo "Enabling Braillatron services..."
 systemctl enable braillatron.target
 
@@ -36,13 +42,27 @@ cat >"${AUTOLOGIN_DROPIN}" <<'EOF'
 # Braillatron appliance mode: DietPi postboot skips the login banner when this file exists.
 # getty@tty1 remains disabled; no local console login.
 EOF
+if [[ ! -f "${AUTOLOGIN_DROPIN}" ]]; then
+  echo "ERROR: failed to create ${AUTOLOGIN_DROPIN}" >&2
+  exit 1
+fi
+echo "DietPi banner suppression: ${AUTOLOGIN_DROPIN}"
+
+# Belt-and-suspenders: postboot prints the banner when the drop-in is missing.
+# Masking avoids a stale/misleading prompt if getty is disabled.
+systemctl disable dietpi-postboot.service 2>/dev/null || true
+systemctl mask dietpi-postboot.service 2>/dev/null || true
 
 echo "Configuring read-only root and volatile tmpfs mounts..."
 bash "${SCRIPT_DIR}/setup-overlay-ro.sh"
 
 echo "Locking root filesystem read-only..."
+cd /
 sync
-mount -o remount,ro /
+if ! mount -o remount,ro /; then
+  echo "Note: could not remount / read-only (mount point busy). Root stays writable until reboot." >&2
+  echo "  After reboot, tmpfs mounts apply and / is typically read-only from fstab." >&2
+fi
 
 cat <<EOF
 
