@@ -20,6 +20,7 @@ unzip
 sqlite3
 libsqlite3-dev
 g++
+make
 libspeechd-dev
 libbrlapi-dev
 liblouis-dev
