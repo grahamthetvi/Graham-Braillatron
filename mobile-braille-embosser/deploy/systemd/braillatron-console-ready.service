@@ -1,6 +1,5 @@
 [Unit]
 Description=Braillatron ready banner on local console
-EnvironmentFile=-/etc/braillatron/appliance.env
 ConditionPathExists=!/etc/braillatron/appliance-headless
 After=braillatron-ui.service
 PartOf=braillatron.target

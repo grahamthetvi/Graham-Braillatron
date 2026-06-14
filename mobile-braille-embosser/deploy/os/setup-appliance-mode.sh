@@ -87,10 +87,15 @@ install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-ui-stub.service" /etc/sy
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-ui.service" /etc/systemd/system/
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron.target" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable braillatron-ui.service
 systemctl disable braillatron-console-ui.service 2>/dev/null || true
 systemctl mask braillatron-console-ui.service 2>/dev/null || true
-systemctl enable braillatron-ui-stub.service
+if [[ "${HEADLESS}" == "1" ]]; then
+  systemctl enable braillatron-ui-stub.service
+  systemctl disable braillatron-ui.service 2>/dev/null || true
+else
+  systemctl enable braillatron-ui.service
+  systemctl disable braillatron-ui-stub.service 2>/dev/null || true
+fi
 systemctl disable braillatron-console-ready.service 2>/dev/null || true
 
 echo "Configuring read-only root and volatile tmpfs mounts..."

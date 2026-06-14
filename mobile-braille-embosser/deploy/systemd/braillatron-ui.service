@@ -1,6 +1,5 @@
 [Unit]
 Description=Braillatron ScreenReader UI
-EnvironmentFile=-/etc/braillatron/appliance.env
 ConditionPathExists=!/etc/braillatron/appliance-headless
 After=local-fs.target sound.target speech-dispatcher.service
 Conflicts=braillatron-ui-stub.service
