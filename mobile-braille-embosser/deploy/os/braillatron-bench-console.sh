@@ -17,8 +17,22 @@ if ! grep -q '^evdev_enabled=true' "${CONFIG_DIR}/keyboard.conf" 2>/dev/null; th
   cp "${CONFIG_DIR}/keyboard-bench.conf" "${CONFIG_DIR}/keyboard.conf"
 fi
 
+liblouis_ready=0
+if pkg-config --exists liblouis 2>/dev/null &&
+   [[ -f /usr/share/liblouis/tables/en-ueb-g2.ctb ]]; then
+  liblouis_ready=1
+fi
+
 cd "${DAEMON_DIR}"
-make display
+if [[ "${liblouis_ready}" -eq 1 ]]; then
+  echo "braillatron-bench: building with liblouis translation" >&2
+  make BRAILLATRON_LIBLOUIS=1 display
+  ./braillatron-liblouis-test
+else
+  echo "braillatron-bench: liblouis not found; building stub (chords navigate but do not translate)" >&2
+  echo "braillatron-bench: install liblouis-devel and liblouis-data for braille letters" >&2
+  make display
+fi
 
 export BRAILLATRON_CONFIG=config
 exec ./braillatron-ui

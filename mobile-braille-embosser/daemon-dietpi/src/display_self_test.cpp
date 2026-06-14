@@ -42,6 +42,17 @@ int main()
         return 1;
     }
 
+    model.composer_line = "hello";
+    const braillatron::ui::RenderedChrome with_composer = renderer.build(model);
+    if (with_composer.rows.size() != 3 || with_composer.rows[0] != "> hello") {
+        std::cerr << "home composer line mismatch\n";
+        return 1;
+    }
+    if (with_composer.focus_row != 2) {
+        std::cerr << "home composer focus row mismatch\n";
+        return 1;
+    }
+
     braillatron::ui::MenuItem dynamic_item {
         "TTS",
         []() { return std::string("TTS: On"); },

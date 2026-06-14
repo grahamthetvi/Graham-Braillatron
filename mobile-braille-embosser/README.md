@@ -13,7 +13,7 @@ This guide gets you from a fresh clone to a working UI on a Linux dev machine us
 | Focus navigation (home screen apps) | Yes |
 | Visual display (UI chrome, ncurses bench) | Yes (`make display` or `BRAILLATRON_DISPLAY=1`) |
 | Global menu overlay | Yes |
-| Braille chord timing (40 ms window) | Yes (`make host-chord-test`) |
+| Braille chord commit (evdev bench) | Yes (`make host-chord-test`) — commits on release of all dot keys |
 | Braille dots → letters | Needs liblouis (see below) |
 | Offline apps (Timer, Dictionary, Spelling, Contacts) | Yes — core logic covered by `make check` self-tests |
 | connectd network apps (YouTube, Music, Weather, …) | Partial — UI + IPC self-tests; playback/API needs connectd + network on Pi |
@@ -50,7 +50,7 @@ Other useful targets:
 
 ```bash
 make check                                              # build + run 18 host self-tests
-make host-chord-test && ./braillatron-host-chord-test   # chord window logic, no keyboard
+make host-chord-test && ./braillatron-host-chord-test   # evdev chord commit logic, no keyboard
 make motion-test && ./braillatron-motion-test           # kinematics math only
 make connect-test && ./braillatron-connect-test         # async IPC + connect client
 make timer-test && ./braillatron-timer-test             # TimerService
@@ -116,11 +116,13 @@ Log out and back in on the local console (or switch to a text tty with **Ctrl+Al
 - **Skip once** — `BRAILLATRON_BENCH_AUTO=0 login`
 - **Remove hook** — `./deploy/os/install-bench-login.sh --uninstall`
 
-Run the UI manually anytime without the hook:
+Run the UI manually anytime without the hook (auto-detects liblouis when installed):
 
 ```bash
 ./deploy/os/braillatron-bench-console.sh
 ```
+
+The bench console script builds with `BRAILLATRON_LIBLOUIS=1` when `pkg-config liblouis` and UEB tables are present; otherwise it falls back to the stub build with a stderr warning.
 
 ### Run from the project root
 
@@ -148,7 +150,7 @@ Mappings live in `daemon-dietpi/config/evdev_map.conf`. Defaults emulate the phy
 | **K** | Braille dot 5 |
 | **L** | Braille dot 6 |
 
-Braille letters are **chords**: press the dot keys together within **40 ms**, then release. Examples (Grade 1 / Perkins):
+On the **USB keyboard bench path**, braille letters are **chords**: press the dot keys (you can roll them slowly), then release **all** dot keys to commit. The physical Arduino keyboard still uses a **40 ms** integration window (unchanged). Examples (Grade 1 / Perkins):
 
 | Letter | Dots | Keys |
 | --- | --- | --- |
@@ -158,14 +160,14 @@ Braille letters are **chords**: press the dot keys together within **40 ms**, th
 | `d` | 1-4-5 | **F** + **J** + **K** |
 | `l` | 1-2-3 | **F** + **D** + **S** |
 
-When a chord resolves, the translated character is appended to the focus navigator input buffer (visible when an app uses text entry).
+When a chord resolves, the translated character is appended to the home-screen composer line (shown as `> …` above the app list) and to app text fields when an app is active. Unrecognized chords show a toast and boundary haptic.
 
 ## Guided walkthrough
 
 1. **Start the UI** (commands above). Confirm `evdev listening` appears in the log.
 2. **Home screen** — press **↓** a few times. Each step announces the focused app (`Document`, `Dictionary`, `Spelling`, `Calculator`, `Wikipedia`, `YouTube`, …) on stderr.
 3. **Open the menu** — press **`** (grave). Use **↑ / ↓** to move, **Enter** to select, **Backspace** to go back. With a standalone app active, the overlay includes Quick Status, Timer, Morse, Paper Nav, and Save & Exit.
-4. **Type braille** — on the home screen, chord **F** (letter `a`). With the default stub build, translation is disabled; use `host-chord-test` or an a11y build for full text (next section).
+4. **Type braille** — on the home screen, press and release **F** (letter `a` with liblouis). Typed text appears in the `> …` composer line. With the default stub build, you get an "Unrecognized chord" toast instead; use `braillatron-bench-console.sh` or an a11y build for full text (next section).
 5. **Activate an app** — focus `Wikipedia` with **↓**, press **Enter**. The app session takes over chord and D-pad routing until you exit.
 6. **Document dictation (optional)** — with `BRAILLATRON_A11Y=1` and Vosk installed, enable **Dictation in Document** in Settings; hold **Right Super** (Speech) to dictate into the BRF.
 
@@ -237,8 +239,9 @@ Network apps require `braillatron-connectd` running (started by `braillatron.tar
 | `evdev: no suitable input device found` | Plug in a keyboard; check `ls /dev/input/event*`; ensure F and J keys exist on the device |
 | `evdev: unable to open … Permission denied` | Add your user to the `input` group and re-login, or run from a session with input access |
 | `EVIOCGRAB failed` | Set `evdev_grab=false`, or run on a console without a competing grab |
-| Chords do nothing | Verify timing (release within ~40 ms of press); run `./braillatron-host-chord-test` |
-| Chords fire but no letters | Rebuild with `BRAILLATRON_LIBLOUIS=1` and install `liblouis-devel`; run `./braillatron-liblouis-test` |
+| Chords do nothing | Release all dot keys to commit; run `./braillatron-host-chord-test` |
+| Chords fire but no letters | Rebuild with `BRAILLATRON_LIBLOUIS=1` and install `liblouis-devel`; run `./braillatron-liblouis-test`, or use `./deploy/os/braillatron-bench-console.sh` |
+| Arduino and USB keyboard both connected | Both inputs are processed independently; expect duplicate events if you use both at once |
 | Arduino messages on startup | Expected; `allow_missing_arduino=true` keeps the daemon running |
 
 ## Firmware (Arduino Micro)

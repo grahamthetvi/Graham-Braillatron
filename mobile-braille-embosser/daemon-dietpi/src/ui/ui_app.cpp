@@ -77,8 +77,14 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
             output_hub_.announce_focus(label, at_boundary);
         });
 
+    keyboard_.focus_nav().set_input_changed_handler([this]() { output_hub_.sync_chrome(false); });
+
     keyboard_.focus_nav().set_activate_handler(
         [this](size_t index, const std::string &label) { handle_activate(index, label); });
+
+    if (!braille_service_.available()) {
+        output_hub_.announce_message("Braille translation unavailable");
+    }
 }
 
 void UiApp::start()

@@ -31,5 +31,6 @@ bool inline_app_active();
 void on_app_chord(uint8_t dot_mask);
 void on_app_text(const std::string &text);
 void on_app_control(keyboard::ControlKey key, bool pressed);
+void on_chord_unrecognized(uint8_t dot_mask);
 
 } // namespace braillatron::hooks

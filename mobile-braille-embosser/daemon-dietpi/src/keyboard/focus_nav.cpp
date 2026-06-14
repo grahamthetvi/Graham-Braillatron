@@ -37,6 +37,7 @@ void FocusNavigator::on_backspace()
 {
     if (!input_buffer_.empty()) {
         input_buffer_.pop_back();
+        notify_input_changed();
     }
 }
 
@@ -50,6 +51,7 @@ void FocusNavigator::on_enter()
 void FocusNavigator::on_text(const std::string &text)
 {
     input_buffer_ += text;
+    notify_input_changed();
 }
 
 size_t FocusNavigator::focus_index() const
@@ -86,10 +88,22 @@ void FocusNavigator::set_focus_changed_handler(FocusChangedHandler handler)
     focus_changed_handler_ = std::move(handler);
 }
 
+void FocusNavigator::set_input_changed_handler(InputChangedHandler handler)
+{
+    input_changed_handler_ = std::move(handler);
+}
+
 void FocusNavigator::notify_focus(bool at_boundary)
 {
     if (focus_changed_handler_) {
         focus_changed_handler_(focused_label(), at_boundary);
+    }
+}
+
+void FocusNavigator::notify_input_changed()
+{
+    if (input_changed_handler_) {
+        input_changed_handler_();
     }
 }
 

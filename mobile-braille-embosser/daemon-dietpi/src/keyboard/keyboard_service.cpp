@@ -267,12 +267,16 @@ void KeyboardService::handle_chord(uint8_t dot_mask)
         hooks::on_app_chord(dot_mask);
         if (text.has_value()) {
             hooks::on_app_text(*text);
+        } else if (dot_mask != 0) {
+            hooks::on_chord_unrecognized(dot_mask);
         }
         return;
     }
 
     if (text.has_value()) {
         focus_.on_text(*text);
+    } else if (dot_mask != 0) {
+        hooks::on_chord_unrecognized(dot_mask);
     }
 }
 

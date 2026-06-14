@@ -107,4 +107,13 @@ void on_app_control(keyboard::ControlKey key, bool pressed)
     }
 }
 
+void on_chord_unrecognized(uint8_t dot_mask)
+{
+    if (dot_mask == 0 || g_output_hub == nullptr) {
+        return;
+    }
+    g_output_hub->announce_message("Unrecognized chord");
+    g_output_hub->play_boundary_haptic();
+}
+
 } // namespace braillatron::hooks

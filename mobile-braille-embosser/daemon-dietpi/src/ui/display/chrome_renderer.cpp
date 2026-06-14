@@ -47,23 +47,39 @@ RenderedChrome ChromeRenderer::build(const UiChromeModel &model) const
     }
 
     if (model.items.empty()) {
+        if (model.surface == ChromeSurface::Home && !model.composer_line.empty()) {
+            frame.rows.push_back("> " + model.composer_line);
+        }
         frame.focus_row = kNoFocus;
         return frame;
     }
 
-    const size_t focus = std::min(model.focus_index, model.items.size() - 1);
-    size_t scroll = 0;
-    if (focus >= static_cast<size_t>(max_body_rows_)) {
-        scroll = focus - static_cast<size_t>(max_body_rows_ - 1);
+    if (model.surface == ChromeSurface::Home && !model.composer_line.empty()) {
+        frame.rows.push_back("> " + model.composer_line);
     }
 
-    const size_t end = std::min(model.items.size(), scroll + static_cast<size_t>(max_body_rows_));
+    const size_t focus = std::min(model.focus_index, model.items.size() - 1);
+    size_t scroll = 0;
+    const int body_rows = model.surface == ChromeSurface::Home && !model.composer_line.empty()
+                              ? max_body_rows_ - 1
+                              : max_body_rows_;
+    if (body_rows <= 0) {
+        frame.focus_row = kNoFocus;
+        return frame;
+    }
+    if (focus >= static_cast<size_t>(body_rows)) {
+        scroll = focus - static_cast<size_t>(body_rows - 1);
+    }
+
+    const size_t end = std::min(model.items.size(), scroll + static_cast<size_t>(body_rows));
     for (size_t i = scroll; i < end; ++i) {
         frame.rows.push_back(model.items[i]);
     }
 
     if (focus >= scroll && focus < end) {
-        frame.focus_row = focus - scroll;
+        const size_t composer_offset =
+            (model.surface == ChromeSurface::Home && !model.composer_line.empty()) ? 1 : 0;
+        frame.focus_row = focus - scroll + composer_offset;
     } else {
         frame.focus_row = kNoFocus;
     }

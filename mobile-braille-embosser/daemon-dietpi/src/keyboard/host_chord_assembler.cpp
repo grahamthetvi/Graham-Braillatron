@@ -8,7 +8,7 @@ namespace braillatron::keyboard {
 
 namespace {
 
-constexpr uint64_t kChordWindowMs = 40;
+constexpr uint64_t kChordHoldTimeoutMs = 2000;
 
 constexpr uint16_t kDotMask = static_cast<uint16_t>(
     BRAILLATRON_KEY_DOT_1 | BRAILLATRON_KEY_DOT_2 | BRAILLATRON_KEY_DOT_3 |
@@ -30,8 +30,29 @@ void HostChordAssembler::reset()
 {
     previous_state_ = 0;
     chord_accumulator_ = 0;
-    window_open_ = false;
-    window_start_ms_ = 0;
+    chord_active_ = false;
+    chord_start_ms_ = 0;
+}
+
+void HostChordAssembler::commit_chord()
+{
+    if (chord_accumulator_ != 0u && chord_handler_) {
+        chord_handler_(chord_accumulator_);
+    }
+    chord_accumulator_ = 0;
+    chord_active_ = false;
+    chord_start_ms_ = 0;
+}
+
+void HostChordAssembler::maybe_commit_on_release(uint16_t key_state)
+{
+    if (!chord_active_) {
+        return;
+    }
+
+    if ((key_state & kDotMask) == 0u) {
+        commit_chord();
+    }
 }
 
 void HostChordAssembler::update(uint16_t key_state, bool state_changed, uint64_t now_ms)
@@ -45,25 +66,21 @@ void HostChordAssembler::update(uint16_t key_state, bool state_changed, uint64_t
         }
 
         if (dot_presses != 0u) {
-            if (!window_open_) {
-                window_open_ = true;
-                window_start_ms_ = now_ms;
-                chord_accumulator_ = static_cast<uint8_t>(key_state & kDotMask);
-            } else {
-                chord_accumulator_ =
-                    static_cast<uint8_t>(chord_accumulator_ | (key_state & kDotMask));
+            if (!chord_active_) {
+                chord_active_ = true;
+                chord_start_ms_ = now_ms;
             }
+            chord_accumulator_ =
+                static_cast<uint8_t>(chord_accumulator_ | (key_state & kDotMask));
         }
 
+        maybe_commit_on_release(key_state);
         previous_state_ = key_state;
     }
 
-    if (window_open_ && now_ms - window_start_ms_ >= kChordWindowMs) {
-        if (chord_accumulator_ != 0u && chord_handler_) {
-            chord_handler_(chord_accumulator_);
-        }
-        chord_accumulator_ = 0;
-        window_open_ = false;
+    if (chord_active_ && chord_start_ms_ != 0u &&
+        now_ms - chord_start_ms_ >= kChordHoldTimeoutMs) {
+        commit_chord();
     }
 }
 

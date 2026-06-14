@@ -6,9 +6,9 @@
 namespace braillatron::keyboard {
 
 /*
- * Host-side temporal chord assembly (mirrors firmware-arduino/src/chord_engine.cpp).
- * Control-key edges invoke keyboard_matrix_handler immediately; dot chords are
- * locked after a 40 ms integration window and delivered via chord_handler.
+ * Host-side chord assembly for evdev bench input.
+ * Control-key edges invoke keyboard_matrix_handler immediately; dot chords
+ * accumulate while any dot is held and commit when all dot keys are released.
  */
 class HostChordAssembler {
 public:
@@ -22,13 +22,16 @@ public:
     void update(uint16_t key_state, bool state_changed, uint64_t now_ms);
 
 private:
+    void commit_chord();
+    void maybe_commit_on_release(uint16_t key_state);
+
     KeyboardMatrixHandler keyboard_matrix_handler_;
     ChordHandler chord_handler_;
 
     uint16_t previous_state_ = 0;
     uint8_t chord_accumulator_ = 0;
-    bool window_open_ = false;
-    uint64_t window_start_ms_ = 0;
+    bool chord_active_ = false;
+    uint64_t chord_start_ms_ = 0;
 };
 
 } // namespace braillatron::keyboard

@@ -530,6 +530,7 @@ void OutputHub::sync_chrome(bool at_boundary)
     if (menu_overlay_.is_open()) {
         chrome_model_.surface = ChromeSurface::Menu;
         chrome_model_.header = "Menu";
+        chrome_model_.composer_line.clear();
         chrome_model_.items = menu_overlay_.current_item_labels();
         chrome_model_.focus_index = menu_overlay_.focus_index();
         if (menu_overlay_.depth() > 1) {
@@ -540,12 +541,14 @@ void OutputHub::sync_chrome(bool at_boundary)
     } else if (app_registry_ != nullptr && app_registry_->active() != nullptr) {
         chrome_model_.surface = ChromeSurface::InApp;
         chrome_model_.header = app_registry_->active()->label();
+        chrome_model_.composer_line.clear();
         chrome_model_.items.clear();
         chrome_model_.focus_index = 0;
         chrome_model_.breadcrumb.clear();
     } else if (focus_nav_ != nullptr) {
         chrome_model_.surface = ChromeSurface::Home;
         chrome_model_.header = "Braillatron";
+        chrome_model_.composer_line = focus_nav_->input_buffer();
         chrome_model_.items = focus_nav_->entries();
         chrome_model_.focus_index = focus_nav_->focus_index();
         chrome_model_.breadcrumb.clear();
