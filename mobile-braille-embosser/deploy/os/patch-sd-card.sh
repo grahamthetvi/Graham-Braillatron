@@ -112,7 +112,9 @@ fi
 
 PI="${MOUNT_ROOT}"
 SYSTEMD="${PI}/etc/systemd/system"
-WANTS="${SYSTEMD}/multi-user.target.wants"
+MULTI_WANTS="${SYSTEMD}/multi-user.target.wants"
+BRAILLATRON_WANTS="${SYSTEMD}/braillatron.target.wants"
+TIMERS_WANTS="${SYSTEMD}/timers.target.wants"
 
 echo ""
 echo "== Installing systemd units and scripts =="
@@ -122,38 +124,58 @@ install -m 644 "${REPO_ROOT}/deploy/systemd/"*.timer "${SYSTEMD}/"
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron.target" "${SYSTEMD}/"
 install -m 755 "${REPO_ROOT}/deploy/os/braillatron-console-ready.sh" "${PI}/usr/local/sbin/braillatron-console-ready.sh"
 install -m 755 "${REPO_ROOT}/deploy/os/braillatron-tty1-launch.sh" "${PI}/usr/local/sbin/braillatron-tty1-launch.sh"
+install -m 755 "${REPO_ROOT}/deploy/os/braillatron-systemd-wants.sh" "${PI}/usr/local/sbin/braillatron-systemd-wants.sh"
 install -m 755 "${REPO_ROOT}/deploy/os/braillatron-boot-diagnose.sh" "${PI}/usr/local/bin/braillatron-boot-diagnose"
+install -m 755 "${REPO_ROOT}/deploy/os/fix-hdmi-appliance.sh" "${PI}/usr/local/sbin/fix-hdmi-appliance.sh"
 install -d "${PI}/etc/systemd/system/getty@tty1.service.d"
 install -m 644 "${REPO_ROOT}/deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf" \
   "${PI}/etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf"
 
-enable_unit() {
+unit_src() {
   local unit="$1"
-  local src=""
   if [[ -f "${SYSTEMD}/${unit}" ]]; then
-    src="${SYSTEMD}/${unit}"
+    printf '%s\n' "${SYSTEMD}/${unit}"
   elif [[ -f "${PI}/lib/systemd/system/${unit}" ]]; then
-    src="/lib/systemd/system/${unit}"
+    printf '/lib/systemd/system/%s\n' "${unit}"
   elif [[ -f "${PI}/usr/lib/systemd/system/${unit}" ]]; then
-    src="/usr/lib/systemd/system/${unit}"
+    printf '/usr/lib/systemd/system/%s\n' "${unit}"
   else
-    echo "  skip enable (missing): ${unit}" >&2
-    return
+    return 1
   fi
-  mkdir -p "${WANTS}"
-  ln -sf "${src}" "${WANTS}/${unit}"
 }
 
-mkdir -p "${WANTS}"
-enable_unit braillatron.target
-enable_unit braillatron-ui.service
-enable_unit braillatron-ui-stub.service
-rm -f "${WANTS}/braillatron-console-ready.service"
-enable_unit getty@tty1.service
-enable_unit braillatron-sentinel.service
-enable_unit braillatron-connectd.service
-enable_unit braillatron-sync.timer
-enable_unit ssh.service
+link_wants() {
+  local wants_dir="$1"
+  local unit="$2"
+  local src=""
+  src="$(unit_src "${unit}")" || {
+    echo "  skip enable (missing): ${unit}" >&2
+    return
+  }
+  mkdir -p "${wants_dir}"
+  ln -sf "${src}" "${wants_dir}/${unit}"
+}
+
+# Child Braillatron units belong under braillatron.target.wants — not multi-user.
+# Enabling braillatron-ui-stub alongside braillatron-ui breaks HDMI (Conflicts=).
+for unit in \
+  braillatron-ui.service \
+  braillatron-ui-stub.service \
+  braillatron-sentinel.service \
+  braillatron-connectd.service \
+  braillatron-console-ready.service \
+  braillatron-console-ui.service; do
+  rm -f "${MULTI_WANTS}/${unit}"
+done
+
+link_wants "${MULTI_WANTS}" braillatron.target
+link_wants "${BRAILLATRON_WANTS}" braillatron-ui.service
+rm -f "${BRAILLATRON_WANTS}/braillatron-ui-stub.service"
+link_wants "${BRAILLATRON_WANTS}" braillatron-sentinel.service
+link_wants "${BRAILLATRON_WANTS}" braillatron-connectd.service
+link_wants "${MULTI_WANTS}" getty@tty1.service
+link_wants "${TIMERS_WANTS}" braillatron-sync.timer
+link_wants "${MULTI_WANTS}" ssh.service
 
 echo ""
 echo "== Appliance / HDMI routing =="
@@ -170,7 +192,8 @@ fi
 rm -f "${PI}/etc/braillatron/appliance-headless"
 rm -f "${PI}/etc/braillatron/appliance-spi"
 rm -f "${SYSTEMD}/getty@tty1.service"
-rm -f "${WANTS}/braillatron-console-ui.service"
+rm -f "${MULTI_WANTS}/braillatron-console-ui.service"
+rm -f "${BRAILLATRON_WANTS}/braillatron-console-ui.service"
 
 for boot_env in "${PI}/boot/dietpiEnv.txt" "${PI}/boot/firmware/dietpiEnv.txt"; do
   if [[ -f "${boot_env}" ]] && grep -q 'spi-spidev' "${boot_env}"; then
@@ -231,6 +254,17 @@ else
   echo "  OK  /etc/network/interfaces not NM-stubbed"
 fi
 [[ ! -f "${PI}/etc/braillatron/appliance-headless" ]] && echo "  OK  HDMI UI not headless" || { echo "  HEADLESS flag present"; checks=1; }
+if [[ -L "${BRAILLATRON_WANTS}/braillatron-ui-stub.service" ]] \
+    || [[ -L "${MULTI_WANTS}/braillatron-ui-stub.service" ]]; then
+  echo "  WARN  braillatron-ui-stub enabled — disable for HDMI"
+  checks=1
+else
+  echo "  OK  braillatron-ui-stub not enabled"
+fi
+if [[ -L "${MULTI_WANTS}/braillatron-ui.service" ]]; then
+  echo "  WARN  braillatron-ui linked from multi-user.target.wants (use braillatron.target.wants)"
+  checks=1
+fi
 if [[ -f "${PI}/etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf" ]]; then
   echo "  OK  getty@tty1 braillatron drop-in installed"
 else
@@ -240,7 +274,7 @@ fi
 if [[ -L "${SYSTEMD}/getty@tty1.service" ]] && [[ "$(readlink "${SYSTEMD}/getty@tty1.service")" == "/dev/null" ]]; then
   echo "  WARN  getty@tty1 still masked — unmask on Pi or re-run setup-appliance-mode.sh"
   checks=1
-elif [[ -L "${WANTS}/getty@tty1.service" ]]; then
+elif [[ -L "${MULTI_WANTS}/getty@tty1.service" ]]; then
   echo "  OK  getty@tty1 enabled for multi-user boot"
 else
   echo "  note: getty@tty1 not in multi-user.target.wants"

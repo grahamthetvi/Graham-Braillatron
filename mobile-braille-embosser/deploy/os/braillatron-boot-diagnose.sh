@@ -65,7 +65,7 @@ if [[ -f /etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf ]];
 else
   echo 'MISSING  getty drop-in'
 fi
-echo 'tty1 on success: cleared text console; framebuffer UI only (no auto banner)'
+echo 'tty1 on success: blank cursor only; framebuffer UI must not be cleared (no ESC [2J)'
 console_ready_enabled="$(systemctl is-enabled braillatron-console-ready.service 2>/dev/null || echo '?')"
 echo "braillatron-console-ready.service enabled=${console_ready_enabled} (disabled by design; manual banner only)"
 

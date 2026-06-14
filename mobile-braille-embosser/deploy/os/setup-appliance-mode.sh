@@ -33,7 +33,9 @@ GETTY_DROPIN="${GETTY_DROPIN_DIR}/braillatron-appliance.conf"
 install -d "${GETTY_DROPIN_DIR}"
 install -m 644 "${REPO_ROOT}/deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf" "${GETTY_DROPIN}"
 install -m 755 "${SCRIPT_DIR}/braillatron-tty1-launch.sh" /usr/local/sbin/braillatron-tty1-launch.sh
+install -m 755 "${SCRIPT_DIR}/braillatron-systemd-wants.sh" /usr/local/sbin/braillatron-systemd-wants.sh
 install -m 755 "${SCRIPT_DIR}/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
+install -m 755 "${SCRIPT_DIR}/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
 systemctl unmask getty@tty1.service 2>/dev/null || true
 systemctl enable getty@tty1.service 2>/dev/null || true
 
@@ -97,6 +99,7 @@ else
   systemctl disable braillatron-ui-stub.service 2>/dev/null || true
 fi
 systemctl disable braillatron-console-ready.service 2>/dev/null || true
+bash "${SCRIPT_DIR}/braillatron-systemd-wants.sh"
 
 echo "Configuring read-only root and volatile tmpfs mounts..."
 bash "${SCRIPT_DIR}/setup-overlay-ro.sh"
@@ -114,8 +117,8 @@ cat <<EOF
 Appliance mode configured.
   - Power on: Braillatron starts automatically (no login required)
   - Visual UI: braillatron-ui.service (HDMI /dev/fb0 and/or SPI panel when configured)
-  - tty1: cleared on success; UI on framebuffer/panel (unless BRAILLATRON_HEADLESS=1)
-  - HDMI blank? SSH: sudo braillatron-boot-diagnose.sh
+  - tty1: holds after UI start; framebuffer UI only (unless BRAILLATRON_HEADLESS=1)
+  - HDMI blank? SSH: sudo fix-hdmi-appliance.sh
   - SSH: enabled for development and maintenance
 
 Maintenance over SSH:

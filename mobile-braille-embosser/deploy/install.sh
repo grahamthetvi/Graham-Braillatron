@@ -64,13 +64,16 @@ install -m 755 "${ROOT}/deploy/install-dictionary-data.sh" "${PREFIX}/bin/braill
 install -m 755 "${ROOT}/deploy/install-spelling-data.sh" "${PREFIX}/bin/braillatron-install-spelling-data"
 install -m 755 "${ROOT}/deploy/install-gmail-oauth.sh" "${PREFIX}/bin/braillatron-install-gmail-oauth"
 install -m 755 "${ROOT}/deploy/verify-install.sh" "${PREFIX}/bin/braillatron-verify-install"
+install -m 755 "${ROOT}/deploy/verify-hdmi-bootstrap.sh" "${PREFIX}/bin/braillatron-verify-hdmi-bootstrap"
 bash "${ROOT}/deploy/install-dictionary-data.sh"
 bash "${ROOT}/deploy/install-spelling-data.sh"
 bash "${ROOT}/deploy/install-gmail-oauth.sh"
 
 install -m 755 "${ROOT}/deploy/os/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
 install -m 755 "${ROOT}/deploy/os/braillatron-tty1-launch.sh" /usr/local/sbin/braillatron-tty1-launch.sh
+install -m 755 "${ROOT}/deploy/os/braillatron-systemd-wants.sh" /usr/local/sbin/braillatron-systemd-wants.sh
 install -m 755 "${ROOT}/deploy/os/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
+install -m 755 "${ROOT}/deploy/os/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
 
 install -m 644 "${ROOT}/deploy/systemd/braillatron-ui.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sentinel.service" "${SYSTEMD_DIR}/"
@@ -93,6 +96,7 @@ systemctl mask braillatron-console-ui.service 2>/dev/null || true
 systemctl disable braillatron-console-ready.service 2>/dev/null || true
 systemctl enable braillatron-sync.timer
 systemctl enable braillatron-bluetooth-autoconnect.timer
+bash "${ROOT}/deploy/os/braillatron-systemd-wants.sh"
 
 echo "Installed Braillatron to ${PREFIX}/bin and ${CONFIG_DIR}"
 echo "Verify with: braillatron-verify-install"

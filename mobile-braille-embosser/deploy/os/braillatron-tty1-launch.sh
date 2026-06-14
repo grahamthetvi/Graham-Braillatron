@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Appliance HDMI console: wait for UI service, clear tty1 on success; errors only on failure.
+# Appliance HDMI console: wait for UI service; blank tty1 cursor on success (never clear_tty1 — wipes fb).
 set -euo pipefail
 
 CONSOLE="/dev/tty1"
