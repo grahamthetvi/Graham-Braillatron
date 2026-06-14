@@ -66,6 +66,11 @@ else
   echo 'MISSING  getty drop-in'
 fi
 echo 'tty1 on success: blank cursor only; framebuffer UI must not be cleared (no ESC [2J)'
+if [[ -f /usr/local/sbin/braillatron-console-ready.sh ]] \
+    && grep -qE 'setterm.*-blank[[:space:]=]+force|-blank[[:space:]]+force' \
+      /usr/local/sbin/braillatron-console-ready.sh; then
+  echo 'WARN  setterm -blank force in console-ready — blanks HDMI; run: sudo fix-hdmi-appliance.sh'
+fi
 console_ready_enabled="$(systemctl is-enabled braillatron-console-ready.service 2>/dev/null || echo '?')"
 echo "braillatron-console-ready.service enabled=${console_ready_enabled} (disabled by design; manual banner only)"
 
@@ -90,5 +95,6 @@ elif [[ ! -f /etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf
 elif [[ "${backend_line}" == *'backend=stub'* ]] || [[ -z "${backend_line}" ]]; then
   echo 'Stub or missing display backend: check /dev/fb0, display.conf hdmi_enabled=true, video group on braillatron-ui.service'
 else
-  echo 'If HDMI is blank: check /dev/fb0, journalctl -u braillatron-ui -b, and display.conf hdmi_enabled'
+  echo 'If HDMI is blank: sudo fix-hdmi-appliance.sh && sudo reboot'
+  echo '  (backend=fb OK but blank usually means setterm -blank force or missing post-bootstrap reboot)'
 fi
