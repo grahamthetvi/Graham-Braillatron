@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# LEGACY — do not call from bootstrap. Braillatron now uses DietPi ifupdown +
+# wpa_supplicant (deploy/os/setup-dietpi-networking.sh). This script migrated
+# to NetworkManager and is kept only for manual recovery reference.
+#
 # Braillatron uses NetworkManager (nmcli) for Wi-Fi and Ethernet.
 # DietPi defaults to ifupdown in /etc/network/interfaces — running both stacks
 # leaves eth0 unmanaged or stuck (ifup@eth0 vs NetworkManager conflict).

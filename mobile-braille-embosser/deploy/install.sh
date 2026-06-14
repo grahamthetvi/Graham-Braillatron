@@ -93,7 +93,6 @@ systemctl enable braillatron-ui-stub.service
 systemctl disable braillatron-console-ready.service 2>/dev/null || true
 systemctl enable braillatron-sync.timer
 systemctl enable braillatron-bluetooth-autoconnect.timer
-bash "${ROOT}/deploy/os/setup-networkmanager.sh"
 
 echo "Installed Braillatron to ${PREFIX}/bin and ${CONFIG_DIR}"
 echo "Verify with: braillatron-verify-install"

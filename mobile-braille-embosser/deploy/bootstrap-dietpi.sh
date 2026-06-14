@@ -64,8 +64,7 @@ fi
 
 systemctl enable --now speech-dispatcher || true
 systemctl enable --now brltty || true
-bash "${ROOT}/deploy/os/setup-networkmanager.sh"
-systemctl enable --now NetworkManager || true
+bash "${ROOT}/deploy/os/setup-dietpi-networking.sh"
 
 bash "${ROOT}/deploy/os/setup-aux-audio.sh"
 

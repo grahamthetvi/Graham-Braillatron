@@ -156,32 +156,6 @@ enable_unit braillatron-sync.timer
 enable_unit ssh.service
 
 echo ""
-echo "== NetworkManager vs DietPi ifupdown =="
-for ifup_unit in ifup@wlan0.service ifup@eth0.service ifup@end0.service; do
-  ln -sf /dev/null "${SYSTEMD}/${ifup_unit}"
-done
-INTERFACES="${PI}/etc/network/interfaces"
-if [[ -f "${INTERFACES}" ]] && ! grep -q 'Managed by NetworkManager' "${INTERFACES}"; then
-  if [[ ! -f "${INTERFACES}.braillatron.bak" ]]; then
-    cp -a "${INTERFACES}" "${INTERFACES}.braillatron.bak"
-  fi
-fi
-cat >"${INTERFACES}" <<'EOF'
-# Managed by NetworkManager (deploy/os/setup-networkmanager.sh).
-auto lo
-iface lo inet loopback
-EOF
-if [[ -f "${PI}/etc/NetworkManager/NetworkManager.conf" ]]; then
-  if ! grep -q '^\[ifupdown\]' "${PI}/etc/NetworkManager/NetworkManager.conf"; then
-    cat >>"${PI}/etc/NetworkManager/NetworkManager.conf" <<'EOF'
-
-[ifupdown]
-managed=false
-EOF
-  fi
-fi
-
-echo ""
 echo "== Appliance / HDMI routing =="
 install -d "${PI}/etc/braillatron"
 if [[ ! -f "${PI}/etc/braillatron/appliance.env" ]] \
@@ -244,11 +218,18 @@ else
 fi
 grep -q 'SupplementaryGroups=input video' "${SYSTEMD}/braillatron-ui.service" && echo "  OK  braillatron-ui video group" || { echo "  MISSING video group in braillatron-ui.service"; checks=1; }
 grep -q "Graham Braillatron" "${PI}/usr/local/sbin/braillatron-console-ready.sh" && echo "  OK  console-ready banner script" || { echo "  MISSING banner script"; checks=1; }
-[[ -L "${SYSTEMD}/ifup@wlan0.service" ]] && echo "  OK  ifup@wlan0 masked" || { echo "  MISSING ifup@wlan0 mask"; checks=1; }
-[[ -L "${SYSTEMD}/ifup@eth0.service" ]] && echo "  OK  ifup@eth0 masked" || echo "  note: ifup@eth0 not masked (end0 may be used instead)"
-grep -q 'Managed by NetworkManager' "${PI}/etc/network/interfaces" 2>/dev/null \
-  && echo "  OK  /etc/network/interfaces stubbed for NM" \
-  || echo "  note: interfaces file not stubbed — Ethernet may conflict with NM"
+if [[ -L "${SYSTEMD}/ifup@wlan0.service" ]] && [[ "$(readlink "${SYSTEMD}/ifup@wlan0.service")" == "/dev/null" ]]; then
+  echo "  WARN  ifup@wlan0 masked — unmask on Pi: systemctl unmask ifup@wlan0.service"
+  checks=1
+else
+  echo "  OK  ifup@wlan0 not masked (DietPi ifupdown)"
+fi
+if grep -q 'Managed by NetworkManager' "${PI}/etc/network/interfaces" 2>/dev/null; then
+  echo "  WARN  /etc/network/interfaces stubbed for NM — restore interfaces.braillatron.bak on Pi"
+  checks=1
+else
+  echo "  OK  /etc/network/interfaces not NM-stubbed"
+fi
 [[ ! -f "${PI}/etc/braillatron/appliance-headless" ]] && echo "  OK  HDMI UI not headless" || { echo "  HEADLESS flag present"; checks=1; }
 if [[ -f "${PI}/etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf" ]]; then
   echo "  OK  getty@tty1 braillatron drop-in installed"
@@ -278,6 +259,7 @@ else
 fi
 echo ""
 echo "After boot (USB keyboard on Pi): Network and Devices → join Wi-Fi."
+echo "Factory Wi-Fi over SSH (before reboot): sudo bash deploy/os/setup-wifi-credentials.sh SSID PASS"
 echo "After SSH: cd mobile-braille-embosser && sudo make install  # pick up C++ changes"
 echo ""
 echo "Unmount:"

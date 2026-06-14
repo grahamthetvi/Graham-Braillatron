@@ -211,11 +211,26 @@ This script runs, in order:
 6. **Build + install** — `deploy/install.sh` compiles with `BRAILLATRON_A11Y=1`, installs binaries, configs, systemd units, dictionary/spelling seed data, and Gmail OAuth setup helper
 7. **signal-cli (optional)** — `deploy/install-signal-cli.sh` for Messages app; skipped gracefully if it fails
 8. **Vosk model** — downloads `vosk-model-small-en-us-0.15` (~40 MB) to `/data/braillatron/vosk-models/`
-9. **Accessibility stack** — enables `speech-dispatcher`, `brltty`, `NetworkManager`
+9. **Accessibility stack** — enables `speech-dispatcher`, `brltty`; ensures DietPi ifupdown + wpa_supplicant via `setup-dietpi-networking.sh` (disables NetworkManager; does not stub `/etc/network/interfaces`)
 10. **Audio default** — `setup-aux-audio.sh` routes ALSA + TTS to the 3.5 mm aux jack; optional Bluetooth via `setup-bluetooth-audio.sh`
 11. **Appliance mode** — `setup-appliance-mode.sh` disables local console login, routes display (SPI + HDMI framebuffer / headless stub), enables read-only root, keeps SSH (skipped when `BRAILLATRON_APPLIANCE=0`)
 
 Bootstrap takes several minutes on first run (apt + compile + model download).
+
+
+### Factory Wi-Fi pre-provision (before reboot)
+
+While your SSH session is still open after bootstrap, pre-provision Wi-Fi so appliance lockdown does not strand the device without network:
+
+```bash
+cd ~/braillatron/mobile-braille-embosser   # or your clone path
+sudo bash deploy/os/setup-wifi-credentials.sh "MySSID" "MyPassword"
+sudo ifup wlan0   # optional — connect before reboot
+```
+
+On a read-only root appliance, remount first: `sudo braillatron-remount-rw`, run the commands above, then `sudo braillatron-remount-ro`.
+
+Credentials are appended to `/etc/wpa_supplicant/wpa_supplicant.conf` using `wpa_passphrase` (hashed PSK). Duplicate SSIDs are skipped. After reboot, `ifup@wlan0` brings up Wi-Fi automatically.
 
 
 ## Step 5: Reboot
@@ -583,6 +598,31 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 
 ## Troubleshooting
 
+### Recover from NetworkManager migration (legacy bootstrap)
+
+If a device was bootstrapped with an older tree that stubbed `/etc/network/interfaces` and enabled NetworkManager, recover from local console or serial before re-running bootstrap:
+
+```bash
+# 1. Restore DietPi interfaces (if backup exists)
+sudo cp /etc/network/interfaces.braillatron.bak /etc/network/interfaces
+
+# 2. Re-enable DietPi ifupdown for Wi-Fi
+sudo systemctl unmask ifup@wlan0.service
+sudo systemctl enable ifup@wlan0.service
+
+# 3. Add Wi-Fi credentials
+sudo bash deploy/os/setup-wifi-credentials.sh "MySSID" "MyPassword"
+
+# 4. Disable NetworkManager
+sudo systemctl disable --now NetworkManager
+
+# 5. Bring up Wi-Fi and reboot
+sudo ifup wlan0
+sudo reboot
+```
+
+After recovery, pull the latest code and re-run `sudo bash deploy/bootstrap-dietpi.sh` — it will call `setup-dietpi-networking.sh` instead of migrating to NetworkManager.
+
 | Symptom | Check |
 | --- | --- |
 | `systemctl restart` shows nothing | Normal — use `journalctl -u braillatron-ui -f` or `systemctl status braillatron-ui` |
@@ -608,7 +648,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | Monitor shows DietPi "hit return to login" but Enter does nothing | Expected when getty is disabled — re-run `setup-appliance-mode.sh`; use SSH or USB keyboard on the Pi |
 | No framebuffer UI on HDMI after reboot | `sudo braillatron-boot-diagnose.sh`; check `test -f /etc/braillatron/appliance-headless && echo headless`; `journalctl -u braillatron-ui -b | grep backend=` (expect `fb` or `spi+fb`, not `stub`); `/dev/fb0` present; `grep hdmi_enabled /etc/braillatron/display.conf`; run `sudo bash deploy/os/setup-appliance-mode.sh` and `sudo systemctl restart braillatron.target`. Stale `spi-spidev` in `/boot/dietpiEnv.txt` without a HAT — remove overlay, ensure `appliance-spi` absent, reboot |
 | No local login prompt after bootstrap | Expected in appliance mode — use SSH; re-flash or `BRAILLATRON_APPLIANCE=0` bootstrap for dev image |
-| SSH unreachable after bootstrap | Check IP and network (`nmcli dev wifi`); confirm `systemctl status ssh`; if locked out entirely, re-flash SD and use `BRAILLATRON_APPLIANCE=0` bootstrap for a dev image with local login |
+| SSH unreachable after bootstrap | Check IP and network (`wpa_cli -i wlan0 status`, `iwgetid -r wlan0`); confirm `systemctl status ssh`; if locked out entirely, re-flash SD and use `BRAILLATRON_APPLIANCE=0` bootstrap for a dev image with local login |
 | `systemd-fstab-generator` duplicate entry warnings in `dmesg` | Duplicate `/tmp` or `/var/log` fstab lines (DietPi + braillatron); run `sudo bash deploy/os/setup-appliance-mode.sh` or `setup-overlay-ro.sh`, then reboot |
 | Cannot edit `/etc/braillatron/` over SSH | Run `sudo braillatron-remount-rw` first, then `sudo braillatron-remount-ro` when done |
 

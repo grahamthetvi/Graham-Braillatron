@@ -3,6 +3,7 @@
 #include "../documents/liblouis_bridge.h"
 #include "../motion/motion_service.h"
 #include "../platform/audio_output.h"
+#include "../platform/shell_util.h"
 #include "../telemetry/system_shutdown.h"
 #include "../telemetry/telemetry_bridge.h"
 #include "../connect/connect_client.h"
@@ -228,14 +229,16 @@ void OutputHub::announce_quick_status()
         stream << "Battery " << static_cast<unsigned>(snapshot.battery_percent) << " percent. ";
     }
 
-    FILE *wifi = popen("nmcli -t -f ACTIVE,SSID dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2",
-                       "r");
-    if (wifi != nullptr) {
-        char buffer[128] = {0};
-        if (fgets(buffer, sizeof(buffer), wifi) != nullptr) {
-            stream << "Network " << buffer;
+    const std::string ssid = platform::run_command(
+        "wpa_cli -i wlan0 status 2>/dev/null | awk -F= "
+        "'/^wpa_state=COMPLETED$/ {found=1} found && /^ssid=/ {print substr($0,6); exit}'");
+    if (!ssid.empty()) {
+        std::string trimmed = ssid;
+        const auto end = trimmed.find_last_not_of(" \t\r\n");
+        if (end != std::string::npos) {
+            trimmed.resize(end + 1);
         }
-        pclose(wifi);
+        stream << "Network " << trimmed << ". ";
     }
 
     const std::time_t now = std::time(nullptr);

@@ -24,7 +24,7 @@ libspeechd-dev
 libbrlapi-dev
 liblouis-dev
 liblouis-data
-network-manager
+wpasupplicant
 openssh-server
 bluez
 bluez-alsa-utils

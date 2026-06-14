@@ -85,7 +85,7 @@ Take primary control of embosser head and paper feed. Launched from the main app
 | **Radio** | Internet radio streams; favorites; ICY metadata | `apps/radio_app.cpp`, `radio_backend.cpp` |
 | **Gmail** | OAuth device flow; inbox/read/compose/reply; BRF export | `apps/gmail_app.cpp`, `gmail_backend.cpp` |
 | **Morse Learning** | Morse alphabet lessons and quiz via haptics | `apps/morse_learn_app.cpp` |
-| **Network & Devices** | Wi-Fi scan/connect via NetworkManager | `apps/network_app.cpp` |
+| **Network & Devices** | Wi-Fi scan/connect via wpa_supplicant (`wpa_cli`) | `apps/network_app.cpp` |
 | **Bluetooth Setup** | Bluetooth pairing stub | `apps/bluetooth_setup_app.cpp` |
 | **Settings** | TTS rate/volume, braille grade, dictation toggle, accounts | `output_hub.cpp` settings submenu |
 
@@ -386,7 +386,7 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 | Calculator Nemeth | Implemented | `calculator_app.cpp` |
 | Transcriber pipeline | Implemented | `transcriber_app.cpp`, Vosk backend |
 | Morse learning / output | Implemented | `morse_encoder.cpp`, inline + standalone apps |
-| Network Wi-Fi | Implemented | `network_app.cpp` |
+| Network Wi-Fi | Implemented (wpa_supplicant / `wpa_cli`) | `network_app.cpp` |
 | connectd sidecar | Implemented (needs device validation) | `connect/`, `braillatron-connectd.service` |
 | YouTube audio app | Implemented (needs device validation) | `youtube_app.cpp`, `youtube_backend.cpp` |
 | Signal messaging app | Implemented (needs device validation) | `messages_app.cpp`, `signal_backend.cpp` |
