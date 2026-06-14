@@ -129,6 +129,6 @@ if ! is_ok_display_backend "${backend}"; then
   hold_tty1
 fi
 
-clear_tty1
+# fb/spi backends draw directly on the framebuffer; ESC [2J from clear_tty1 wipes the UI.
 blank_tty1_cursor
 hold_tty1

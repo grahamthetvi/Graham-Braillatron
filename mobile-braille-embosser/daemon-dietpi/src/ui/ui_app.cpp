@@ -88,8 +88,11 @@ void UiApp::start()
     }
 
     running_ = true;
+    // Paint HDMI/SPI chrome before startup announcements (TTS/braille can block).
+    output_hub_.sync_chrome(false);
     refresh_status(true);
     output_hub_.announce_startup(status_report_);
+    output_hub_.sync_chrome(false);
     output_hub_.announce_focus(keyboard_.focus_nav().focused_label(), false);
     keyboard_.start();
 }

@@ -194,11 +194,9 @@ void OutputHub::announce_startup(const platform::DeviceStatusReport &report)
 
 void OutputHub::announce_focus(const std::string &label, bool at_boundary)
 {
-    if (label.empty()) {
-        return;
+    if (!label.empty()) {
+        emit(label, false);
     }
-
-    emit(label, false);
     sync_chrome(at_boundary);
     if (at_boundary && ui_config_.haptics_enabled && haptics_ != nullptr) {
         haptics_->play_effect(ui_config_.boundary_haptic_effect);
