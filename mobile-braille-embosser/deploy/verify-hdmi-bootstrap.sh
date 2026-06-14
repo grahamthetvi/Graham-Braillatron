@@ -19,10 +19,12 @@ console_ready="${PREFIX}/sbin/braillatron-console-ready.sh"
 tty1_launch="${PREFIX}/sbin/braillatron-tty1-launch.sh"
 
 if [[ -f "${console_ready}" ]] \
-    && grep -qE 'setterm.*-blank[[:space:]=]+force|-blank[[:space:]]+force' "${console_ready}"; then
+    && grep -vE '^[[:space:]]*#' "${console_ready}" \
+      | grep -qE 'setterm.*-blank[[:space:]=]+force|-blank[[:space:]]+force'; then
   check fail "console-ready uses setterm -blank force (blanks HDMI framebuffer)"
 elif [[ -f "${console_ready}" ]] \
-    && grep -qE 'setterm.*-blank[[:space:]=]+0|-blank[[:space:]]+0' "${console_ready}"; then
+    && grep -vE '^[[:space:]]*#' "${console_ready}" \
+      | grep -qE 'setterm.*-blank[[:space:]=]+0|-blank[[:space:]]+0'; then
   check ok "console-ready disables VT blanking (setterm -blank 0)"
 else
   check fail "console-ready missing setterm -blank 0 (HDMI may blank)"

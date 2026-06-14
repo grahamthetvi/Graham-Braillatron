@@ -67,8 +67,8 @@ else
 fi
 echo 'tty1 on success: blank cursor only; framebuffer UI must not be cleared (no ESC [2J)'
 if [[ -f /usr/local/sbin/braillatron-console-ready.sh ]] \
-    && grep -qE 'setterm.*-blank[[:space:]=]+force|-blank[[:space:]]+force' \
-      /usr/local/sbin/braillatron-console-ready.sh; then
+    && grep -vE '^[[:space:]]*#' /usr/local/sbin/braillatron-console-ready.sh \
+      | grep -qE 'setterm.*-blank[[:space:]=]+force|-blank[[:space:]]+force'; then
   echo 'WARN  setterm -blank force in console-ready — blanks HDMI; run: sudo fix-hdmi-appliance.sh'
 fi
 console_ready_enabled="$(systemctl is-enabled braillatron-console-ready.service 2>/dev/null || echo '?')"
