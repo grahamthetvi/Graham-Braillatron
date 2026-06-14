@@ -8,6 +8,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../apt-retry.sh
+source "${ROOT}/apt-retry.sh"
 BT_CONF="/etc/braillatron/bluetooth-audio.conf"
 
 if [[ "$(id -u)" -ne 0 ]]; then
@@ -18,8 +20,8 @@ fi
 MAC="${1:-}"
 
 echo "Installing Bluetooth audio packages..."
-apt-get update
-apt-get install -y bluez bluez-tools bluez-alsa-utils
+apt_retry_update
+apt_retry_install bluez bluez-tools bluez-alsa-utils
 
 install -d /etc/braillatron
 install -m 755 "${ROOT}/os/braillatron-audio-select.sh" /usr/local/bin/braillatron-audio-select

@@ -5,6 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck source=../apt-retry.sh
+source "${REPO_ROOT}/deploy/apt-retry.sh"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "setup-appliance-mode.sh must run as root (sudo)." >&2
@@ -22,7 +24,8 @@ systemctl enable braillatron.target
 
 echo "Ensuring SSH is available for development access..."
 if ! command -v sshd >/dev/null 2>&1; then
-  apt-get install -y openssh-server
+  apt_retry_update
+  apt_retry_install openssh-server
 fi
 systemctl enable ssh 2>/dev/null || systemctl enable sshd 2>/dev/null || true
 systemctl start ssh 2>/dev/null || systemctl start sshd 2>/dev/null || true

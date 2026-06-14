@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=apt-retry.sh
+source "${ROOT}/deploy/apt-retry.sh"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "bootstrap-dietpi.sh must run as root (sudo)." >&2
@@ -10,8 +12,8 @@ fi
 
 echo "Installing packages..."
 mapfile -t packages < "${ROOT}/deploy/packages.txt"
-apt-get update
-apt-get install -y "${packages[@]}"
+apt_retry_update
+apt_retry_install "${packages[@]}"
 
 echo "Configuring I2S overlay..."
 if ! grep -q 'rk3566-i2s1-overlay' /boot/dietpiEnv.txt 2>/dev/null; then
