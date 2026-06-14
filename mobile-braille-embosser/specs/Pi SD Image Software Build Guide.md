@@ -381,7 +381,7 @@ sudo braillatron-audio-select status
 From the device menu (grave **`** → Settings):
 
 - **Audio output** — switch between aux jack, Bluetooth speaker, and I2S amplifier; reconnect a saved Bluetooth speaker
-- **Pair Bluetooth speaker** — enter the speaker MAC address (colons optional); pairs, saves, and switches to Bluetooth output
+- **Pair Bluetooth speaker** — scans nearby devices on enter; type device name or MAC; pairs, saves, and switches to Bluetooth output
 
 SSH scripts above remain for advanced recovery and bench setup.
 

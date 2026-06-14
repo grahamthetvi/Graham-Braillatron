@@ -5,6 +5,7 @@
 #include <cctype>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
 namespace braillatron::platform {
 namespace {
@@ -89,6 +90,40 @@ std::string read_output_mode()
 std::string read_bluetooth_mac()
 {
     return read_conf_value(kBluetoothAudioConf, "device_mac");
+}
+
+std::vector<BluetoothDevice> scan_bluetooth_devices(const bool discover)
+{
+    run_command("bluetoothctl power on 2>/dev/null");
+    if (discover) {
+        run_command(
+            "bluetoothctl --timeout 8 scan on 2>/dev/null || "
+            "{ bluetoothctl scan on 2>/dev/null; sleep 8; }");
+    }
+    const std::string output = run_command("bluetoothctl devices 2>/dev/null");
+
+    std::vector<BluetoothDevice> devices;
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line)) {
+        line = trim(line);
+        if (line.rfind("Device ", 0) != 0) {
+            continue;
+        }
+        const std::string rest = line.substr(7);
+        const size_t name_start = rest.find(' ');
+        if (name_start == std::string::npos || name_start == 0) {
+            continue;
+        }
+        BluetoothDevice device;
+        device.mac = trim(rest.substr(0, name_start));
+        device.name = trim(rest.substr(name_start + 1));
+        if (device.name.empty()) {
+            device.name = device.mac;
+        }
+        devices.push_back(std::move(device));
+    }
+    return devices;
 }
 
 std::optional<std::string> normalize_mac(const std::string &input)

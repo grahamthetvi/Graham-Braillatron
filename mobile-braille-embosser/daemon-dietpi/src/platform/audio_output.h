@@ -2,11 +2,19 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace braillatron::platform {
 
+struct BluetoothDevice {
+    std::string mac;
+    std::string name;
+};
+
 std::string read_output_mode();
 std::string read_bluetooth_mac();
+
+std::vector<BluetoothDevice> scan_bluetooth_devices(bool discover = true);
 
 std::optional<std::string> normalize_mac(const std::string &input);
 

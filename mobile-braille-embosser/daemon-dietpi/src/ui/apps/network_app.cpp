@@ -3,6 +3,7 @@
 #include "ui_context.h"
 
 #include "../../platform/shell_util.h"
+#include "../../platform/audio_output.h"
 
 #include <memory>
 #include <set>
@@ -72,9 +73,20 @@ public:
             announce(ctx, ssid);
             ++count;
         }
-        const std::string bt = platform::run_command("bluetoothctl devices 2>/dev/null");
-        if (!bt.empty()) {
-            announce(ctx, "Bluetooth devices listed in log");
+        const std::vector<platform::BluetoothDevice> bt_devices =
+            platform::scan_bluetooth_devices(false);
+        int bt_count = 0;
+        for (const auto &device : bt_devices) {
+            if (bt_count >= 5) {
+                break;
+            }
+            announce(ctx, "Bluetooth " + device.name);
+            ++bt_count;
+        }
+        if (bt_devices.empty()) {
+            announce(ctx, "No known Bluetooth devices. Use Pair Bluetooth to scan.");
+        } else {
+            announce(ctx, "Use Pair Bluetooth to connect a speaker.");
         }
         announce(ctx, "Use QWERTY to enter password after selecting SSID");
     }

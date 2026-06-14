@@ -86,7 +86,7 @@ Take primary control of embosser head and paper feed. Launched from the main app
 | **Gmail** | OAuth device flow; inbox/read/compose/reply; BRF export | `apps/gmail_app.cpp`, `gmail_backend.cpp` |
 | **Morse Learning** | Morse alphabet lessons and quiz via haptics | `apps/morse_learn_app.cpp` |
 | **Network & Devices** | Wi-Fi scan/connect via wpa_supplicant (`wpa_cli`) | `apps/network_app.cpp` |
-| **Bluetooth Setup** | Bluetooth pairing stub | `apps/bluetooth_setup_app.cpp` |
+| **Bluetooth Setup** | Bluetooth scan; pair by name or MAC via `bluetoothctl` | `apps/bluetooth_setup_app.cpp` |
 | **Settings** | TTS rate/volume, braille grade, dictation toggle, accounts | `output_hub.cpp` settings submenu |
 
 Framework: `app_registry.cpp`, `app_session.h`, `ui_context.h`.
