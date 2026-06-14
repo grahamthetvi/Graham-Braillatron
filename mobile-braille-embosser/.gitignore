@@ -4,7 +4,7 @@ __pycache__/
 
 # Compiler outputs (Makefile -MMD)
 *.o
-*.d
+daemon-dietpi/**/*.d
 
 # Built daemons (daemon-dietpi/)
 daemon-dietpi/braillatron-*
