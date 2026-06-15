@@ -43,7 +43,7 @@ ConnectService::ConnectService(ConnectConfig connect_config, YoutubeConfig youtu
       })
     , youtube_(std::move(youtube_config), connect_config_, &mpv_, &events_)
     , music_(std::move(music_config), connect_config_, &mpv_, &events_)
-    , weather_(std::move(weather_config))
+    , weather_(std::move(weather_config), &events_)
     , podcasts_(std::move(podcasts_config), connect_config_, &mpv_, &events_)
     , radio_(std::move(radio_config), &mpv_, &events_)
     , library_(std::move(library_config))
@@ -101,6 +101,8 @@ void ConnectService::poll()
         podcasts_.poll_refresh(now_sec);
         last_podcast_refresh_sec_ = now_sec;
     }
+
+    weather_.poll_refresh(now_sec);
 
     if (last_radio_metadata_poll_ms_ == 0 ||
         now - last_radio_metadata_poll_ms_ >= 30000) {
@@ -204,6 +206,12 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     }
     if (cmd == "weather.status") {
         return weather_.status();
+    }
+    if (cmd == "weather.set_location") {
+        return weather_.set_location(json_get_string(request, "city_name"));
+    }
+    if (cmd == "weather.alerts") {
+        return weather_.alerts();
     }
     if (cmd == "podcasts.list_feeds") {
         return podcasts_.list_feeds();
@@ -360,6 +368,8 @@ std::string ConnectService::handle_request(const std::string &request)
                 result = music_ptr->scan();
             } else if (cmd == "weather.fetch") {
                 result = weather_ptr->fetch();
+            } else if (cmd == "weather.set_location") {
+                result = weather_ptr->set_location(json_get_string(request, "city_name"));
             } else if (cmd == "podcasts.refresh") {
                 result = podcasts_ptr->refresh();
             } else if (cmd == "podcasts.download") {

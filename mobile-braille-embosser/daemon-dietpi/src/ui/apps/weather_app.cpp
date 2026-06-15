@@ -17,6 +17,9 @@ struct HourlyItem {
     std::string label;
     std::string description;
     std::string temperature;
+    std::string humidity;
+    std::string uv_index;
+    std::string precip_probability;
 };
 
 struct DailyItem {
@@ -24,6 +27,8 @@ struct DailyItem {
     std::string description;
     std::string temp_max;
     std::string temp_min;
+    std::string precip_probability;
+    std::string uv_index;
 };
 
 enum class Phase {
@@ -32,6 +37,7 @@ enum class Phase {
     Current,
     Hourly,
     Daily,
+    Location,
 };
 
 class WeatherApp final : public AppSession {
@@ -47,11 +53,23 @@ public:
             announce(ctx, "Connectivity unavailable.");
             return;
         }
+
+        announce(ctx, "Weather loading.");
+        const std::string read_response = ctx.connect->request("weather.read");
+        if (braillatron::connect::json_get_bool(read_response, "ok", false)) {
+            const bool fresh = braillatron::connect::json_get_bool(read_response, "fresh", false);
+            parse_cache_response(read_response, !fresh);
+            phase_ = Phase::Menu;
+            menu_index_ = 0;
+            pending_announce_ =
+                build_ready_announcement(fresh ? "" : "Showing cached forecast");
+            start_background_fetch(ctx);
+            return;
+        }
+
         phase_ = Phase::Loading;
-        announce(ctx, "Weather. Fetching forecast.");
-        ctx.connect->request_async("weather.fetch", "", [this](const std::string &response) {
-            parse_fetch_response(response);
-        });
+        announce(ctx, "Fetching forecast.");
+        start_fetch(ctx, false);
     }
 
     void on_exit(UiContext &ctx) override
@@ -69,7 +87,14 @@ public:
     }
 
     void on_chord(uint8_t, UiContext &) override {}
-    void on_text(const std::string &, UiContext &) override {}
+
+    void on_text(const std::string &text, UiContext &) override
+    {
+        if (phase_ != Phase::Location || text.empty()) {
+            return;
+        }
+        city_buffer_ += text;
+    }
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
     {
@@ -90,9 +115,21 @@ public:
         case Phase::Daily:
             handle_daily(key, ctx);
             break;
+        case Phase::Location:
+            handle_location(key, ctx);
+            break;
         default:
             break;
         }
+    }
+
+    void on_connect_event(const braillatron::connect::ConnectEvent &event, UiContext &ctx) override
+    {
+        if (event.type == "weather.updated" && background_fetch_pending_) {
+            background_fetch_pending_ = false;
+            pending_announce_ = "Forecast updated";
+        }
+        (void)ctx;
     }
 
 private:
@@ -107,16 +144,54 @@ private:
         list_index_ = 0;
         pending_announce_.clear();
         temperature_unit_ = "celsius";
+        city_buffer_.clear();
+        background_fetch_pending_ = false;
     }
 
-    void parse_fetch_response(const std::string &response)
+    void start_fetch(UiContext &ctx, bool background)
     {
-        if (!braillatron::connect::json_get_bool(response, "ok", false)) {
-            pending_announce_ = "Weather fetch failed";
-            phase_ = Phase::Menu;
-            return;
+        background_fetch_pending_ = background;
+        if (!background) {
+            phase_ = Phase::Loading;
         }
+        ctx.connect->request_async("weather.fetch", "", [this, background](const std::string &response) {
+            if (!braillatron::connect::json_get_bool(response, "ok", false)) {
+                if (!background) {
+                    pending_announce_ = "Weather fetch failed";
+                    phase_ = Phase::Menu;
+                }
+                background_fetch_pending_ = false;
+                return;
+            }
+            const bool stale = braillatron::connect::json_get_bool(response, "stale", false);
+            parse_cache_response(response, stale);
+            phase_ = Phase::Menu;
+            menu_index_ = 0;
+            if (background) {
+                pending_announce_ = "Forecast updated";
+            } else {
+                pending_announce_ = build_ready_announcement(stale ? "Showing cached forecast" : "");
+            }
+            background_fetch_pending_ = false;
+        });
+    }
 
+    void start_background_fetch(UiContext &ctx) { start_fetch(ctx, true); }
+
+    std::string build_ready_announcement(const std::string &suffix) const
+    {
+        std::string message =
+            location_.empty() ? "Weather ready" : "Weather for " + location_;
+        if (!suffix.empty()) {
+            message += ". " + suffix;
+        }
+        message += ". Current, Hourly, Daily, Location, or Refresh. Press Enter.";
+        return message;
+    }
+
+    void parse_cache_response(const std::string &response, bool stale)
+    {
+        (void)stale;
         const size_t cache_pos = response.find("\"cache\":{");
         if (cache_pos == std::string::npos) {
             pending_announce_ = "Weather data unavailable";
@@ -144,7 +219,23 @@ private:
                     braillatron::connect::json_get_string(current_block, "weather_description");
                 const std::string wind =
                     braillatron::connect::json_get_string(current_block, "wind_speed");
+                const std::string humidity =
+                    braillatron::connect::json_get_string(current_block, "relative_humidity");
+                const std::string uv =
+                    braillatron::connect::json_get_string(current_block, "uv_index");
+                const std::string precip =
+                    braillatron::connect::json_get_string(current_block, "precipitation_probability");
+
                 current_summary_ = format_temperature(temp) + ". " + desc;
+                if (!humidity.empty() && humidity != "0") {
+                    current_summary_ += ". Humidity " + humidity + " percent";
+                }
+                if (!uv.empty() && uv != "0") {
+                    current_summary_ += ". UV index " + uv;
+                }
+                if (!precip.empty() && precip != "0") {
+                    current_summary_ += ". Precipitation chance " + precip + " percent";
+                }
                 if (!wind.empty() && wind != "0") {
                     current_summary_ += ". Wind " + wind;
                 }
@@ -165,6 +256,11 @@ private:
                 entry.description =
                     braillatron::connect::json_get_string(item, "weather_description");
                 entry.temperature = braillatron::connect::json_get_string(item, "temperature");
+                entry.humidity =
+                    braillatron::connect::json_get_string(item, "relative_humidity");
+                entry.uv_index = braillatron::connect::json_get_string(item, "uv_index");
+                entry.precip_probability =
+                    braillatron::connect::json_get_string(item, "precipitation_probability");
                 if (!entry.label.empty()) {
                     hourly_.push_back(entry);
                 }
@@ -185,18 +281,14 @@ private:
                     braillatron::connect::json_get_string(item, "weather_description");
                 entry.temp_max = braillatron::connect::json_get_string(item, "temp_max");
                 entry.temp_min = braillatron::connect::json_get_string(item, "temp_min");
+                entry.precip_probability =
+                    braillatron::connect::json_get_string(item, "precipitation_probability_max");
+                entry.uv_index = braillatron::connect::json_get_string(item, "uv_index_max");
                 if (!entry.label.empty()) {
                     daily_.push_back(entry);
                 }
             }
         }
-
-        phase_ = Phase::Menu;
-        menu_index_ = 0;
-        const bool stale = braillatron::connect::json_get_bool(response, "stale", false);
-        pending_announce_ = (location_.empty() ? "Weather ready" : "Weather for " + location_) +
-                            (stale ? ". Showing cached forecast" : "") +
-                            ". Current, Hourly, or Daily. Press Enter.";
     }
 
     std::string format_temperature(const std::string &value) const
@@ -212,7 +304,8 @@ private:
 
     void handle_menu(keyboard::ControlKey key, UiContext &ctx)
     {
-        static const std::vector<std::string> kMenuItems = {"Current", "Hourly", "Daily", "Refresh"};
+        static const std::vector<std::string> kMenuItems = {"Current", "Hourly", "Daily",
+                                                            "Location", "Refresh"};
 
         if (key == keyboard::ControlKey::DpadUp) {
             if (menu_index_ > 0) {
@@ -258,12 +351,53 @@ private:
             return;
         }
         if (menu_index_ == 3) {
-            phase_ = Phase::Loading;
-            announce(ctx, "Refreshing forecast");
-            ctx.connect->request_async("weather.fetch", "", [this](const std::string &response) {
-                parse_fetch_response(response);
-            });
+            phase_ = Phase::Location;
+            city_buffer_ = location_;
+            announce(ctx, "Enter city name and press Enter. Current location " +
+                               (location_.empty() ? "not set" : location_));
+            return;
         }
+        if (menu_index_ == 4) {
+            announce(ctx, "Refreshing forecast");
+            start_fetch(ctx, false);
+        }
+    }
+
+    void handle_location(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            if (!city_buffer_.empty()) {
+                city_buffer_.pop_back();
+            } else {
+                phase_ = Phase::Menu;
+                announce(ctx, "Weather menu. Location selected");
+            }
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter) {
+            return;
+        }
+        if (city_buffer_.empty()) {
+            announce(ctx, "Type a city name first");
+            return;
+        }
+
+        phase_ = Phase::Loading;
+        announce(ctx, "Updating location to " + city_buffer_);
+        const std::string fields =
+            "\"city_name\":\"" + braillatron::connect::json_escape(city_buffer_) + "\"";
+        ctx.connect->request_async("weather.set_location", fields, [this](const std::string &response) {
+            if (!braillatron::connect::json_get_bool(response, "ok", false)) {
+                pending_announce_ = "Location update failed";
+                phase_ = Phase::Menu;
+                menu_index_ = 3;
+                return;
+            }
+            parse_cache_response(response, false);
+            phase_ = Phase::Menu;
+            menu_index_ = 3;
+            pending_announce_ = build_ready_announcement("");
+        });
     }
 
     void handle_current(keyboard::ControlKey key, UiContext &ctx)
@@ -333,8 +467,18 @@ private:
             return;
         }
         const HourlyItem &item = hourly_[list_index_];
-        announce(ctx, item.label + ". " + format_temperature(item.temperature) + ". " +
-                           item.description);
+        std::string message =
+            item.label + ". " + format_temperature(item.temperature) + ". " + item.description;
+        if (!item.precip_probability.empty() && item.precip_probability != "0") {
+            message += ". Rain chance " + item.precip_probability + " percent";
+        }
+        if (!item.humidity.empty() && item.humidity != "0") {
+            message += ". Humidity " + item.humidity + " percent";
+        }
+        if (!item.uv_index.empty() && item.uv_index != "0") {
+            message += ". UV " + item.uv_index;
+        }
+        announce(ctx, message);
     }
 
     void announce_daily(UiContext &ctx)
@@ -344,19 +488,28 @@ private:
             return;
         }
         const DailyItem &item = daily_[list_index_];
-        announce(ctx, item.label + ". High " + format_temperature(item.temp_max) + ". Low " +
-                           format_temperature(item.temp_min) + ". " + item.description);
+        std::string message = item.label + ". High " + format_temperature(item.temp_max) + ". Low " +
+                              format_temperature(item.temp_min) + ". " + item.description;
+        if (!item.precip_probability.empty() && item.precip_probability != "0") {
+            message += ". Rain chance " + item.precip_probability + " percent";
+        }
+        if (!item.uv_index.empty() && item.uv_index != "0") {
+            message += ". UV " + item.uv_index;
+        }
+        announce(ctx, message);
     }
 
     Phase phase_ = Phase::Loading;
     std::string location_;
     std::string current_summary_;
     std::string temperature_unit_;
+    std::string city_buffer_;
     std::vector<HourlyItem> hourly_;
     std::vector<DailyItem> daily_;
     size_t menu_index_ = 0;
     size_t list_index_ = 0;
     std::string pending_announce_;
+    bool background_fetch_pending_ = false;
 };
 
 } // namespace

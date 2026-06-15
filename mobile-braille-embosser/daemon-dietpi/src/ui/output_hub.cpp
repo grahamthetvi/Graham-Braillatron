@@ -87,6 +87,53 @@ std::string weather_quick_status_line()
     return out.str();
 }
 
+std::string weather_chrome_line()
+{
+    const std::string cache = load_weather_cache_file();
+    if (cache.empty() || !weather_cache_is_fresh(cache)) {
+        return {};
+    }
+
+    const std::string location = connect::json_get_string(cache, "location");
+    const size_t current_key = cache.find("\"current\"");
+    if (current_key == std::string::npos) {
+        return {};
+    }
+    const size_t current_pos = cache.find('{', current_key);
+    if (current_pos == std::string::npos) {
+        return {};
+    }
+    const size_t current_end = cache.find('}', current_pos);
+    const std::string current_block = cache.substr(current_pos, current_end - current_pos + 1);
+    const std::string temp = connect::json_get_string(current_block, "temperature");
+    const std::string description = connect::json_get_string(current_block, "weather_description");
+    const std::string humidity = connect::json_get_string(current_block, "relative_humidity");
+    const std::string uv = connect::json_get_string(current_block, "uv_index");
+    if (temp.empty() || description.empty()) {
+        return {};
+    }
+
+    const std::string unit = connect::json_get_string(cache, "temperature_unit");
+    std::ostringstream out;
+    if (!location.empty()) {
+        out << location << " ";
+    }
+    out << temp;
+    if (unit == "fahrenheit") {
+        out << "F";
+    } else {
+        out << "C";
+    }
+    out << " " << description;
+    if (!humidity.empty() && humidity != "0") {
+        out << " H" << humidity << "%";
+    }
+    if (!uv.empty() && uv != "0") {
+        out << " UV" << uv;
+    }
+    return out.str();
+}
+
 } // namespace
 
 OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_config,
@@ -512,6 +559,19 @@ void OutputHub::on_connect_event(const connect::ConnectEvent &event)
     if (event.type == "gmail.link_failed") {
         gmail_link_pending_ = false;
         emit("Gmail link not completed. Try again.");
+        return;
+    }
+
+    if (event.type == "weather.alert") {
+        const std::string message = connect::json_get_string(event.data_json, "message");
+        play_boundary_haptic();
+        announce_message(message.empty() ? "Weather alert" : "Weather alert. " + message);
+        return;
+    }
+
+    if (event.type == "weather.updated") {
+        chrome_model_.weather_line = weather_chrome_line();
+        render_chrome();
     }
 }
 
@@ -524,6 +584,7 @@ void OutputHub::sync_chrome(bool at_boundary)
     chrome_model_.at_boundary = at_boundary;
     chrome_model_.tts_paused = tts_paused_;
     chrome_model_.dictation_active = dictation_active_;
+    chrome_model_.weather_line = weather_chrome_line();
     chrome_model_.menu_open = menu_overlay_.is_open();
     chrome_model_.menu_depth = menu_overlay_.depth();
 

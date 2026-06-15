@@ -199,10 +199,53 @@ WeatherConfig load_weather_config(const std::string &path)
                                 cfg.hourly_limit = static_cast<uint32_t>(std::stoul(value));
                             } else if (key == "daily_limit") {
                                 cfg.daily_limit = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "refresh_interval_sec") {
+                                cfg.refresh_interval_sec = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "alerts_enabled") {
+                                cfg.alerts_enabled = parse_bool(value);
+                            } else if (key == "alert_wind_threshold_kmh") {
+                                cfg.alert_wind_threshold_kmh = std::stod(value);
+                            } else if (key == "alert_precip_threshold_pct") {
+                                cfg.alert_precip_threshold_pct =
+                                    static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "alert_uv_threshold") {
+                                cfg.alert_uv_threshold = static_cast<uint32_t>(std::stoul(value));
                             }
                         },
                         config);
     return config;
+}
+
+void save_weather_config(const std::string &path, const WeatherConfig &config)
+{
+    std::ostringstream stream;
+    stream << "# Open-Meteo weather (no API key required)\n";
+    stream << "enabled=" << (config.enabled ? "true" : "false") << "\n";
+    stream << "latitude=" << config.latitude << "\n";
+    stream << "longitude=" << config.longitude << "\n";
+    stream << "city_name=" << config.city_name << "\n";
+    stream << "provider_url=" << config.provider_url << "\n";
+    stream << "geocoding_url=" << config.geocoding_url << "\n";
+    stream << "cache_path=" << config.cache_path << "\n";
+    stream << "cache_ttl_sec=" << config.cache_ttl_sec << "\n";
+    stream << "refresh_interval_sec=" << config.refresh_interval_sec << "\n";
+    stream << "temperature_unit=" << config.temperature_unit << "\n";
+    stream << "hourly_limit=" << config.hourly_limit << "\n";
+    stream << "daily_limit=" << config.daily_limit << "\n";
+    stream << "alerts_enabled=" << (config.alerts_enabled ? "true" : "false") << "\n";
+    stream << "alert_wind_threshold_kmh=" << config.alert_wind_threshold_kmh << "\n";
+    stream << "alert_precip_threshold_pct=" << config.alert_precip_threshold_pct << "\n";
+    stream << "alert_uv_threshold=" << config.alert_uv_threshold << "\n";
+
+    const std::string tmp_path = path + ".tmp";
+    {
+        std::ofstream file(tmp_path, std::ios::trunc);
+        if (!file.is_open()) {
+            return;
+        }
+        file << stream.str();
+    }
+    std::rename(tmp_path.c_str(), path.c_str());
 }
 
 PodcastsConfig load_podcasts_config(const std::string &path)

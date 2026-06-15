@@ -12,6 +12,7 @@ struct UiChromeModel {
     ChromeSurface surface = ChromeSurface::Home;
     std::string header = "Braillatron";
     std::string breadcrumb;
+    std::string weather_line;
     std::string composer_line;
     std::vector<std::string> items;
     size_t focus_index = 0;
