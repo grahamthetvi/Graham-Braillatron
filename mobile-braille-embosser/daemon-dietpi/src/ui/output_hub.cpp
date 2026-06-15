@@ -162,6 +162,10 @@ OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_c
     remote_display_enabled_ = remote_config.enabled || display_config_.remote_display_enabled;
     remote_allow_lan_ = remote_config.allow_lan;
     remote_publisher_.set_enabled(remote_display_enabled_);
+    if (remote_display_enabled_) {
+        braillatron::display::DisplayClient client(display_config_.remote_display_cmd_socket);
+        client.request("service.start");
+    }
     menu_overlay_.set_root_items(build_root_menu());
     if (ui_config_.display_enabled && display_ != nullptr) {
         std::cerr << "[display] backend=" << display_backend_name(display_.get()) << "\n";
