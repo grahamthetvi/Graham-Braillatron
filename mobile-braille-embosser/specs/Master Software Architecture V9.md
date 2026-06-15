@@ -342,6 +342,27 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 - **connectd network:** curl; signal-cli (Messages); OAuth device flow for Gmail (no Google SDK).
 - **Offline data install:** `braillatron-install-dictionary-data`, `braillatron-install-spelling-data` (see Pi SD Image guide).
 
+### 6.7 Wi‑Fi and network stack
+
+Production images use **DietPi ifupdown + wpa_supplicant** on **`wlan0`**, not NetworkManager. Bootstrap runs `deploy/os/setup-dietpi-networking.sh`:
+
+- **`ifup@wlan0.service`** brings up Wi‑Fi at boot (disable with `BRAILLATRON_WIFI_BOOT=0` for Ethernet-only benches)
+- **NetworkManager** and **`dietpi-wifi-monitor.service`** are disabled/masked to avoid conflicts
+- Credentials persist in **`/etc/wpa_supplicant/wpa_supplicant.conf`** (`update_config=1`)
+
+| Layer | Role |
+| --- | --- |
+| **OS / systemd** | `ifup@wlan0`, `ifup@eth0`/`end0`; `network-online.target` for display sidecars |
+| **wpa_supplicant** | Association, roaming, saved networks |
+| **Network and Devices app** | On-device scan/connect via `wpa_cli` (`network_app.cpp`) |
+| **Factory helper** | `deploy/os/setup-wifi-credentials.sh` — SSH provisioning before or after bootstrap |
+| **Quick Status** | Reads connected SSID from `wpa_cli -i wlan0 status` (`output_hub.cpp`) |
+| **connectd** | Network *apps* (YouTube, Weather, Gmail, …) — separate sidecar; requires IP connectivity but does not manage Wi‑Fi |
+
+Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so HDMI framebuffer UI is not cleared while `wlan0` associates (see Pi SD Image guide **Wi‑Fi and network connectivity**).
+
+> **Legacy:** `deploy/os/setup-networkmanager.sh` is retained for manual recovery only — do not run on current images.
+
 ---
 
 ## 7. Standardized Hardware Reference

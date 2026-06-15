@@ -234,6 +234,21 @@ Production paths on the Pi are under `/etc/braillatron/`. App-specific configs (
 
 Network apps require `braillatron-connectd` running (started by `braillatron.target` on the Pi). On-device bring-up: [Connectivity Follow-Up Checklist](specs/Connectivity%20Follow-Up%20Checklist.md).
 
+## Wi‑Fi on the Pi
+
+Production images use **DietPi ifupdown + wpa_supplicant** on `wlan0` — not NetworkManager. Bootstrap configures this via `deploy/os/setup-dietpi-networking.sh`.
+
+| Task | How |
+| --- | --- |
+| Join Wi‑Fi from the device | Home screen → **Network and Devices** → type SSID and password on a USB QWERTY keyboard → **Enter** |
+| Pre-provision before bootstrap | `sudo bash deploy/os/setup-wifi-credentials.sh 'SSID' 'password'` over SSH, or DietPi `dietpi-wifi.txt` on the SD boot partition |
+| Check connection | Menu → **Quick Status** (announces SSID), or `wpa_cli -i wlan0 status` over SSH |
+| Ethernet-only bench | `BRAILLATRON_WIFI_BOOT=0` when running `setup-dietpi-networking.sh` |
+
+Full stack details, boot-timing notes, and troubleshooting: [Pi SD Image Guide — Wi‑Fi and network connectivity](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md#wi-fi-and-network-connectivity).
+
+Bluetooth speaker pairing is separate (**Pair Bluetooth** app / Settings → **Pair Bluetooth speaker**); see the Pi guide **Audio output** section.
+
 ## Troubleshooting
 
 | Symptom | Fix |

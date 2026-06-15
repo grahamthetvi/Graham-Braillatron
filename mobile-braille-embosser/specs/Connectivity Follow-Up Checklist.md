@@ -28,7 +28,8 @@ For a new Cursor conversation, paste the **Suggested agent prompt** at the botto
 - [x] Merge PR #3 (Multi-App Integration v1.2)
 - [ ] Run `deploy/bootstrap-dietpi.sh` or `deploy/install.sh` on Orange Pi 3B
 - [ ] Run `braillatron-verify-install` after install
-- [ ] Confirm packages installed: `yt-dlp`, `mpv`, `ffmpeg`
+- [ ] Confirm networking stack: `systemctl is-enabled NetworkManager` → disabled/masked; `systemctl is-enabled ifup@wlan0` → enabled (unless Ethernet-only bench)
+- [ ] Confirm packages installed: `yt-dlp`, `mpv`, `ffmpeg`, `wpasupplicant`
 - [ ] Confirm `signal-cli` installed via `deploy/install-signal-cli.sh` (aarch64 native)
 - [ ] Confirm config installed: `/etc/braillatron/connect.conf`, `youtube.conf`, `messages.conf`, `dictionary.conf`, `spelling.conf`, `contacts.conf`, `music.conf`, `weather.conf`, `podcasts.conf`, `radio.conf`, `gmail.conf`, `library.conf`
 - [ ] Confirm credential dirs exist: `/data/braillatron/credentials/incoming/`, `signal-cli/`, `gmail/` (mode `0700`)
@@ -38,6 +39,14 @@ For a new Cursor conversation, paste the **Suggested agent prompt** at the botto
 ---
 
 ## Phase 1 — On-device smoke test (visit every item)
+
+### Wi‑Fi and link layer
+
+- [ ] `wpa_cli -i wlan0 status` shows `wpa_state=COMPLETED` and expected `ssid=`
+- [ ] `ping -c1 deb.debian.org` succeeds
+- [ ] **Network and Devices** app — scan announces nearby SSIDs; saved network reconnects after reboot
+- [ ] **Quick Status** (menu overlay) announces connected SSID
+- [ ] Optional factory path: `setup-wifi-credentials.sh` adds profile without using the UI
 
 ### connectd health
 
@@ -142,6 +151,8 @@ Priority fixes identified during v1 implementation; not yet validated on device.
 | Messages app | `daemon-dietpi/src/ui/apps/messages_app.cpp` |
 | Offline apps | `dictionary_app.cpp`, `spelling_app.cpp`, `contacts_app.cpp`, `timer_inline.cpp` |
 | Network apps | `music_app.cpp`, `weather_app.cpp`, `podcasts_app.cpp`, `radio_app.cpp`, `gmail_app.cpp`, `library_app.cpp` |
+| Wi‑Fi setup app | `network_app.cpp` — `wpa_cli` scan/connect on `wlan0` |
+| Wi‑Fi OS bootstrap | `deploy/os/setup-dietpi-networking.sh`, `setup-wifi-credentials.sh` |
 | Accounts menu | `output_hub.cpp` → `build_accounts_menu()` |
 | Config | `deploy/config/*.conf` |
 | Data install | `deploy/install-dictionary-data.sh`, `install-spelling-data.sh`, `install-gmail-oauth.sh` |
@@ -193,6 +204,7 @@ Do not edit the Cursor plan file; update the spec checklist as items complete.
 
 | Date | Change |
 |------|--------|
+| 2026-06-15 | Wi‑Fi docs: DietPi ifupdown + wpa_supplicant stack, Network and Devices flow, factory `setup-wifi-credentials.sh`; corrected bootstrap NetworkManager reference |
 | 2026-06-13 | Documentation sync: Architecture V9 §2/§6.6, Pi guide, README, packages.txt (sqlite3) |
 | 2026-06-13 | P1 reliability fixes: signal listAccounts fallback, mpv socket wait, yt-dlp shell escape, Shift hold-to-pause |
 | 2026-06-13 | UX polish: Messages thread refresh, Quick Status connectd ping, Document Look up stub, verify-install script |
