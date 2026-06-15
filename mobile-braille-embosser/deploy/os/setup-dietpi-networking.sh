@@ -23,6 +23,13 @@ if systemctl list-unit-files NetworkManager.service &>/dev/null; then
   echo "NetworkManager disabled (DietPi ifupdown owns interfaces)."
 fi
 
+# Prevent slow ifup (like DHCP timeouts) from blocking the boot for 5 minutes
+if [[ -f /lib/systemd/system/ifup@.service ]]; then
+  cp /lib/systemd/system/ifup@.service /etc/systemd/system/ifup@.service
+  sed -i '/^Before=/d' /etc/systemd/system/ifup@.service
+  systemctl daemon-reload
+fi
+
 if [[ "${BRAILLATRON_WIFI_BOOT:-1}" == "0" ]]; then
   systemctl disable ifup@wlan0.service 2>/dev/null || true
   echo "BRAILLATRON_WIFI_BOOT=0 — ifup@wlan0 disabled (Ethernet-only bench)."
