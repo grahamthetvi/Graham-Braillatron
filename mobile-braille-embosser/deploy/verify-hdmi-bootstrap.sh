@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fail bootstrap when known HDMI regressions are still present on disk.
+# Fail bootstrap when known display regressions are still present on disk.
 set -euo pipefail
 
 PREFIX="${PREFIX:-/usr/local}"
@@ -44,13 +44,16 @@ fi
 
 if command -v systemctl >/dev/null 2>&1; then
   if systemctl is-enabled braillatron-ui-stub.service >/dev/null 2>&1; then
-    check fail "braillatron-ui-stub.service is enabled (conflicts with braillatron-ui on HDMI)"
+    check fail "braillatron-ui-stub.service is enabled (conflicts with braillatron-ui)"
   else
     check ok "braillatron-ui-stub.service disabled"
   fi
   systemctl is-enabled braillatron-ui.service >/dev/null 2>&1 \
     && check ok "braillatron-ui.service enabled" \
     || check fail "braillatron-ui.service enabled"
+  systemctl is-enabled braillatron-displayd.service >/dev/null 2>&1 \
+    && check ok "braillatron-displayd.service enabled" \
+    || check fail "braillatron-displayd.service enabled"
 fi
 
 target_file="${SYSTEMD_DIR}/braillatron.target"
@@ -80,9 +83,24 @@ getty_dropin="${SYSTEMD_DIR}/getty@tty1.service.d/braillatron-appliance.conf"
   || check fail "getty@tty1 braillatron drop-in missing"
 
 if [[ -f /etc/braillatron/display.conf ]]; then
-  grep -q '^hdmi_enabled=true' /etc/braillatron/display.conf \
-    && check ok "display.conf hdmi_enabled=true" \
-    || check fail "display.conf hdmi_enabled not true"
+  grep -q '^hdmi_enabled=false' /etc/braillatron/display.conf \
+    && check ok "display.conf hdmi_enabled=false (wireless-first default)" \
+    || check fail "display.conf hdmi_enabled should be false by default"
+  grep -q '^remote_display_enabled=' /etc/braillatron/display.conf \
+    && check ok "display.conf remote_display_enabled present" \
+    || check fail "display.conf missing remote_display_enabled"
+fi
+
+if [[ -f /data/braillatron/settings/remote-display.conf ]]; then
+  check ok "remote-display settings file present"
+else
+  check fail "/data/braillatron/settings/remote-display.conf missing"
+fi
+
+if [[ -f "${PREFIX}/bin/braillatron-displayd" ]]; then
+  check ok "braillatron-displayd installed"
+else
+  check fail "braillatron-displayd missing"
 fi
 
 if [[ "${failures}" -eq 0 ]]; then
@@ -90,6 +108,6 @@ if [[ "${failures}" -eq 0 ]]; then
   exit 0
 fi
 
-echo "verify-hdmi-bootstrap: ${failures} check(s) failed — HDMI will be blank until fixed" >&2
-echo "  On Pi: sudo fix-hdmi-appliance.sh && sudo reboot" >&2
+echo "verify-hdmi-bootstrap: ${failures} check(s) failed — display bootstrap needs attention" >&2
+echo "  On Pi: sudo bash deploy/os/setup-appliance-mode.sh && sudo reboot" >&2
 exit 1

@@ -1,5 +1,7 @@
 #include "display_st7789.h"
 
+#include "chrome_frame.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
@@ -297,8 +299,8 @@ void St7789DisplayBackend::render(const UiChromeModel &model)
         return;
     }
 
-    const RenderedChrome frame = chrome_renderer_.build(model);
-    rasterizer_.render(frame, framebuffer_, layout_);
+    const ChromeFrame frame = rasterize_chrome(model, layout_);
+    framebuffer_ = frame.pixels;
     flush_framebuffer();
 }
 

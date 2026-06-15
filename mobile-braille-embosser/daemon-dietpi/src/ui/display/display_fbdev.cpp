@@ -1,5 +1,7 @@
 #include "display_fbdev.h"
 
+#include "chrome_frame.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
@@ -137,8 +139,8 @@ void FbdevDisplayBackend::render(const UiChromeModel &model)
         return;
     }
 
-    const RenderedChrome frame = chrome_renderer_->build(model);
-    rasterizer_.render(frame, framebuffer_, layout_);
+    const ChromeFrame frame = rasterize_chrome(model, layout_);
+    framebuffer_ = frame.pixels;
     blit_to_fb();
 }
 

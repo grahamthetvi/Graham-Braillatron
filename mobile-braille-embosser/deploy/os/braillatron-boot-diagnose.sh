@@ -15,8 +15,17 @@ section 'Display devices'
 ls -l /dev/fb0 2>/dev/null || echo '/dev/fb0: absent'
 ls -l /dev/spidev0.0 2>/dev/null || echo '/dev/spidev0.0: absent'
 if [[ -f /etc/braillatron/display.conf ]]; then
-  grep -E '^(backend|fbdev|hdmi_enabled|gpio_dc|spidev)=' /etc/braillatron/display.conf || true
+  grep -E '^(backend|fbdev|hdmi_enabled|remote_display_enabled|gpio_dc|spidev)=' /etc/braillatron/display.conf || true
 fi
+
+section 'Remote display sidecar'
+if [[ -f /data/braillatron/settings/remote-display.conf ]]; then
+  grep -E '^(enabled|listen_port|allow_lan)=' /data/braillatron/settings/remote-display.conf || true
+else
+  echo '/data/braillatron/settings/remote-display.conf: absent'
+fi
+systemctl is-active braillatron-displayd.service 2>/dev/null || echo 'braillatron-displayd: inactive'
+journalctl -u braillatron-displayd -b -o cat 2>/dev/null | tail -5 || true
 
 section 'Display backend (current boot journal)'
 backend_line="$(journalctl -u braillatron-ui -b -o cat 2>/dev/null \
@@ -77,7 +86,7 @@ echo "braillatron-console-ready.service enabled=${console_ready_enabled} (disabl
 section 'Braillatron systemd units'
 systemctl is-enabled braillatron.target 2>/dev/null || true
 systemctl is-active braillatron.target 2>/dev/null || true
-for unit in braillatron-ui braillatron-ui-stub braillatron-sentinel braillatron-connectd; do
+for unit in braillatron-ui braillatron-ui-stub braillatron-displayd braillatron-sentinel braillatron-connectd; do
   printf '%-24s enabled=%-8s active=%-8s condition=%s\n' "${unit}" \
     "$(systemctl is-enabled "${unit}.service" 2>/dev/null || echo '?')" \
     "$(systemctl is-active "${unit}.service" 2>/dev/null || echo '?')" \
@@ -93,8 +102,9 @@ if [[ ! -x /usr/local/bin/braillatron-ui ]]; then
 elif [[ ! -f /etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf ]]; then
   echo 'Re-apply appliance mode: sudo bash deploy/os/setup-appliance-mode.sh && sudo reboot'
 elif [[ "${backend_line}" == *'backend=stub'* ]] || [[ -z "${backend_line}" ]]; then
-  echo 'Stub or missing display backend: check /dev/fb0, display.conf hdmi_enabled=true, video group on braillatron-ui.service'
+  echo 'Stub or missing local display backend: enable Remote display in Settings, or set hdmi_enabled=true for HDMI'
+  echo '  Remote viewer: Settings → Remote display → Show pairing code → browser at http://<pi-ip>:8080 (or SSH tunnel)'
 else
-  echo 'If HDMI is blank: sudo fix-hdmi-appliance.sh && sudo reboot'
-  echo '  (backend=fb OK but blank usually means setterm -blank force or missing post-bootstrap reboot)'
+  echo 'Local display OK. For wireless bench: Settings → Remote display → pair on laptop browser'
+  echo '  SSH tunnel (LAN off): ssh -L 8080:127.0.0.1:8080 user@<pi-ip> then open http://localhost:8080'
 fi
