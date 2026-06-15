@@ -224,6 +224,11 @@ awk '$2=="/" { gsub(/,rw/, ",ro"); gsub(/ rw /, " ro "); sub(/ rw$/, " ro"); sub
   "${fstab_tmp}" >"${fstab_tmp}.ro"
 install -m 644 "${fstab_tmp}.ro" "${PI}/etc/fstab"
 rm -f "${fstab_tmp}" "${fstab_tmp}.ro"
+# Configure resolv.conf as a symlink to /run/resolv.conf to allow DHCP DNS writes on read-only root.
+if [[ -f "${PI}/etc/resolv.conf" && ! -L "${PI}/etc/resolv.conf" ]]; then
+  ln -sf /run/resolv.conf "${PI}/etc/resolv.conf"
+fi
+
 
 echo ""
 echo "== Quick checks on mounted root =="

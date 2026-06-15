@@ -30,6 +30,13 @@ rm -f "${fstab_tmp}" "${fstab_tmp}.ro"
 
 mkdir -p /var/lib/braillatron/ram
 
+# Configure resolv.conf as a symlink to /run/resolv.conf to allow DHCP DNS writes on read-only root.
+if [[ -f /etc/resolv.conf && ! -L /etc/resolv.conf ]]; then
+  touch /run/resolv.conf
+  cp /etc/resolv.conf /run/resolv.conf || true
+  ln -sf /run/resolv.conf /etc/resolv.conf
+fi
+
 cat >/usr/local/sbin/braillatron-remount-rw <<'EOF'
 #!/usr/bin/env bash
 mount -o remount,rw /
