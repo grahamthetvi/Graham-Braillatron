@@ -96,6 +96,12 @@ DisplayConfig load_display_config(const std::string &path)
             config.hdmi_enabled = parse_bool(value);
         } else if (key == "hdmi_font_scale") {
             config.hdmi_font_scale = std::stoi(value);
+        } else if (key == "remote_display_enabled") {
+            config.remote_display_enabled = parse_bool(value);
+        } else if (key == "remote_display_socket") {
+            config.remote_display_socket = value;
+        } else if (key == "remote_display_cmd_socket") {
+            config.remote_display_cmd_socket = value;
         }
     }
 

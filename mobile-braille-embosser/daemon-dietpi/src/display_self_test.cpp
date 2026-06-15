@@ -1,3 +1,4 @@
+#include "ui/display/chrome_frame.h"
 #include "ui/display/display_backend.h"
 #include "ui/display/display_config.h"
 #include "ui/display/chrome_renderer.h"
@@ -87,6 +88,15 @@ int main()
     }
     if (!has_pixels) {
         std::cerr << "rasterizer produced blank frame\n";
+        return 1;
+    }
+
+    braillatron::ui::ChromeRenderer shared_renderer(3);
+    braillatron::ui::ChromeRasterizer shared_rasterizer;
+    const braillatron::ui::ChromeFrame chrome_frame = braillatron::ui::rasterize_chrome(
+        model, layout, shared_renderer, shared_rasterizer);
+    if (chrome_frame.pixels.size() != pixels.size()) {
+        std::cerr << "chrome_frame pixel count mismatch\n";
         return 1;
     }
 

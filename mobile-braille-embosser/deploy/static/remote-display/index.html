@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Braillatron Remote Display</title>
+  <style>
+    body { font-family: sans-serif; background: #111; color: #eee; margin: 1rem; }
+    #canvas { image-rendering: pixelated; border: 1px solid #444; width: min(90vw, 480px); height: auto; }
+    input, button { font-size: 1rem; margin: 0.25rem 0; }
+    #status { margin-top: 0.5rem; color: #aaa; }
+  </style>
+</head>
+<body>
+  <h1>Braillatron Remote Display</h1>
+  <form id="pair-form">
+    <label>Pairing code <input id="code" maxlength="6" pattern="[0-9]{6}" required></label>
+    <button type="submit">Connect</button>
+  </form>
+  <p id="status">Enter the 6-digit code shown on the device.</p>
+  <canvas id="canvas" width="240" height="240"></canvas>
+  <script src="/viewer.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+[Unit]
+Description=Braillatron remote display sidecar
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+RuntimeDirectory=braillatron
+Environment=BRAILLATRON_REMOTE_DISPLAY_CONFIG=/data/braillatron/settings/remote-display.conf
+ExecStart=/usr/local/bin/braillatron-displayd
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=braillatron.target

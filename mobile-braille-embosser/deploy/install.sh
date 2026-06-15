@@ -19,6 +19,7 @@ install -d "${PREFIX}/bin"
 install -m 755 "${DAEMON_DIR}/braillatron-ui" "${PREFIX}/bin/braillatron-ui"
 install -m 755 "${DAEMON_DIR}/braillatron-sentinel" "${PREFIX}/bin/braillatron-sentinel"
 install -m 755 "${DAEMON_DIR}/braillatron-connectd" "${PREFIX}/bin/braillatron-connectd"
+install -m 755 "${DAEMON_DIR}/braillatron-displayd" "${PREFIX}/bin/braillatron-displayd"
 install -m 755 "${ROOT}/deploy/os/sync-documents.sh" "${PREFIX}/bin/braillatron-sync"
 install -m 755 "${ROOT}/deploy/os/braillatron-audio-select.sh" "${PREFIX}/bin/braillatron-audio-select"
 install -m 755 "${ROOT}/deploy/os/braillatron-bluetooth-autoconnect.sh" "${PREFIX}/bin/braillatron-bluetooth-autoconnect"
@@ -41,6 +42,7 @@ install -m 644 "${ROOT}/deploy/config/braillatron.conf" "${CONFIG_DIR}/braillatr
 install -m 644 "${ROOT}/deploy/config/library.conf" "${CONFIG_DIR}/library.conf"
 install -m 644 "${ROOT}/deploy/config/localsend.conf" "${CONFIG_DIR}/localsend.conf"
 install -m 644 "${ROOT}/deploy/config/connect.conf" "${CONFIG_DIR}/connect.conf"
+install -m 644 "${ROOT}/deploy/config/remote-display.conf" "${CONFIG_DIR}/remote-display.conf"
 install -m 644 "${ROOT}/deploy/config/youtube.conf" "${CONFIG_DIR}/youtube.conf"
 install -m 644 "${ROOT}/deploy/config/messages.conf" "${CONFIG_DIR}/messages.conf"
 install -m 644 "${ROOT}/deploy/config/dictionary.conf" "${CONFIG_DIR}/dictionary.conf"
@@ -53,10 +55,16 @@ install -m 644 "${ROOT}/deploy/config/radio.conf" "${CONFIG_DIR}/radio.conf"
 install -m 644 "${ROOT}/deploy/config/gmail.conf" "${CONFIG_DIR}/gmail.conf"
 
 install -d /usr/share/braillatron/radio
+install -d /usr/share/braillatron/remote-display
+install -m 644 "${ROOT}/deploy/static/remote-display/index.html" /usr/share/braillatron/remote-display/
+install -m 644 "${ROOT}/deploy/static/remote-display/viewer.js" /usr/share/braillatron/remote-display/
 install -m 644 "${ROOT}/deploy/radio/stations.json" /usr/share/braillatron/radio/stations.json
 
 install -d /var/lib/braillatron/ram
 install -d /data/braillatron/documents /data/braillatron/settings /data/braillatron/vosk-models || true
+if [[ ! -f /data/braillatron/settings/remote-display.conf ]]; then
+  install -m 644 "${ROOT}/deploy/config/remote-display.conf" /data/braillatron/settings/remote-display.conf
+fi
 install -d /data/braillatron/timer /data/braillatron/dictionary /data/braillatron/spelling-lists /data/braillatron/spelling-sessions /data/braillatron/contacts/import /data/braillatron/music /data/braillatron/weather /data/braillatron/podcasts/import /data/braillatron/podcasts/downloads /data/braillatron/radio /data/braillatron/library/books /data/braillatron/library/import /data/braillatron/library/state /data/braillatron/documents/gmail || true
 install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/credentials/signal-cli /data/braillatron/credentials/gmail || true
 
@@ -65,6 +73,7 @@ install -m 755 "${ROOT}/deploy/install-spelling-data.sh" "${PREFIX}/bin/braillat
 install -m 755 "${ROOT}/deploy/install-gmail-oauth.sh" "${PREFIX}/bin/braillatron-install-gmail-oauth"
 install -m 755 "${ROOT}/deploy/verify-install.sh" "${PREFIX}/bin/braillatron-verify-install"
 install -m 755 "${ROOT}/deploy/verify-hdmi-bootstrap.sh" "${PREFIX}/bin/braillatron-verify-hdmi-bootstrap"
+install -m 755 "${ROOT}/deploy/verify-display-bootstrap.sh" "${PREFIX}/bin/braillatron-verify-display-bootstrap"
 bash "${ROOT}/deploy/install-dictionary-data.sh"
 bash "${ROOT}/deploy/install-spelling-data.sh"
 bash "${ROOT}/deploy/install-gmail-oauth.sh"
@@ -79,6 +88,7 @@ install -m 755 "${ROOT}/deploy/os/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdm
 install -m 644 "${ROOT}/deploy/systemd/braillatron-ui.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sentinel.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-connectd.service" "${SYSTEMD_DIR}/"
+install -m 644 "${ROOT}/deploy/systemd/braillatron-displayd.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sync.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sync.timer" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-bluetooth-autoconnect.service" "${SYSTEMD_DIR}/"
@@ -97,6 +107,7 @@ systemctl disable braillatron-console-ui.service 2>/dev/null || true
 systemctl mask braillatron-console-ui.service 2>/dev/null || true
 systemctl disable braillatron-console-ready.service 2>/dev/null || true
 systemctl enable braillatron-fb-repaint.service 2>/dev/null || true
+systemctl enable braillatron-displayd.service 2>/dev/null || true
 systemctl enable braillatron-sync.timer
 systemctl enable braillatron-bluetooth-autoconnect.timer
 bash "${ROOT}/deploy/os/braillatron-systemd-wants.sh"

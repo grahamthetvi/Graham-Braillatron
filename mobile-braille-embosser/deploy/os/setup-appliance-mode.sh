@@ -95,7 +95,8 @@ else
 fi
 echo "Appliance env: BRAILLATRON_HEADLESS=${HEADLESS} BRAILLATRON_SPI_PANEL=${SPI_PANEL}"
 
-echo "Installing display routing (SPI + HDMI framebuffer / headless stub)..."
+echo "Installing display routing (SPI panel / wireless remote display / headless stub)..."
+install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-displayd.service" /etc/systemd/system/
 install -m 755 "${SCRIPT_DIR}/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-console-ready.service" /etc/systemd/system/
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-console-ui.service" /etc/systemd/system/
@@ -115,6 +116,7 @@ else
 fi
 systemctl disable braillatron-console-ready.service 2>/dev/null || true
 systemctl enable braillatron-fb-repaint.service 2>/dev/null || true
+systemctl enable braillatron-displayd.service 2>/dev/null || true
 bash "${SCRIPT_DIR}/braillatron-systemd-wants.sh"
 
 echo "Configuring read-only root and volatile tmpfs mounts..."

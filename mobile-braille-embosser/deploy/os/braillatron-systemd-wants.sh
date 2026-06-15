@@ -15,6 +15,7 @@ if [[ -d "${MULTI_WANTS}" ]]; then
     braillatron-ui-stub.service \
     braillatron-sentinel.service \
     braillatron-connectd.service \
+    braillatron-displayd.service \
     braillatron-console-ready.service \
     braillatron-console-ui.service \
     braillatron-fb-repaint.service; do

@@ -251,11 +251,13 @@ sudo reboot
 
 After reboot, `braillatron.target` starts automatically. **No login or manual command is required** — power on, wait for TTS “Braillatron ready”, then use the physical keyboard.
 
-**HDMI monitor (no SPI panel):** boot scroll clears from tty1, then **UI chrome** renders on HDMI via `/dev/fb0` (`braillatron-ui.service`). tty1 stays blank on success (no figlet banner). This is automatic when SPI is not configured. Seeing `Reached target Graphical Interface` in the boot log is normal DietPi noise — the product UI uses the Linux framebuffer, not `graphical.target`.
+**Bench without SPI panel (default):** enable **Settings → Remote display** on the Pi, show pairing code, open `http://<pi-ip>:8080` on a laptop (USB keyboard stays on the Pi). When LAN access is disabled, use `ssh -L 8080:127.0.0.1:8080 user@<pi-ip>` and open `http://localhost:8080`.
 
-**SPI panel present:** UI chrome renders on the panel and on HDMI when both are available.
+**SPI panel present:** UI chrome renders on the panel; optional wireless mirror via Remote display settings.
 
-**TTS-only (no HDMI UI):** bootstrap with `BRAILLATRON\_HEADLESS=1` or edit `/etc/braillatron/appliance.env`.
+**Opt-in HDMI (`hdmi_enabled=true`):** legacy framebuffer bench on `/dev/fb0`; run `sudo fix-hdmi-appliance.sh` if the screen stays blank.
+
+**TTS-only (no visual UI):** bootstrap with `BRAILLATRON\_HEADLESS=1` or edit `/etc/braillatron/appliance.env`.
 
 Use SSH for development and maintenance (see below).
 
@@ -316,9 +318,10 @@ Production bootstrap locks the device into appliance mode automatically:
 
 | Surface | What you get |
 | - | - |
+| **Remote display** | `braillatron-displayd.service` — browser viewer at `:8080` with pairing (default bench path) |
 | **SPI panel** | `braillatron-ui.service` — UI chrome on the HAT when `/etc/braillatron/appliance-spi` exists (`BRAILLATRON\_SPI\_PANEL=1` at bootstrap) |
-| **HDMI (framebuffer)** | `braillatron-ui.service` — UI chrome on `/dev/fb0` (default skeleton bench) |
-| **SPI + HDMI** | Same service — composite backend when both devices are available |
+| **HDMI (opt-in)** | `braillatron-ui.service` — `/dev/fb0` when `hdmi\_enabled=true` |
+| **SPI + HDMI** | Composite backend when both devices are available and HDMI is enabled |
 | **Headless override** | `braillatron-ui-stub.service` when `BRAILLATRON\_HEADLESS=1` — TTS + keyboard, no visual UI |
 | **SSH** | Normal shell for builds, config edits, and debugging |
 

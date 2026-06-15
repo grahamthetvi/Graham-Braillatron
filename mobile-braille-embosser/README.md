@@ -208,10 +208,12 @@ For a similar local-console experience on a **dev PC** (ncurses bench), use [`de
 
 | Surface | When | What you see |
 | --- | --- | --- |
-| **HDMI** | `/dev/fb0` present, `hdmi_enabled=true` | UI chrome at native resolution via framebuffer (`braillatron-ui.service`) |
-| **SPI panel** | `/dev/spidev0.0` + GPIO configured | Same UI chrome on the HAT display (simultaneous with HDMI when both are available) |
-| **tty1** | Always (non-headless) | Cleared text console on success; UI on framebuffer |
-| **SSH** | Always | Admin shell only — not the product UI |
+| **Remote display** | Settings → Remote display (default bench path) | UI chrome in a browser at `:8080` with pairing auth; USB keyboard on Pi |
+| **SPI panel** | `/dev/spidev0.0` + GPIO configured | Same UI chrome on the HAT display |
+| **HDMI** | Opt-in: `hdmi_enabled=true` | UI chrome on `/dev/fb0` (legacy bench; use remote display instead) |
+| **SSH** | Always | Admin shell — use `ssh -L 8080:127.0.0.1:8080` when LAN access is disabled |
+
+Default bench without SPI: enable **Remote display** in Settings, show pairing code, open `http://<pi-ip>:8080` on a laptop (or `http://localhost:8080` through an SSH tunnel).
 
 Force TTS-only (no visual UI): `BRAILLATRON_HEADLESS=1` at bootstrap or set in `/etc/braillatron/appliance.env`, then `systemctl restart braillatron.target`. Re-enable visual UI: [`deploy/os/setup-dev-console-mode.sh`](deploy/os/setup-dev-console-mode.sh).
 
@@ -225,7 +227,8 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 | `keyboard.conf` | Serial + evdev bench input |
 | `evdev_map.conf` | USB key → logical key map (edit for non-QWERTY layouts) |
 | `ui.conf` | TTS, braille, STT, haptics toggles, visual display toggle, document dictation |
-| `display.conf` | Display backends (`auto`/`spi`/`fb`/`ncurses`/`stub`), spidev, fbdev, GPIO, HDMI options |
+| `display.conf` | Display backends (`auto`/`spi`/`fb`/`ncurses`/`stub`), spidev, fbdev, GPIO, remote publisher, HDMI opt-in |
+| `remote-display.conf` | displayd HTTP/WebSocket listener, pairing, LAN access (`/data/braillatron/settings/` on Pi) |
 
 Production paths on the Pi are under `/etc/braillatron/`. App-specific configs (`dictionary.conf`, `spelling.conf`, `music.conf`, `weather.conf`, `gmail.conf`, etc.) are installed by `deploy/install.sh`. See the [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) for deployment, **testing on the Pi** (no GUI, journal + TTS), bench keyboard setup, and rebuild/update steps.
 

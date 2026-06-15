@@ -5,6 +5,7 @@
 #include "backends/backend.h"
 #include "display/display_backend.h"
 #include "display/display_config.h"
+#include "display/remote_frame_publisher.h"
 #include "display/ui_chrome_model.h"
 #include "menu_overlay.h"
 #include "ui_config.h"
@@ -74,6 +75,8 @@ public:
 
     void sync_chrome(bool at_boundary);
     void rebuild_display_backend();
+    void set_pairing_code_overlay(const std::string &code);
+    void clear_pairing_code_overlay();
 
     MenuOverlay &menu_overlay();
     std::vector<MenuItem> build_settings_menu();
@@ -90,6 +93,8 @@ private:
     void persist_ui_config();
     void toggle_bool(bool &field, const char *name);
     void render_chrome();
+    void sync_remote_display_publisher();
+    void persist_remote_display_config();
     std::vector<MenuItem> build_root_menu();
     std::vector<MenuItem> build_accounts_menu();
     std::vector<MenuItem> build_audio_output_menu();
@@ -124,6 +129,11 @@ private:
     std::unique_ptr<EmbosserBackend> embosser_;
     std::unique_ptr<MorseBackend> morse_;
     std::unique_ptr<DisplayBackend> display_;
+    RemoteFramePublisher remote_publisher_;
+    std::string remote_display_config_path_;
+    bool remote_display_enabled_ = false;
+    bool remote_allow_lan_ = false;
+    std::string pairing_code_overlay_;
 };
 
 } // namespace braillatron::ui

@@ -40,7 +40,7 @@ Whenever focus changes or a word is announced, the Output Hub distributes conten
 |---------|---------------------|--------|
 | TTS | eSpeak NG via Speech Dispatcher; MAX98357A I2S + 3.5 mm jack | `output_hub.cpp`, `backend.cpp` |
 | Refreshable Braille | BRLTTY brlapi + liblouis forward translation | `backend.cpp`, `liblouis_bridge.cpp` |
-| Visual Display | ST7789 SPI panel (240×240) + ncurses dev fallback; UI chrome | `ui/display/*`, `output_hub.cpp` |
+| Visual Display | ST7789 SPI panel (240×240) + wireless remote browser viewer + ncurses dev fallback; UI chrome | `ui/display/*`, `display/*`, `output_hub.cpp` |
 | Embosser | Solenoid stagger head via `MotionService` | `motion_service.cpp`, `emboss_scheduler.cpp` |
 | Haptics | DRV2605L LRA; Morse timed pulses | `drv2605l.cpp`, `morse_encoder.cpp` |
 

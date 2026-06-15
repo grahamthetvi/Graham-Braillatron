@@ -17,8 +17,11 @@ struct DisplayConfig {
     int gpio_rst = -1;
     int gpio_cs = -1;
     bool ncurses_enabled = true;
-    bool hdmi_enabled = true;
+    bool hdmi_enabled = false;
     int hdmi_font_scale = 0;
+    bool remote_display_enabled = false;
+    std::string remote_display_socket = "/run/braillatron/display.sock";
+    std::string remote_display_cmd_socket = "/run/braillatron/display-cmd.sock";
 };
 
 DisplayConfig load_display_config(const std::string &path);
