@@ -46,6 +46,9 @@ DisplayBackendKind parse_backend_kind(const std::string &value)
     if (lower == "stub") {
         return DisplayBackendKind::Stub;
     }
+    if (lower == "mirror" || lower == "ssh") {
+        return DisplayBackendKind::Mirror;
+    }
     return DisplayBackendKind::Auto;
 }
 
@@ -96,6 +99,10 @@ DisplayConfig load_display_config(const std::string &path)
             config.hdmi_enabled = parse_bool(value);
         } else if (key == "hdmi_font_scale") {
             config.hdmi_font_scale = std::stoi(value);
+        } else if (key == "mirror_enabled") {
+            config.mirror_enabled = parse_bool(value);
+        } else if (key == "mirror_snapshot") {
+            config.mirror_snapshot = value;
         }
     }
 

@@ -49,13 +49,23 @@ DISPLAY_OBJS := \
 	src/ui/display/ui_chrome_model.o \
 	src/ui/display/chrome_renderer.o \
 	src/ui/display/chrome_rasterizer.o \
+	src/ui/display/chrome_snapshot.o \
 	src/ui/display/display_config.o \
 	src/ui/display/display_backend.o \
 	src/ui/display/display_composite.o \
 	src/ui/display/display_fbdev.o \
+	src/ui/display/display_mirror.o \
 	src/ui/display/font8x8_basic.o \
 	src/ui/display/display_st7789.o \
 	src/ui/display/display_ncurses.o
+
+UI_WATCH_OBJS := \
+	src/ui/display/ui_chrome_model.o \
+	src/ui/display/chrome_renderer.o \
+	src/ui/display/chrome_snapshot.o \
+	src/ui/display/display_ncurses.o \
+	src/connect/json_utils.o \
+	src/ui_watch_main.o
 
 PLATFORM_OBJS := \
 	src/platform/device_status.o \
@@ -254,15 +264,18 @@ DISPLAY_TEST_OBJS := \
 	src/ui/display/ui_chrome_model.o \
 	src/ui/display/chrome_renderer.o \
 	src/ui/display/chrome_rasterizer.o \
+	src/ui/display/chrome_snapshot.o \
 	src/ui/display/display_config.o \
 	src/ui/display/display_backend.o \
 	src/ui/display/display_composite.o \
 	src/ui/display/display_fbdev.o \
+	src/ui/display/display_mirror.o \
 	src/ui/display/display_st7789.o \
 	src/ui/display/display_ncurses.o \
 	src/ui/display/font8x8_basic.o \
 	src/ui/ui_config.o \
 	src/ui/menu_overlay.o \
+	src/connect/json_utils.o \
 	src/display_self_test.o
 
 TELEMETRY_OBJS := \
@@ -358,16 +371,16 @@ GMAIL_TEST_OBJS := \
 	src/connect/gmail_backend.o \
 	src/connect/gmail_self_test.o
 
-.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test liblouis-test timer-test dictionary-test spelling-test contacts-test music-test library-test gmail-test sentinel connectd connect-test ui-test install a11y liblouis display
+.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test liblouis-test timer-test dictionary-test spelling-test contacts-test music-test library-test gmail-test sentinel connectd connect-test ui-test ui-watch install a11y liblouis display
 
-all: braillatron-ui braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-sentinel braillatron-connectd braillatron-ui-test braillatron-connect-test
+all: braillatron-ui braillatron-ui-watch braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-sentinel braillatron-connectd braillatron-ui-test braillatron-connect-test
 
 keyboard: braillatron-ui
 
 ui: braillatron-ui
 
 display:
-	$(MAKE) BRAILLATRON_DISPLAY=1 braillatron-ui braillatron-display-test
+	$(MAKE) BRAILLATRON_DISPLAY=1 braillatron-ui braillatron-ui-watch braillatron-display-test
 
 a11y:
 	$(MAKE) BRAILLATRON_A11Y=1 all
@@ -396,6 +409,8 @@ connectd: braillatron-connectd
 connect-test: braillatron-connect-test
 
 ui-test: braillatron-ui-test
+
+ui-watch: braillatron-ui-watch
 
 timer-test: braillatron-timer-test
 
@@ -447,6 +462,9 @@ install:
 
 braillatron-ui: $(UI_OBJS)
 	$(CXX) $(CXXFLAGS) $(UI_OBJS) $(LDFLAGS) $(BACKEND_LIBS) -o $@
+
+braillatron-ui-watch: $(UI_WATCH_OBJS)
+	$(CXX) $(CXXFLAGS) $(UI_WATCH_OBJS) $(LDFLAGS) $(DISPLAY_LIBS) -o $@
 
 braillatron-ui-test: $(UI_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(UI_TEST_OBJS) $(LDFLAGS) $(BACKEND_LIBS) -o $@
@@ -569,10 +587,10 @@ src/ui/display/%.o: src/ui/display/%.cpp
 src/connect/%.o: src/connect/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(UI_WATCH_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS))
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \
-		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-liblouis-test braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-gmail-test braillatron-connect-test braillatron-sentinel braillatron-connectd
+		braillatron-ui braillatron-ui-watch braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-liblouis-test braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-gmail-test braillatron-connect-test braillatron-sentinel braillatron-connectd
 
 -include $(ALL_OBJS:.o=.d)

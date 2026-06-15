@@ -15,7 +15,22 @@ section 'Display devices'
 ls -l /dev/fb0 2>/dev/null || echo '/dev/fb0: absent'
 ls -l /dev/spidev0.0 2>/dev/null || echo '/dev/spidev0.0: absent'
 if [[ -f /etc/braillatron/display.conf ]]; then
-  grep -E '^(backend|fbdev|hdmi_enabled|gpio_dc|spidev)=' /etc/braillatron/display.conf || true
+  grep -E '^(backend|fbdev|hdmi_enabled|mirror_enabled|mirror_snapshot|gpio_dc|spidev)=' /etc/braillatron/display.conf || true
+fi
+
+section 'SSH UI mirror'
+if [[ -x /usr/local/bin/braillatron-ui-watch ]]; then
+  echo 'OK  braillatron-ui-watch installed'
+else
+  echo 'MISSING  braillatron-ui-watch (re-run deploy/install.sh)'
+fi
+snapshot_path="/run/braillatron/ui-chrome.snapshot"
+if [[ -f "${snapshot_path}" ]]; then
+  echo "OK  mirror snapshot present (${snapshot_path})"
+  ls -l "${snapshot_path}" 2>/dev/null || true
+else
+  echo "NOTE  mirror snapshot absent (${snapshot_path})"
+  echo '  After braillatron-ui starts with mirror_enabled=true, run: braillatron-ui-watch'
 fi
 
 section 'Display backend (current boot journal)'
@@ -27,7 +42,11 @@ if [[ -n "${backend_line}" ]]; then
   case "${backend}" in
     stub|none|'')
       echo 'WARN  UI has no visual display backend'
-      echo '  Check /dev/fb0, display.conf hdmi_enabled=true, braillatron-ui video group'
+      echo '  Enable mirror_enabled=true in display.conf and run: braillatron-ui-watch'
+      ;;
+    mirror|*mirror*)
+      echo "OK  SSH mirror backend=${backend}"
+      echo '  View UI chrome over SSH: braillatron-ui-watch'
       ;;
     fb|spi|spi+fb|fb+spi)
       echo "OK  visual backend=${backend}"
@@ -93,8 +112,9 @@ if [[ ! -x /usr/local/bin/braillatron-ui ]]; then
 elif [[ ! -f /etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf ]]; then
   echo 'Re-apply appliance mode: sudo bash deploy/os/setup-appliance-mode.sh && sudo reboot'
 elif [[ "${backend_line}" == *'backend=stub'* ]] || [[ -z "${backend_line}" ]]; then
-  echo 'Stub or missing display backend: check /dev/fb0, display.conf hdmi_enabled=true, video group on braillatron-ui.service'
+  echo 'Stub or missing display backend: enable mirror_enabled=true in display.conf'
+  echo '  View UI over SSH: braillatron-ui-watch'
 else
-  echo 'If HDMI is blank: sudo fix-hdmi-appliance.sh && sudo reboot'
-  echo '  (backend=fb OK but blank usually means setterm -blank force or missing post-bootstrap reboot)'
+  echo 'If HDMI is blank, use SSH mirror: braillatron-ui-watch'
+  echo '  Re-enable HDMI optionally: hdmi_enabled=true in display.conf, then sudo fix-hdmi-appliance.sh'
 fi

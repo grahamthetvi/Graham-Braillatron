@@ -1,11 +1,13 @@
 #pragma once
 
+#include "chrome_renderer.h"
+
 #include <cstdint>
 #include <string>
 
 namespace braillatron::ui {
 
-enum class DisplayBackendKind { Auto, Spi, Fb, Ncurses, Stub, Multi };
+enum class DisplayBackendKind { Auto, Spi, Fb, Ncurses, Stub, Multi, Mirror };
 
 struct DisplayConfig {
     DisplayBackendKind backend = DisplayBackendKind::Auto;
@@ -17,8 +19,10 @@ struct DisplayConfig {
     int gpio_rst = -1;
     int gpio_cs = -1;
     bool ncurses_enabled = true;
-    bool hdmi_enabled = true;
+    bool hdmi_enabled = false;
     int hdmi_font_scale = 0;
+    bool mirror_enabled = true;
+    std::string mirror_snapshot = "/run/braillatron/ui-chrome.snapshot";
 };
 
 DisplayConfig load_display_config(const std::string &path);

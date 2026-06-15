@@ -8,6 +8,7 @@ Wants=brltty.service braillatron-connectd.service
 
 [Service]
 Type=simple
+RuntimeDirectory=braillatron
 SupplementaryGroups=input video
 EnvironmentFile=-/etc/braillatron/appliance.env
 Environment=BRAILLATRON_CONFIG=/etc/braillatron

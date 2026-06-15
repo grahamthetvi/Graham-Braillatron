@@ -74,19 +74,9 @@ int NcursesDisplayBackend::max_body_rows() const
     return std::max(1, LINES - 6);
 }
 
-void NcursesDisplayBackend::render(const UiChromeModel &model)
+void render_chrome_terminal(const RenderedChrome &frame, int /*max_body_rows*/)
 {
-    if (!initialized_) {
-        return;
-    }
-
-    ChromeRenderer renderer(max_body_rows());
-    render_frame(renderer.build(model));
-}
-
-void NcursesDisplayBackend::render_frame(const RenderedChrome &frame)
-{
-    if (!initialized_) {
+    if (stdscr == nullptr) {
         return;
     }
 
@@ -163,6 +153,16 @@ void NcursesDisplayBackend::render_frame(const RenderedChrome &frame)
     }
 
     refresh();
+}
+
+void NcursesDisplayBackend::render(const UiChromeModel &model)
+{
+    if (!initialized_) {
+        return;
+    }
+
+    ChromeRenderer renderer(max_body_rows());
+    render_chrome_terminal(renderer.build(model), max_body_rows());
 }
 
 void NcursesDisplayBackend::shutdown()
