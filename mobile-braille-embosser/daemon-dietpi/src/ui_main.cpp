@@ -15,10 +15,16 @@
 namespace {
 
 volatile std::sig_atomic_t g_running = 1;
+volatile std::sig_atomic_t g_repaint = 0;
 
 void handle_signal(int)
 {
     g_running = 0;
+}
+
+void handle_repaint(int)
+{
+    g_repaint = 1;
 }
 
 std::string config_dir()
@@ -49,6 +55,7 @@ int main(int argc, char *argv[])
 
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
+    std::signal(SIGUSR1, handle_repaint);
 
     try {
         std::cerr << "[ui] loading configuration from " << base << "\n";
@@ -92,6 +99,10 @@ int main(int argc, char *argv[])
         std::cerr << "braillatron-ui profile=" << resolved_hardware.board_profile << "\n";
 
         while (g_running) {
+            if (g_repaint) {
+                g_repaint = 0;
+                app.repaint_chrome();
+            }
             app.poll();
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }

@@ -129,7 +129,6 @@ if ! is_ok_display_backend "${backend}"; then
   hold_tty1
 fi
 
-# fb/spi backends draw directly on the framebuffer; ESC [2J from clear_tty1 wipes the UI.
-# blank_tty1_cursor must not use setterm -blank force (that blanks HDMI via APM).
-blank_tty1_cursor
+# fb/spi backends draw on /dev/fb0; any tty1 console I/O (clear, setterm, banner) can wipe the UI.
+# Do not touch tty1 on success — braillatron-ui owns the framebuffer.
 hold_tty1

@@ -23,12 +23,22 @@ if systemctl list-unit-files NetworkManager.service &>/dev/null; then
   echo "NetworkManager disabled (DietPi ifupdown owns interfaces)."
 fi
 
-unmask_ifup_iface wlan0
+if [[ "${BRAILLATRON_WIFI_BOOT:-1}" == "0" ]]; then
+  systemctl disable ifup@wlan0.service 2>/dev/null || true
+  echo "BRAILLATRON_WIFI_BOOT=0 — ifup@wlan0 disabled (Ethernet-only bench)."
+else
+  unmask_ifup_iface wlan0
+fi
+
 for wired in eth0 end0; do
   if [[ -d "/sys/class/net/${wired}" ]]; then
     unmask_ifup_iface "${wired}"
   fi
 done
 
+systemctl disable dietpi-wifi-monitor.service 2>/dev/null || true
+systemctl mask dietpi-wifi-monitor.service 2>/dev/null || true
+
 echo "DietPi networking ready (ifup@wlan0 enabled; interfaces file untouched)."
 echo "Reboot after bootstrap to apply cleanly — do not restart networking mid-session."
+echo "Ethernet-only bench: BRAILLATRON_WIFI_BOOT=0 bash deploy/os/setup-dietpi-networking.sh"

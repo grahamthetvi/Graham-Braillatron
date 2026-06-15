@@ -1,0 +1,13 @@
+[Unit]
+Description=Repaint Braillatron framebuffer after network is online
+After=network-online.target braillatron-ui.service
+Wants=braillatron-ui.service
+ConditionPathExists=!/etc/braillatron/appliance-headless
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/braillatron-fb-repaint.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=braillatron.target

@@ -65,14 +65,31 @@ if [[ -f /etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf ]];
 else
   echo 'MISSING  getty drop-in'
 fi
-echo 'tty1 on success: blank cursor only; framebuffer UI must not be cleared (no ESC [2J)'
+echo 'tty1 on success: hold only; no clear/setterm/banner (tty1 and fb0 share fbcon)'
 if [[ -f /usr/local/sbin/braillatron-console-ready.sh ]] \
     && grep -vE '^[[:space:]]*#' /usr/local/sbin/braillatron-console-ready.sh \
-      | grep -qE 'setterm.*-blank[[:space:]=]+force|-blank[[:space:]]+force'; then
-  echo 'WARN  setterm -blank force in console-ready — blanks HDMI; run: sudo fix-hdmi-appliance.sh'
+      | grep -qE 'setterm'; then
+  echo 'WARN  setterm in console-ready — can wipe fb0 after network-online; run: sudo fix-hdmi-appliance.sh'
+fi
+if [[ -d /etc/systemd/system/getty@tty1.service.d ]]; then
+  while IFS= read -r dropin; do
+    [[ -n "${dropin}" ]] || continue
+    if grep -q 'network-online' "${dropin}" 2>/dev/null; then
+      echo "WARN  getty drop-in waits on network-online (late tty1 wipes fb0): ${dropin}"
+    fi
+  done < <(find /etc/systemd/system/getty@tty1.service.d -maxdepth 1 -name '*.conf' -type f 2>/dev/null || true)
 fi
 console_ready_enabled="$(systemctl is-enabled braillatron-console-ready.service 2>/dev/null || echo '?')"
 echo "braillatron-console-ready.service enabled=${console_ready_enabled} (disabled by design; manual banner only)"
+fb_repaint_enabled="$(systemctl is-enabled braillatron-fb-repaint.service 2>/dev/null || echo '?')"
+echo "braillatron-fb-repaint.service enabled=${fb_repaint_enabled} (repaints fb after network-online)"
+
+section 'Network vs HDMI timing (wlan0 ~5min wipe)'
+systemctl show getty@tty1.service -p ActiveEnterTimestamp -p After -p Before --no-pager 2>/dev/null || true
+systemctl show ifup@wlan0.service -p ActiveEnterTimestamp -p Result --no-pager 2>/dev/null || true
+systemctl show network-online.target -p ActiveEnterTimestamp --no-pager 2>/dev/null || true
+systemctl is-enabled dietpi-wifi-monitor.service 2>/dev/null || echo 'dietpi-wifi-monitor: not installed'
+journalctl -u ifup@wlan0.service -u getty@tty1.service -u braillatron-fb-repaint.service -b --no-pager -n 20 2>/dev/null || true
 
 section 'Braillatron systemd units'
 systemctl is-enabled braillatron.target 2>/dev/null || true

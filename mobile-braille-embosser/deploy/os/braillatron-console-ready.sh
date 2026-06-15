@@ -18,14 +18,8 @@ blank_tty1_cursor() {
   if [[ ! -c "${CONSOLE}" ]]; then
     return 0
   fi
-  # Hide cursor only — never ESC [2J here (wipes framebuffer UI on fb0).
+  # Hide cursor only — never ESC [2J or setterm here (tty1 and /dev/fb0 share fbcon).
   printf '\033[?25l' >"${CONSOLE}" 2>/dev/null || true
-  if command -v setterm >/dev/null 2>&1; then
-    # -blank poke unblanks the VT; -blank 0 disables APM blanking.
-    # Do NOT use -blank force — that keeps the screen blank (blank HDMI).
-    setterm -blank poke -powerdown 0 -cursor off -term linux </dev/tty1 >/dev/tty1 2>/dev/null || true
-    setterm -blank 0 -term linux </dev/tty1 >/dev/tty1 2>/dev/null || true
-  fi
 }
 
 read_display_backend() {

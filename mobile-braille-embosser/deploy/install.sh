@@ -73,6 +73,7 @@ install -m 755 "${ROOT}/deploy/os/braillatron-console-ready.sh" /usr/local/sbin/
 install -m 755 "${ROOT}/deploy/os/braillatron-tty1-launch.sh" /usr/local/sbin/braillatron-tty1-launch.sh
 install -m 755 "${ROOT}/deploy/os/braillatron-systemd-wants.sh" /usr/local/sbin/braillatron-systemd-wants.sh
 install -m 755 "${ROOT}/deploy/os/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
+install -m 755 "${ROOT}/deploy/os/braillatron-fb-repaint.sh" /usr/local/sbin/braillatron-fb-repaint.sh
 install -m 755 "${ROOT}/deploy/os/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
 
 install -m 644 "${ROOT}/deploy/systemd/braillatron-ui.service" "${SYSTEMD_DIR}/"
@@ -84,6 +85,7 @@ install -m 644 "${ROOT}/deploy/systemd/braillatron-bluetooth-autoconnect.service
 install -m 644 "${ROOT}/deploy/systemd/braillatron-bluetooth-autoconnect.timer" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-console-ready.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-console-ui.service" "${SYSTEMD_DIR}/"
+install -m 644 "${ROOT}/deploy/systemd/braillatron-fb-repaint.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-ui-stub.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron.target" "${SYSTEMD_DIR}/"
 
@@ -94,6 +96,7 @@ systemctl disable braillatron-ui-stub.service 2>/dev/null || true
 systemctl disable braillatron-console-ui.service 2>/dev/null || true
 systemctl mask braillatron-console-ui.service 2>/dev/null || true
 systemctl disable braillatron-console-ready.service 2>/dev/null || true
+systemctl enable braillatron-fb-repaint.service 2>/dev/null || true
 systemctl enable braillatron-sync.timer
 systemctl enable braillatron-bluetooth-autoconnect.timer
 bash "${ROOT}/deploy/os/braillatron-systemd-wants.sh"

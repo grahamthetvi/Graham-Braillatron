@@ -116,6 +116,14 @@ void UiApp::stop()
     hooks::set_output_hub(nullptr);
 }
 
+void UiApp::repaint_chrome()
+{
+    if (!running_.load()) {
+        return;
+    }
+    output_hub_.sync_chrome(false);
+}
+
 void UiApp::poll()
 {
     if (!running_.load()) {

@@ -41,6 +41,7 @@ public:
     void start();
     void stop();
     void poll();
+    void repaint_chrome();
 
 private:
     void refresh_status(bool force_log);

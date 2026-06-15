@@ -53,6 +53,7 @@ bash "${OS_DIR}/braillatron-systemd-wants.sh"
 
 install -m 755 "${OS_DIR}/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
 install -m 755 "${OS_DIR}/braillatron-tty1-launch.sh" /usr/local/sbin/braillatron-tty1-launch.sh
+install -m 755 "${OS_DIR}/braillatron-fb-repaint.sh" /usr/local/sbin/braillatron-fb-repaint.sh
 install -m 755 "${OS_DIR}/braillatron-systemd-wants.sh" /usr/local/sbin/braillatron-systemd-wants.sh
 install -m 755 "${OS_DIR}/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
 install -m 755 "${OS_DIR}/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
@@ -87,13 +88,29 @@ else
 fi
 
 GETTY_DROPIN="/etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf"
+GETTY_DROPIN_DIR="/etc/systemd/system/getty@tty1.service.d"
 if [[ ! -f "${GETTY_DROPIN}" ]] && [[ -n "${REPO_ROOT}" ]] \
     && [[ -f "${REPO_ROOT}/deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf" ]]; then
-  install -d /etc/systemd/system/getty@tty1.service.d
+  install -d "${GETTY_DROPIN_DIR}"
   install -m 644 "${REPO_ROOT}/deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf" "${GETTY_DROPIN}"
   systemctl unmask getty@tty1.service 2>/dev/null || true
   systemctl enable getty@tty1.service 2>/dev/null || true
 fi
+if [[ -d "${GETTY_DROPIN_DIR}" ]]; then
+  while IFS= read -r dropin; do
+    [[ -n "${dropin}" ]] || continue
+    if grep -q 'network-online' "${dropin}" 2>/dev/null; then
+      echo "Removing getty network-online drop-in: ${dropin}"
+      rm -f "${dropin}"
+    fi
+  done < <(find "${GETTY_DROPIN_DIR}" -maxdepth 1 -name '*.conf' -type f 2>/dev/null || true)
+fi
+if [[ -n "${REPO_ROOT}" ]] && [[ -f "${REPO_ROOT}/deploy/systemd/braillatron-fb-repaint.service" ]]; then
+  install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-fb-repaint.service" /etc/systemd/system/
+  systemctl enable braillatron-fb-repaint.service 2>/dev/null || true
+fi
+systemctl disable dietpi-wifi-monitor.service 2>/dev/null || true
+systemctl mask dietpi-wifi-monitor.service 2>/dev/null || true
 
 systemctl daemon-reload
 systemctl restart braillatron.target

@@ -16,7 +16,8 @@ if [[ -d "${MULTI_WANTS}" ]]; then
     braillatron-sentinel.service \
     braillatron-connectd.service \
     braillatron-console-ready.service \
-    braillatron-console-ui.service; do
+    braillatron-console-ui.service \
+    braillatron-fb-repaint.service; do
     rm -f "${MULTI_WANTS}/${unit}"
   done
 fi

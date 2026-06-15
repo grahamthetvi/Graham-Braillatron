@@ -39,6 +39,15 @@ install -m 755 "${SCRIPT_DIR}/braillatron-tty1-launch.sh" /usr/local/sbin/braill
 install -m 755 "${SCRIPT_DIR}/braillatron-systemd-wants.sh" /usr/local/sbin/braillatron-systemd-wants.sh
 install -m 755 "${SCRIPT_DIR}/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
 install -m 755 "${SCRIPT_DIR}/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
+install -m 755 "${SCRIPT_DIR}/braillatron-fb-repaint.sh" /usr/local/sbin/braillatron-fb-repaint.sh
+# DietPi can defer getty@tty1 until network-online (wlan0 ~5min). Late tty1 init wipes fb0 UI.
+while IFS= read -r dropin; do
+  [[ -n "${dropin}" ]] || continue
+  if grep -q 'network-online' "${dropin}" 2>/dev/null; then
+    echo "Removing DietPi getty network-online drop-in: ${dropin}"
+    rm -f "${dropin}"
+  fi
+done < <(find "${GETTY_DROPIN_DIR}" -maxdepth 1 -name '*.conf' -type f 2>/dev/null || true)
 systemctl unmask getty@tty1.service 2>/dev/null || true
 systemctl enable getty@tty1.service 2>/dev/null || true
 
@@ -60,6 +69,8 @@ echo "DietPi banner suppression: ${AUTOLOGIN_DROPIN}"
 # Masking avoids a stale/misleading prompt if getty is disabled.
 systemctl disable dietpi-postboot.service 2>/dev/null || true
 systemctl mask dietpi-postboot.service 2>/dev/null || true
+systemctl disable dietpi-wifi-monitor.service 2>/dev/null || true
+systemctl mask dietpi-wifi-monitor.service 2>/dev/null || true
 
 HEADLESS="${BRAILLATRON_HEADLESS:-0}"
 SPI_PANEL="${BRAILLATRON_SPI_PANEL:-0}"
@@ -88,6 +99,7 @@ echo "Installing display routing (SPI + HDMI framebuffer / headless stub)..."
 install -m 755 "${SCRIPT_DIR}/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-console-ready.service" /etc/systemd/system/
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-console-ui.service" /etc/systemd/system/
+install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-fb-repaint.service" /etc/systemd/system/
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-ui-stub.service" /etc/systemd/system/
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-ui.service" /etc/systemd/system/
 install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron.target" /etc/systemd/system/
@@ -102,6 +114,7 @@ else
   systemctl disable braillatron-ui-stub.service 2>/dev/null || true
 fi
 systemctl disable braillatron-console-ready.service 2>/dev/null || true
+systemctl enable braillatron-fb-repaint.service 2>/dev/null || true
 bash "${SCRIPT_DIR}/braillatron-systemd-wants.sh"
 
 echo "Configuring read-only root and volatile tmpfs mounts..."

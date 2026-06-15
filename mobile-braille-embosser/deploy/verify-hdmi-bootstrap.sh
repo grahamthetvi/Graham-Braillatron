@@ -24,19 +24,23 @@ if [[ -f "${console_ready}" ]] \
   check fail "console-ready uses setterm -blank force (blanks HDMI framebuffer)"
 elif [[ -f "${console_ready}" ]] \
     && grep -vE '^[[:space:]]*#' "${console_ready}" \
-      | grep -qE 'setterm.*-blank[[:space:]=]+0|-blank[[:space:]]+0'; then
-  check ok "console-ready disables VT blanking (setterm -blank 0)"
+      | grep -qE 'setterm'; then
+  check fail "console-ready still calls setterm on tty1 (can wipe fb0 UI after network-online)"
+elif [[ -f "${console_ready}" ]]; then
+  check ok "console-ready avoids setterm on tty1 (fb0 safe)"
 else
-  check fail "console-ready missing setterm -blank 0 (HDMI may blank)"
+  check fail "console-ready script missing"
 fi
 
 if [[ -f "${tty1_launch}" ]]; then
   if tail -n 8 "${tty1_launch}" | grep -q '^clear_tty1$'; then
     check fail "tty1 launch still calls clear_tty1 on HDMI success (wipes /dev/fb0)"
   elif tail -n 8 "${tty1_launch}" | grep -q 'blank_tty1_cursor'; then
-    check ok "tty1 launch blanks cursor without clear_tty1 on HDMI success"
+    check fail "tty1 launch still calls blank_tty1_cursor on HDMI success (tty1 I/O can wipe fb0)"
+  elif tail -n 8 "${tty1_launch}" | grep -q 'hold_tty1'; then
+    check ok "tty1 launch holds without tty1 console I/O on HDMI success"
   else
-    check fail "tty1 launch missing blank_tty1_cursor on HDMI success path"
+    check fail "tty1 launch missing hold_tty1 on HDMI success path"
   fi
 else
   check fail "tty1 launch script missing"
@@ -78,6 +82,16 @@ fi
 getty_dropin="${SYSTEMD_DIR}/getty@tty1.service.d/braillatron-appliance.conf"
 [[ -f "${getty_dropin}" ]] && check ok "getty@tty1 braillatron drop-in" \
   || check fail "getty@tty1 braillatron drop-in missing"
+if [[ -f "${getty_dropin}" ]] && grep -q 'Before=network-online.target' "${getty_dropin}"; then
+  check ok "getty@tty1 starts before network-online.target"
+else
+  check fail "getty@tty1 may defer until wlan0 ifup (~5min fb wipe)"
+fi
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl is-enabled braillatron-fb-repaint.service >/dev/null 2>&1 \
+    && check ok "braillatron-fb-repaint.service enabled" \
+    || check fail "braillatron-fb-repaint.service enabled"
+fi
 
 if [[ -f /etc/braillatron/display.conf ]]; then
   grep -q '^hdmi_enabled=true' /etc/braillatron/display.conf \
