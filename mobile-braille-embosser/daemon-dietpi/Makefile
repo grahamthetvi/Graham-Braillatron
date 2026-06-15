@@ -314,6 +314,7 @@ MUSIC_TEST_OBJS := \
 
 WEATHER_TEST_OBJS := \
 	src/connect/connect_config.o \
+	src/connect/event_writer.o \
 	src/connect/json_utils.o \
 	src/connect/subprocess.o \
 	src/connect/weather_backend.o \

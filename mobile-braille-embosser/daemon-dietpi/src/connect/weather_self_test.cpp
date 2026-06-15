@@ -42,19 +42,26 @@ const char *kFixture = R"({
   "current": {
     "time": "2026-06-13T12:00",
     "temperature_2m": 18.4,
+    "relative_humidity_2m": 62,
     "weather_code": 3,
-    "wind_speed_10m": 12.5
+    "wind_speed_10m": 12.5,
+    "uv_index": 3.2
   },
   "hourly": {
     "time": ["2026-06-13T12:00", "2026-06-13T13:00"],
     "temperature_2m": [18.4, 19.1],
-    "weather_code": [3, 2]
+    "weather_code": [3, 2],
+    "precipitation_probability": [15, 20],
+    "relative_humidity_2m": [62, 60],
+    "uv_index": [3.2, 3.5]
   },
   "daily": {
     "time": ["2026-06-13", "2026-06-14"],
     "temperature_2m_max": [21.0, 22.5],
     "temperature_2m_min": [12.0, 13.5],
-    "weather_code": [3, 2]
+    "weather_code": [3, 2],
+    "precipitation_probability_max": [40, 55],
+    "uv_index_max": [4.0, 5.0]
   }
 })";
 
@@ -86,6 +93,12 @@ bool test_build_cache_from_fixture()
 
     expect_true(cache_json.find("London") != std::string::npos, "location cached");
     expect_true(cache_json.find("Overcast") != std::string::npos, "current description");
+    expect_true(cache_json.find("relative_humidity") != std::string::npos, "humidity cached");
+    expect_true(cache_json.find("uv_index") != std::string::npos, "uv cached");
+    expect_true(cache_json.find("precipitation_probability") != std::string::npos, "precip cached");
+    expect_true(cache_json.find("Sat 2026-06-13") != std::string::npos ||
+                    cache_json.find("Fri 2026-06-13") != std::string::npos,
+                "friendly day label");
     expect_true(cache_json.find("\"hourly\"") != std::string::npos, "hourly section");
     expect_true(cache_json.find("\"daily\"") != std::string::npos, "daily section");
     expect_true(std::filesystem::exists(config.cache_path, ec), "cache file written");
@@ -97,6 +110,9 @@ bool test_build_cache_from_fixture()
     const std::string status = backend.status();
     expect_true(status.find("\"cached\":true") != std::string::npos, "status cached");
     expect_true(status.find("18.4") != std::string::npos, "status temperature");
+
+    const std::string alerts = backend.alerts();
+    expect_true(alerts.find("\"ok\":true") != std::string::npos, "alerts ok");
 
     std::filesystem::remove_all(dir, ec);
     return true;

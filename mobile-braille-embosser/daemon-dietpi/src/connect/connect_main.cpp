@@ -31,8 +31,10 @@ int main()
         braillatron::connect::resolve_config_path(base, "messages.conf"));
     const auto music_config = braillatron::connect::load_music_config(
         braillatron::connect::resolve_config_path(base, "music.conf"));
-    const auto weather_config = braillatron::connect::load_weather_config(
+    auto weather_config = braillatron::connect::load_weather_config(
         braillatron::connect::resolve_config_path(base, "weather.conf"));
+    weather_config.config_path =
+        braillatron::connect::resolve_config_path(base, "weather.conf");
     const auto podcasts_config = braillatron::connect::load_podcasts_config(
         braillatron::connect::resolve_config_path(base, "podcasts.conf"));
     const auto radio_config = braillatron::connect::load_radio_config(

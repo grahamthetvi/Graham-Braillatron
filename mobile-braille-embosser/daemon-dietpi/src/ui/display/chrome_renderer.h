@@ -11,6 +11,7 @@ namespace braillatron::ui {
 struct RenderedChrome {
     std::string header;
     std::string breadcrumb;
+    std::string weather_line;
     std::vector<std::string> rows;
     size_t focus_row = static_cast<size_t>(-1);
     bool at_top_boundary = false;

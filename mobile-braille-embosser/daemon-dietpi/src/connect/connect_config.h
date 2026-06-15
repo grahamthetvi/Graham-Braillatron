@@ -51,10 +51,16 @@ struct WeatherConfig {
     std::string provider_url = "https://api.open-meteo.com/v1/forecast";
     std::string geocoding_url = "https://geocoding-api.open-meteo.com/v1/search";
     std::string cache_path = "/data/braillatron/weather/cache.json";
+    std::string config_path;
     uint32_t cache_ttl_sec = 1800;
+    uint32_t refresh_interval_sec = 1800;
     std::string temperature_unit = "celsius";
     uint32_t hourly_limit = 24;
     uint32_t daily_limit = 7;
+    bool alerts_enabled = true;
+    double alert_wind_threshold_kmh = 50.0;
+    uint32_t alert_precip_threshold_pct = 70;
+    uint32_t alert_uv_threshold = 8;
 };
 
 struct PodcastsConfig {
@@ -107,6 +113,7 @@ YoutubeConfig load_youtube_config(const std::string &path);
 MessagesConfig load_messages_config(const std::string &path);
 MusicConfig load_music_config(const std::string &path);
 WeatherConfig load_weather_config(const std::string &path);
+void save_weather_config(const std::string &path, const WeatherConfig &config);
 PodcastsConfig load_podcasts_config(const std::string &path);
 RadioConfig load_radio_config(const std::string &path);
 LibraryConfig load_library_config(const std::string &path);

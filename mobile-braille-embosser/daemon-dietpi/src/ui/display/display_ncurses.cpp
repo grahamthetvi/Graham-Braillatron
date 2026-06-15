@@ -111,6 +111,16 @@ void NcursesDisplayBackend::render_frame(const RenderedChrome &frame)
         mvprintw(row++, 0, "%s", crumb.c_str());
     }
 
+    if (!frame.weather_line.empty()) {
+        std::string weather = frame.weather_line;
+        if (static_cast<int>(weather.size()) > max_cols) {
+            weather = weather.substr(0, static_cast<size_t>(max_cols));
+        }
+        attron(COLOR_PAIR(1));
+        mvprintw(row++, 0, "%s", weather.c_str());
+        attroff(COLOR_PAIR(1));
+    }
+
     if (frame.at_top_boundary) {
         mvprintw(row++, 0, "-- top --");
     }

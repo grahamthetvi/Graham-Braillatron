@@ -14,12 +14,18 @@ int scaled_glyph_size(int font_scale)
     return std::max(1, font_scale) * 8;
 }
 
-int body_start_y(const DisplaySurfaceLayout &layout)
+int body_start_y(const DisplaySurfaceLayout &layout, const RenderedChrome &frame)
 {
     const int glyph = scaled_glyph_size(layout.font_scale);
     const int header_y = layout.margin_top;
-    const int breadcrumb_y = header_y + glyph + layout.font_scale * 2;
-    return breadcrumb_y + glyph + layout.font_scale * 4;
+    int y = header_y + glyph + layout.font_scale * 2;
+    if (!frame.breadcrumb.empty()) {
+        y += glyph + layout.font_scale * 2;
+    }
+    if (!frame.weather_line.empty()) {
+        y += glyph + layout.font_scale * 2;
+    }
+    return y + layout.font_scale * 2;
 }
 
 } // namespace
@@ -64,7 +70,8 @@ DisplaySurfaceLayout layout_for_hdmi(uint16_t width, uint16_t height)
 
 int max_body_rows_for_layout(const DisplaySurfaceLayout &layout)
 {
-    const int start = body_start_y(layout);
+    const RenderedChrome empty_frame;
+    const int start = body_start_y(layout, empty_frame);
     const int available = static_cast<int>(layout.height) - start - layout.toast_band;
     if (available <= 0 || layout.row_stride <= 0) {
         return 1;
@@ -140,8 +147,15 @@ void ChromeRasterizer::render(const RenderedChrome &frame, std::vector<uint16_t>
     if (!frame.breadcrumb.empty()) {
         draw_text(layout.margin_left, breadcrumb_y, frame.breadcrumb, kColorYellow);
     }
+    int weather_y = breadcrumb_y;
+    if (!frame.breadcrumb.empty()) {
+        weather_y += glyph + layout.font_scale * 2;
+    }
+    if (!frame.weather_line.empty()) {
+        draw_text(layout.margin_left, weather_y, frame.weather_line, kColorYellow);
+    }
 
-    int row_y = body_start_y(layout);
+    int row_y = body_start_y(layout, frame);
     const int row_band = glyph + layout.font_scale * 2;
     for (size_t i = 0; i < frame.rows.size(); ++i) {
         if (row_y + row_band >= static_cast<int>(layout.height) - layout.toast_band) {
