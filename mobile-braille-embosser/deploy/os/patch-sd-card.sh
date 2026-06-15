@@ -208,7 +208,7 @@ done
 
 echo ""
 echo "== fstab tmpfs dedupe (setup-overlay-ro.sh logic) =="
-TMPFS_MP_RE='^[[:space:]]*tmpfs[[:space:]]+/(tmp|var/tmp|var/log|var/lib/braillatron)[[:space:]]'
+TMPFS_MP_RE='^[[:space:]]*tmpfs[[:space:]]+/(tmp|var/tmp|var/log|var/lib/braillatron|var/lib/dhcp)[[:space:]]'
 TMPFS_HDR_RE='^# braillatron volatile tmpfs'
 fstab_tmp="$(mktemp)"
 grep -vE "${TMPFS_MP_RE}|${TMPFS_HDR_RE}" "${PI}/etc/fstab" >"${fstab_tmp}"
@@ -218,6 +218,7 @@ tmpfs /tmp tmpfs size=256M,noatime,nodev,nosuid,mode=1777 0 0
 tmpfs /var/tmp tmpfs size=64M,noatime,nodev,nosuid,mode=1777 0 0
 tmpfs /var/log tmpfs size=50M,noatime,nodev,nosuid,mode=0755 0 0
 tmpfs /var/lib/braillatron tmpfs size=128M,noatime,nodev,nosuid,mode=0755 0 0
+tmpfs /var/lib/dhcp tmpfs size=4M,noatime,nodev,nosuid,mode=0755 0 0
 EOF
 awk '$2=="/" { gsub(/,rw/, ",ro"); gsub(/ rw /, " ro "); sub(/ rw$/, " ro"); sub(/^([^ ]+ [^ ]+ [^ ]+ )rw /, "\\1ro ") }1' \
   "${fstab_tmp}" >"${fstab_tmp}.ro"
