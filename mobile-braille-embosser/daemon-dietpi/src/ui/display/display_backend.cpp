@@ -16,6 +16,7 @@
 
 #include "display_composite.h"
 #include "display_fbdev.h"
+#include "display_mirror.h"
 #include "display_st7789.h"
 
 namespace braillatron::ui {
@@ -109,36 +110,60 @@ DisplayBackend *try_create_ncurses(const DisplayConfig &config)
 }
 #endif
 
+void append_mirror_backend(std::vector<std::unique_ptr<DisplayBackend>> &backends,
+                           const DisplayConfig &display_config)
+{
+    if (!display_config.mirror_enabled) {
+        return;
+    }
+    if (DisplayBackend *mirror = try_create_mirror(display_config)) {
+        backends.emplace_back(mirror);
+    }
+}
+
 DisplayBackend *assemble_auto_backends(const DisplayConfig &display_config)
 {
-    std::vector<std::unique_ptr<DisplayBackend>> backends;
+    std::vector<std::unique_ptr<DisplayBackend>> pixel_backends;
 
     if (path_exists(display_config.spidev) && spi_panel_gpio_configured(display_config)) {
         if (DisplayBackend *spi = try_create_spi(display_config)) {
-            backends.emplace_back(spi);
+            pixel_backends.emplace_back(spi);
         }
     }
 
-    if (path_readable(display_config.fbdev)) {
+    if (path_readable(display_config.fbdev) && display_config.hdmi_enabled) {
         if (DisplayBackend *fb = try_create_fb(display_config)) {
-            backends.emplace_back(fb);
+            pixel_backends.emplace_back(fb);
         }
     }
 
-    if (backends.empty()) {
+    std::vector<std::unique_ptr<DisplayBackend>> backends;
+    if (pixel_backends.size() == 1) {
+        backends.emplace_back(pixel_backends.front().release());
+    } else if (pixel_backends.size() > 1) {
+        backends.emplace_back(new CompositeDisplayBackend(std::move(pixel_backends)));
+    }
+
+    append_mirror_backend(backends, display_config);
+
+    if (!backends.empty()) {
+        if (backends.size() == 1) {
+            return backends.front().release();
+        }
+        return new CompositeDisplayBackend(std::move(backends));
+    }
+
 #ifdef BRAILLATRON_DISPLAY
-        if (DisplayBackend *ncurses = try_create_ncurses(display_config)) {
-            return ncurses;
-        }
+    if (DisplayBackend *ncurses = try_create_ncurses(display_config)) {
+        return ncurses;
+    }
 #endif
-        return new StubDisplayBackend();
+
+    if (DisplayBackend *mirror = try_create_mirror(display_config)) {
+        return mirror;
     }
 
-    if (backends.size() == 1) {
-        return backends.front().release();
-    }
-
-    return new CompositeDisplayBackend(std::move(backends));
+    return new StubDisplayBackend();
 }
 
 } // namespace
@@ -162,6 +187,8 @@ DisplayBackend *create_display_backend(const UiConfig &ui_config, const DisplayC
             (void)display_config;
             return nullptr;
 #endif
+        case DisplayBackendKind::Mirror:
+            return try_create_mirror(display_config);
         case DisplayBackendKind::Stub:
             return new StubDisplayBackend();
         case DisplayBackendKind::Multi:

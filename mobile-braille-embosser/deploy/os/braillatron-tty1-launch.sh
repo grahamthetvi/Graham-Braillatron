@@ -31,9 +31,16 @@ hold_tty1() {
 
 is_ok_display_backend() {
   case "$1" in
-    fb|spi|spi+fb|fb+spi) return 0 ;;
-    *) return 1 ;;
+    fb|spi|mirror|ncurses)
+      return 0
+      ;;
+    *+*)
+      case "$1" in
+        *fb*|*spi*|*mirror*) return 0 ;;
+      esac
+      ;;
   esac
+  return 1
 }
 
 wait_for_display_backend() {
@@ -125,11 +132,20 @@ fi
 
 if ! is_ok_display_backend "${backend}"; then
   show_error \
-    "  UI running but display backend=${backend} — check /dev/fb0 and display.conf"
+    "  UI running but display backend=${backend} — check display.conf and mirror snapshot path" \
+    '  Over SSH run: braillatron-ui-watch'
   hold_tty1
 fi
 
-# fb/spi backends draw directly on the framebuffer; ESC [2J from clear_tty1 wipes the UI.
+if [[ "${backend}" == *"mirror"* ]]; then
+  write_tty \
+    '' \
+    '  Visual UI available over SSH:' \
+    '    braillatron-ui-watch' \
+    ''
+fi
+
+# Pixel backends draw directly on the framebuffer; ESC [2J from clear_tty1 wipes the UI.
 # blank_tty1_cursor must not use setterm -blank force (that blanks HDMI via APM).
 blank_tty1_cursor
 hold_tty1

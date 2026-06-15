@@ -4,6 +4,8 @@
 
 namespace braillatron::ui {
 
+void render_chrome_terminal(const RenderedChrome &frame, int max_body_rows = 24);
+
 class NcursesDisplayBackend : public DisplayBackend {
 public:
     NcursesDisplayBackend();
@@ -19,7 +21,6 @@ public:
 
 private:
     int max_body_rows() const;
-    void render_frame(const RenderedChrome &frame);
 
     bool initialized_ = false;
 };

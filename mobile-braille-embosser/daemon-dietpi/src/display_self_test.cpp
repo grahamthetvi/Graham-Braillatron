@@ -2,6 +2,7 @@
 #include "ui/display/display_config.h"
 #include "ui/display/chrome_renderer.h"
 #include "ui/display/chrome_rasterizer.h"
+#include "ui/display/chrome_snapshot.h"
 #include "ui/display/ui_chrome_model.h"
 #include "ui/ui_config.h"
 #include "ui/menu_overlay.h"
@@ -114,6 +115,33 @@ int main()
     model.surface = braillatron::ui::ChromeSurface::Home;
     model.header = "Braillatron";
     stub_backend->render(model);
+
+    braillatron::ui::RenderedChrome mirror_frame;
+    mirror_frame.header = "Mirror";
+    mirror_frame.rows = {"one", "two"};
+    mirror_frame.focus_row = 1;
+    const std::string snapshot =
+        braillatron::ui::serialize_chrome_snapshot(mirror_frame, 42);
+    braillatron::ui::RenderedChrome parsed;
+    uint64_t parsed_seq = 0;
+    if (!braillatron::ui::parse_chrome_snapshot(snapshot, parsed, &parsed_seq) ||
+        parsed_seq != 42 || parsed.header != "Mirror" || parsed.rows.size() != 2 ||
+        parsed.focus_row != 1) {
+        std::cerr << "chrome snapshot round-trip mismatch\n";
+        return 1;
+    }
+
+    display_config.backend = braillatron::ui::DisplayBackendKind::Mirror;
+    display_config.mirror_enabled = true;
+    display_config.mirror_snapshot = "/tmp/braillatron-display-self-test.snapshot";
+    std::unique_ptr<braillatron::ui::DisplayBackend> mirror_backend(
+        braillatron::ui::create_display_backend(ui_config, display_config));
+    if (mirror_backend == nullptr ||
+        braillatron::ui::display_backend_name(mirror_backend.get()) != "mirror") {
+        std::cerr << "mirror backend mismatch\n";
+        return 1;
+    }
+    mirror_backend->render(model);
 
     ui_config.display_enabled = false;
     std::unique_ptr<braillatron::ui::DisplayBackend> disabled_backend(
