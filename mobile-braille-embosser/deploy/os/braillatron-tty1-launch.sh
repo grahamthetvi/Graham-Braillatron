@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Appliance HDMI console: wait for UI service; blank tty1 cursor on success (never clear_tty1 — wipes fb).
+# Appliance console: wait for UI service; hold tty1 on success (never clear_tty1 — wipes fb0).
 set -euo pipefail
 
 CONSOLE="/dev/tty1"
@@ -17,7 +17,7 @@ write_tty() {
 show_error() {
   write_tty \
     '' \
-    '  Braillatron HDMI console failed to start' \
+    '  Braillatron failed to start' \
     '' \
     "$@" \
     '' \
@@ -29,9 +29,23 @@ hold_tty1() {
   exec tail -f /dev/null
 }
 
+hdmi_enabled() {
+  if [[ -f /etc/braillatron/display.conf ]] \
+      && grep -q '^hdmi_enabled=true' /etc/braillatron/display.conf; then
+    return 0
+  fi
+  return 1
+}
+
 is_ok_display_backend() {
   case "$1" in
     fb|spi|spi+fb|fb+spi) return 0 ;;
+    stub|none)
+      if hdmi_enabled; then
+        return 1
+      fi
+      return 0
+      ;;
     *) return 1 ;;
   esac
 }
@@ -48,6 +62,15 @@ wait_for_display_backend() {
     elapsed=$((elapsed + 1))
   done
   return 1
+}
+
+show_wireless_hint() {
+  write_tty \
+    '' \
+    '  Braillatron running (TTS + keyboard).' \
+    '  Visual UI: Settings → Remote display, then open' \
+    '    http://<pi-ip>:8080  (or ssh -L 8080:127.0.0.1:8080)' \
+    ''
 }
 
 if [[ ! -c "${CONSOLE}" ]]; then
@@ -118,8 +141,12 @@ fi
 
 backend=""
 if ! backend="$(wait_for_display_backend)"; then
-  show_error \
-    '  UI running but no display backend — check /dev/fb0 and display.conf'
+  if hdmi_enabled; then
+    show_error \
+      '  UI running but no display backend — check /dev/fb0 and display.conf'
+    hold_tty1
+  fi
+  show_wireless_hint
   hold_tty1
 fi
 
@@ -129,6 +156,12 @@ if ! is_ok_display_backend "${backend}"; then
   hold_tty1
 fi
 
+case "${backend}" in
+  stub|none)
+    show_wireless_hint
+    ;;
+esac
+
 # fb/spi backends draw on /dev/fb0; any tty1 console I/O (clear, setterm, banner) can wipe the UI.
-# Do not touch tty1 on success — braillatron-ui owns the framebuffer.
+# Do not touch tty1 on pixel-backend success — braillatron-ui owns the framebuffer.
 hold_tty1

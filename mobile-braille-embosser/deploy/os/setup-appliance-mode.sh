@@ -134,9 +134,9 @@ cat <<EOF
 
 Appliance mode configured.
   - Power on: Braillatron starts automatically (no login required)
-  - Visual UI: braillatron-ui.service (HDMI /dev/fb0 and/or SPI panel when configured)
-  - tty1: holds after UI start; framebuffer UI only (unless BRAILLATRON_HEADLESS=1)
-  - HDMI blank? SSH: sudo fix-hdmi-appliance.sh
+  - Visual UI: SPI panel when fitted; wireless remote display (Settings → Remote display)
+  - HDMI framebuffer: opt-in via hdmi_enabled=true in display.conf
+  - Repair scripts/units: sudo fix-hdmi-appliance.sh
   - SSH: enabled for development and maintenance
 
 Maintenance over SSH:

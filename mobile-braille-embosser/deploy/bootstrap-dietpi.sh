@@ -82,13 +82,13 @@ else
 fi
 
 if [[ "${BRAILLATRON_APPLIANCE:-1}" != "0" ]]; then
-  echo "Final HDMI appliance checks..."
+  echo "Final appliance display checks..."
   bash "${ROOT}/deploy/os/braillatron-systemd-wants.sh"
   systemctl disable braillatron-ui-stub.service 2>/dev/null || true
   systemctl enable braillatron-ui.service 2>/dev/null || true
   BRAILLATRON_SKIP_REBUILD=1 bash "${ROOT}/deploy/os/fix-hdmi-appliance.sh"
   bash "${ROOT}/deploy/verify-install.sh"
-  bash "${ROOT}/deploy/verify-hdmi-bootstrap.sh"
+  bash "${ROOT}/deploy/verify-display-bootstrap.sh"
   echo "Bootstrap complete. Reboot to run the locked production image."
 else
   echo "Bootstrap complete. Reboot when ready (developer image: local login + writable root)."

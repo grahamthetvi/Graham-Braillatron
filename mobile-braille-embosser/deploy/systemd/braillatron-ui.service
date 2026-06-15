@@ -1,7 +1,7 @@
 [Unit]
 Description=Braillatron ScreenReader UI
 ConditionPathExists=!/etc/braillatron/appliance-headless
-After=local-fs.target sound.target speech-dispatcher.service braillatron-displayd.service
+After=local-fs.target sound.target speech-dispatcher.service
 Conflicts=braillatron-ui-stub.service
 Requires=speech-dispatcher.service
 Wants=brltty.service braillatron-connectd.service braillatron-displayd.service

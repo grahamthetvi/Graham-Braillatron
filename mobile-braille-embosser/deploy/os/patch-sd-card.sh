@@ -163,6 +163,8 @@ for unit in \
   braillatron-ui-stub.service \
   braillatron-sentinel.service \
   braillatron-connectd.service \
+  braillatron-displayd.service \
+  braillatron-fb-repaint.service \
   braillatron-console-ready.service \
   braillatron-console-ui.service; do
   rm -f "${MULTI_WANTS}/${unit}"
@@ -173,12 +175,14 @@ link_wants "${BRAILLATRON_WANTS}" braillatron-ui.service
 rm -f "${BRAILLATRON_WANTS}/braillatron-ui-stub.service"
 link_wants "${BRAILLATRON_WANTS}" braillatron-sentinel.service
 link_wants "${BRAILLATRON_WANTS}" braillatron-connectd.service
+link_wants "${BRAILLATRON_WANTS}" braillatron-displayd.service
+link_wants "${BRAILLATRON_WANTS}" braillatron-fb-repaint.service
 link_wants "${MULTI_WANTS}" getty@tty1.service
 link_wants "${TIMERS_WANTS}" braillatron-sync.timer
 link_wants "${MULTI_WANTS}" ssh.service
 
 echo ""
-echo "== Appliance / HDMI routing =="
+echo "== Appliance / display routing =="
 install -d "${PI}/etc/braillatron"
 if [[ ! -f "${PI}/etc/braillatron/appliance.env" ]] \
     || ! grep -q '^BRAILLATRON_HEADLESS=' "${PI}/etc/braillatron/appliance.env"; then
@@ -260,6 +264,12 @@ if [[ -L "${BRAILLATRON_WANTS}/braillatron-ui-stub.service" ]] \
   checks=1
 else
   echo "  OK  braillatron-ui-stub not enabled"
+fi
+if [[ -L "${BRAILLATRON_WANTS}/braillatron-displayd.service" ]]; then
+  echo "  OK  braillatron-displayd enabled under braillatron.target"
+else
+  echo "  MISSING braillatron-displayd in braillatron.target.wants"
+  checks=1
 fi
 if [[ -L "${MULTI_WANTS}/braillatron-ui.service" ]]; then
   echo "  WARN  braillatron-ui linked from multi-user.target.wants (use braillatron.target.wants)"

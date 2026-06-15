@@ -47,7 +47,7 @@ if findmnt -n -o OPTIONS / | grep -q ',ro,'; then
   fi
 fi
 
-echo "== HDMI appliance repair =="
+echo "== Appliance repair =="
 
 bash "${OS_DIR}/braillatron-systemd-wants.sh"
 
@@ -75,6 +75,7 @@ systemctl mask braillatron-console-ui.service 2>/dev/null || true
 systemctl disable braillatron-console-ready.service 2>/dev/null || true
 systemctl enable braillatron.target
 systemctl enable braillatron-ui.service
+systemctl enable braillatron-displayd.service 2>/dev/null || true
 bash "${OS_DIR}/braillatron-systemd-wants.sh"
 
 if [[ "${BRAILLATRON_SKIP_REBUILD:-0}" != "1" ]] \
@@ -89,7 +90,7 @@ fi
 
 GETTY_DROPIN="/etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf"
 GETTY_DROPIN_DIR="/etc/systemd/system/getty@tty1.service.d"
-if [[ ! -f "${GETTY_DROPIN}" ]] && [[ -n "${REPO_ROOT}" ]] \
+if [[ -n "${REPO_ROOT}" ]] \
     && [[ -f "${REPO_ROOT}/deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf" ]]; then
   install -d "${GETTY_DROPIN_DIR}"
   install -m 644 "${REPO_ROOT}/deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf" "${GETTY_DROPIN}"
@@ -109,6 +110,10 @@ if [[ -n "${REPO_ROOT}" ]] && [[ -f "${REPO_ROOT}/deploy/systemd/braillatron-fb-
   install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-fb-repaint.service" /etc/systemd/system/
   systemctl enable braillatron-fb-repaint.service 2>/dev/null || true
 fi
+if [[ -n "${REPO_ROOT}" ]] && [[ -f "${REPO_ROOT}/deploy/systemd/braillatron-displayd.service" ]]; then
+  install -m 644 "${REPO_ROOT}/deploy/systemd/braillatron-displayd.service" /etc/systemd/system/
+  systemctl enable braillatron-displayd.service 2>/dev/null || true
+fi
 systemctl disable dietpi-wifi-monitor.service 2>/dev/null || true
 systemctl mask dietpi-wifi-monitor.service 2>/dev/null || true
 
@@ -120,4 +125,4 @@ echo ""
 braillatron-boot-diagnose
 
 echo ""
-echo "Repair complete. If HDMI is still blank: reboot, then re-run braillatron-boot-diagnose."
+echo "Repair complete. Reboot if getty or units changed; then: sudo braillatron-boot-diagnose"
