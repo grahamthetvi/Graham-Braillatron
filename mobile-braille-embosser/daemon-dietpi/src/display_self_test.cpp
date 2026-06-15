@@ -1,3 +1,4 @@
+#include "ui/display/chrome_frame.h"
 #include "ui/display/display_backend.h"
 #include "ui/display/display_config.h"
 #include "ui/display/chrome_renderer.h"
@@ -94,6 +95,13 @@ int main()
         braillatron::ui::layout_for_hdmi(1920, 1080));
     if (hdmi_rows < 10) {
         std::cerr << "hdmi layout row count too small: " << hdmi_rows << "\n";
+        return 1;
+    }
+
+    const braillatron::ui::ChromeFrame panel_frame =
+        braillatron::ui::rasterize_chrome_panel(model);
+    if (panel_frame.pixels.size() != 240U * 240U) {
+        std::cerr << "chrome_frame pixel buffer size mismatch\n";
         return 1;
     }
 

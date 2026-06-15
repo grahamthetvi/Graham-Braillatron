@@ -14,7 +14,7 @@ check() {
   fi
 }
 
-for bin in braillatron-ui braillatron-connectd braillatron-install-dictionary-data \
+for bin in braillatron-ui braillatron-connectd braillatron-displayd braillatron-install-dictionary-data \
            braillatron-install-spelling-data braillatron-install-gmail-oauth; do
   [[ -x "${PREFIX}/bin/${bin}" ]] && check ok "binary ${bin}" || check fail "binary ${bin}"
 done

@@ -5,11 +5,14 @@
 #include "backends/backend.h"
 #include "display/display_backend.h"
 #include "display/display_config.h"
+#include "display/remote_frame_publisher.h"
 #include "display/ui_chrome_model.h"
 #include "menu_overlay.h"
 #include "ui_config.h"
 
 #include "../telemetry/telemetry_config.h"
+
+#include "../display/remote_display_config.h"
 
 #include <cstdint>
 #include <functional>
@@ -88,7 +91,11 @@ public:
 private:
     void emit(const std::string &message, bool update_display_toast = true);
     void persist_ui_config();
+    void persist_remote_display_config();
     void toggle_bool(bool &field, const char *name);
+    void toggle_remote_display();
+    void show_remote_pairing_code();
+    void toggle_remote_allow_lan();
     void render_chrome();
     std::vector<MenuItem> build_root_menu();
     std::vector<MenuItem> build_accounts_menu();
@@ -98,6 +105,9 @@ private:
     telemetry::TelemetryConfig telemetry_config_;
     std::string ui_config_path_;
     DisplayConfig display_config_;
+    braillatron::display::RemoteDisplayConfig remote_display_config_;
+    std::string remote_display_config_path_;
+    RemoteFramePublisher remote_frame_publisher_;
     MenuOverlay menu_overlay_;
     AppRegistry *app_registry_ = nullptr;
     connect::ConnectClient *connect_client_ = nullptr;

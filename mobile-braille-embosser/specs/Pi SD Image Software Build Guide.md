@@ -223,7 +223,7 @@ This script runs, in order:
 
 2. **I2S overlay** — adds `rk3566-i2s1-overlay` to the `overlays=` line in `/boot/dietpiEnv.txt` (MAX98357A audio; see Skeleton Build Guide)
 
-3. **SPI overlay (optional)** — adds `spi-spidev` only when `BRAILLATRON\_SPI\_PANEL=1` (HAT fitted). Default bootstrap leaves SPI off so `/dev/spidev0.0` is absent and HDMI framebuffer UI works on skeleton bench
+3. **SPI overlay (optional)** — adds `spi-spidev` only when `BRAILLATRON\_SPI\_PANEL=1` (HAT fitted). Default bootstrap leaves SPI off; skeleton bench uses **wireless remote display** (enable in Settings) instead of HDMI
 
 4. **`/data` partition** — `deploy/os/setup-data-partition.sh` creates an ext4 partition labeled `braillatron-data` in unallocated tail space (requires ≥ 768 MB free at the disk end; does not shrink root)
 
@@ -239,7 +239,7 @@ This script runs, in order:
 
 10. **Audio default** — `setup-aux-audio.sh` routes ALSA + TTS to the 3.5 mm aux jack; optional Bluetooth via `setup-bluetooth-audio.sh`
 
-11. **Appliance mode** — `setup-appliance-mode.sh` disables local console login, routes display (SPI + HDMI framebuffer / headless stub), enables read-only root, keeps SSH (skipped when `BRAILLATRON\_APPLIANCE=0`)
+11. **Appliance mode** — `setup-appliance-mode.sh` disables local console login, routes display (SPI panel / wireless remote / headless stub), enables read-only root, keeps SSH (skipped when `BRAILLATRON\_APPLIANCE=0`)
 
 Bootstrap takes several minutes on first run (apt + compile + model download).
 
@@ -251,11 +251,11 @@ sudo reboot
 
 After reboot, `braillatron.target` starts automatically. **No login or manual command is required** — power on, wait for TTS “Braillatron ready”, then use the physical keyboard.
 
-**HDMI monitor (no SPI panel):** boot scroll clears from tty1, then **UI chrome** renders on HDMI via `/dev/fb0` (`braillatron-ui.service`). tty1 stays blank on success (no figlet banner). This is automatic when SPI is not configured. Seeing `Reached target Graphical Interface` in the boot log is normal DietPi noise — the product UI uses the Linux framebuffer, not `graphical.target`.
+**Skeleton bench (no SPI panel):** enable **Settings → Remote display**, then **Show pairing code**; view UI chrome in a browser at `http://<pi-ip>:8080` (or SSH tunnel: `ssh -L 8080:127.0.0.1:8080 user@<pi-ip>`). Plug a USB keyboard into the Pi for navigation. HDMI framebuffer is opt-in (`hdmi_enabled=true` in `display.conf`).
 
-**SPI panel present:** UI chrome renders on the panel and on HDMI when both are available.
+**SPI panel present:** UI chrome renders on the panel; remote display can mirror simultaneously for debugging.
 
-**TTS-only (no HDMI UI):** bootstrap with `BRAILLATRON\_HEADLESS=1` or edit `/etc/braillatron/appliance.env`.
+**TTS-only (no visual UI):** bootstrap with `BRAILLATRON\_HEADLESS=1` or edit `/etc/braillatron/appliance.env`.
 
 Use SSH for development and maintenance (see below).
 
@@ -412,15 +412,16 @@ Production hardware with the **MAX98357A I2S amp** still uses `rk3566-i2s1-overl
 
 ## Testing on the Pi
 
-On the **default skeleton bench** (no SPI HAT), a connected HDMI monitor shows **UI chrome** via `/dev/fb0` (`braillatron-ui.service`). tty1 is cleared on success; error text appears on tty1 only when the UI fails to start. Speech, BRLTTY, and journal logs remain available regardless of display path.
+On the **default skeleton bench** (no SPI HAT), use **wireless remote display** to see UI chrome in a browser (`braillatron-displayd`). Speech, BRLTTY, and journal logs remain available regardless of display path.
 
 Feedback channels:
 
 | Channel | How to use |
 | - | - |
-| **HDMI framebuffer** | UI chrome on `/dev/fb0` via `braillatron-ui.service` (default skeleton bench) |
-| **tty1** | Cleared on success; error text only when UI or display backend fails |
-| **Journal logs** | `journalctl -u braillatron-ui -f` |
+| **Remote display** | Settings → Remote display On → Show pairing code → browser at `:8080` (pairing required) |
+| **SPI panel** | UI chrome on HAT when fitted |
+| **HDMI framebuffer** | Opt-in: `hdmi_enabled=true` in `display.conf` |
+| **Journal logs** | `journalctl -u braillatron-ui -f` and `journalctl -u braillatron-displayd -f` |
 | **Speech** | TTS on startup and focus changes (aux jack, Bluetooth, or I2S + Speech Dispatcher) |
 | **Braille display** | BRLTTY when a display is connected |
 

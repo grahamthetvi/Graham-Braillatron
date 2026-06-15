@@ -1,5 +1,10 @@
 #include "output_hub.h"
 
+#include "display/remote_display_client.h"
+
+#include "../display/remote_display_config.h"
+#include "../display/pairing_auth.h"
+
 #include "../documents/liblouis_bridge.h"
 #include "../motion/motion_service.h"
 #include "../platform/audio_output.h"
@@ -143,6 +148,8 @@ OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_c
     , telemetry_config_(std::move(telemetry_config))
     , ui_config_path_(std::move(ui_config_path))
     , display_config_(std::move(display_config))
+    , remote_display_config_path_(braillatron::display::remote_display_config_path())
+    , remote_frame_publisher_(display_config_.remote_frame_socket)
     , motion_(motion)
     , braille_service_(braille)
     , tts_(create_tts_backend(ui_config_))
@@ -153,9 +160,17 @@ OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_c
     , morse_(create_morse_backend(ui_config_, telemetry_config_))
     , display_(create_display_backend(ui_config_, display_config_))
 {
+    remote_display_config_ =
+        braillatron::display::load_remote_display_config(remote_display_config_path_);
+    if (display_config_.remote_display_enabled) {
+        remote_frame_publisher_.set_enabled(true);
+    }
     menu_overlay_.set_root_items(build_root_menu());
     if (ui_config_.display_enabled && display_ != nullptr) {
         std::cerr << "[display] backend=" << display_backend_name(display_.get()) << "\n";
+    }
+    if (display_config_.remote_display_enabled) {
+        std::cerr << "[display] remote publisher enabled\n";
     }
 }
 
@@ -577,7 +592,7 @@ void OutputHub::on_connect_event(const connect::ConnectEvent &event)
 
 void OutputHub::sync_chrome(bool at_boundary)
 {
-    if (!ui_config_.display_enabled || display_ == nullptr) {
+    if (!ui_config_.display_enabled && !display_config_.remote_display_enabled) {
         return;
     }
 
@@ -620,11 +635,12 @@ void OutputHub::sync_chrome(bool at_boundary)
 
 void OutputHub::render_chrome()
 {
-    if (!ui_config_.display_enabled || display_ == nullptr) {
-        return;
+    if (ui_config_.display_enabled && display_ != nullptr) {
+        display_->render(chrome_model_);
     }
-
-    display_->render(chrome_model_);
+    if (display_config_.remote_display_enabled) {
+        remote_frame_publisher_.publish(chrome_model_);
+    }
 }
 
 void OutputHub::rebuild_display_backend()
@@ -696,6 +712,65 @@ void OutputHub::persist_ui_config()
         return;
     }
     save_ui_config(ui_config_path_, ui_config_);
+}
+
+void OutputHub::persist_remote_display_config()
+{
+    if (remote_display_config_path_.empty()) {
+        return;
+    }
+    braillatron::display::save_remote_display_config(remote_display_config_path_,
+                                                   remote_display_config_);
+}
+
+void OutputHub::toggle_remote_display()
+{
+    display_config_.remote_display_enabled = !display_config_.remote_display_enabled;
+    remote_display_config_.enabled = display_config_.remote_display_enabled;
+    remote_frame_publisher_.set_enabled(display_config_.remote_display_enabled);
+    persist_remote_display_config();
+
+    if (display_config_.remote_display_enabled) {
+        platform::run_command(
+            "systemctl restart braillatron-displayd 2>/dev/null || systemctl start "
+            "braillatron-displayd 2>/dev/null || true");
+    } else {
+        platform::run_command("systemctl stop braillatron-displayd 2>/dev/null || true");
+    }
+
+    emit(display_config_.remote_display_enabled ? "Remote display: On" : "Remote display: Off");
+    sync_chrome(false);
+}
+
+void OutputHub::show_remote_pairing_code()
+{
+    if (!display_config_.remote_display_enabled) {
+        emit("Enable remote display first");
+        return;
+    }
+
+    const std::string code = braillatron::display::generate_pairing_code();
+    const std::string cmd_socket = display_config_.remote_cmd_socket.empty()
+                                       ? remote_display_config_.cmd_socket
+                                       : display_config_.remote_cmd_socket;
+    if (!send_display_pairing_command(cmd_socket, code)) {
+        emit("Could not reach display service");
+        return;
+    }
+
+    chrome_model_.toast = "Pair: " + code;
+    render_chrome();
+    emit("Pairing code " + code + ". Valid for five minutes.", true);
+}
+
+void OutputHub::toggle_remote_allow_lan()
+{
+    remote_display_config_.allow_lan = !remote_display_config_.allow_lan;
+    persist_remote_display_config();
+    platform::run_command("systemctl restart braillatron-displayd 2>/dev/null || true");
+    emit(remote_display_config_.allow_lan ? "LAN access: On. Use caution on shared networks."
+                                          : "LAN access: Off. Use SSH tunnel to view.");
+    sync_chrome(false);
 }
 
 void OutputHub::toggle_bool(bool &field, const char *name)
@@ -799,6 +874,36 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             [this](MenuOverlay &mo) {
                 (void)mo;
                 toggle_bool(ui_config_.display_enabled, "Visual display");
+            },
+        },
+        MenuItem {
+            "Remote display",
+            [this]() {
+                return display_config_.remote_display_enabled ? "Remote display: On"
+                                                              : "Remote display: Off";
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                toggle_remote_display();
+            },
+        },
+        MenuItem {
+            "Show pairing code",
+            [this]() { return std::string("Show pairing code"); },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                show_remote_pairing_code();
+            },
+        },
+        MenuItem {
+            "Allow LAN access",
+            [this]() {
+                return remote_display_config_.allow_lan ? "Allow LAN access: On"
+                                                        : "Allow LAN access: Off";
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                toggle_remote_allow_lan();
             },
         },
         MenuItem {
