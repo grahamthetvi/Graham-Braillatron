@@ -245,6 +245,8 @@ UI_TEST_OBJS := \
 	src/connect/connect_defaults.o \
 	src/connect/subprocess.o \
 	src/connect/gmail_backend.o \
+	src/display/display_client.o \
+	src/display/remote_display_config.o \
 	src/keyboard/focus_nav.o \
 	src/ui_self_test.o
 
