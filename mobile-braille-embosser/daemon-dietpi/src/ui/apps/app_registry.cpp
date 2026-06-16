@@ -5,7 +5,27 @@
 
 #include "../../connect/connect_client.h"
 
+#include <algorithm>
+
 namespace braillatron::ui {
+
+namespace {
+
+std::vector<const AppSession *> standalone_apps_sorted(
+    const std::vector<std::unique_ptr<AppSession>> &apps)
+{
+    std::vector<const AppSession *> standalone;
+    for (const auto &app : apps) {
+        if (app->kind() == AppKind::Standalone) {
+            standalone.push_back(app.get());
+        }
+    }
+    std::sort(standalone.begin(), standalone.end(),
+        [](const AppSession *a, const AppSession *b) { return a->label() < b->label(); });
+    return standalone;
+}
+
+} // namespace
 
 AppRegistry::AppRegistry()
 {
@@ -175,10 +195,7 @@ void AppRegistry::on_connect_event(const braillatron::connect::ConnectEvent &eve
 std::vector<MenuItem> AppRegistry::build_launcher_menu()
 {
     std::vector<MenuItem> items;
-    for (const auto &app : apps_) {
-        if (app->kind() != AppKind::Standalone) {
-            continue;
-        }
+    for (const AppSession *app : standalone_apps_sorted(apps_)) {
         const std::string app_id = app->id();
         items.push_back(MenuItem {
             app->label(),
@@ -217,10 +234,7 @@ std::vector<MenuItem> AppRegistry::build_launcher_menu()
 std::vector<std::string> AppRegistry::launcher_labels() const
 {
     std::vector<std::string> labels;
-    for (const auto &app : apps_) {
-        if (app->kind() != AppKind::Standalone) {
-            continue;
-        }
+    for (const AppSession *app : standalone_apps_sorted(apps_)) {
         labels.push_back(app->label());
     }
     labels.push_back("Settings");
