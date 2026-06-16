@@ -6,11 +6,55 @@
 
 namespace braillatron::ui {
 
+namespace {
+std::string trim_spaces(const std::string &value)
+{
+    size_t start = 0;
+    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+        ++start;
+    }
+    size_t end = value.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return value.substr(start, end - start);
+}
+} // namespace
+
+AccessibleElement MenuItem::get_accessible_node() const
+{
+    AccessibleElement elem;
+    elem.role = role.empty() ? "Menu Item" : role;
+    elem.state = "Focused";
+
+    if (value_provider) {
+        elem.name = label;
+        elem.value = value_provider();
+    } else {
+        std::string resolved = dynamic_label ? dynamic_label() : label;
+        size_t colon_pos = resolved.find(':');
+        if (colon_pos != std::string::npos) {
+            elem.name = trim_spaces(resolved.substr(0, colon_pos));
+            elem.value = trim_spaces(resolved.substr(colon_pos + 1));
+        } else {
+            size_t paren_pos = resolved.find('(');
+            if (paren_pos != std::string::npos) {
+                elem.name = trim_spaces(resolved.substr(0, paren_pos));
+                elem.value = trim_spaces(resolved.substr(paren_pos));
+            } else {
+                elem.name = resolved;
+            }
+        }
+    }
+    return elem;
+}
+
 MenuOverlay::MenuOverlay() = default;
 
-void MenuOverlay::set_root_items(std::vector<MenuItem> items)
+void MenuOverlay::set_root_items(std::vector<MenuItem> items, const std::string &name)
 {
     root_items_ = std::move(items);
+    root_level_name_ = name.empty() ? "Menu" : name;
 }
 
 bool MenuOverlay::is_open() const
@@ -23,7 +67,7 @@ void MenuOverlay::open()
     open_ = true;
     stack_.clear();
     if (!root_items_.empty()) {
-        stack_.push_back(MenuLevel {root_items_, 0});
+        stack_.push_back(MenuLevel {root_items_, 0, root_level_name_});
     }
     refresh_resolved_label();
 }
@@ -78,18 +122,28 @@ void MenuOverlay::activate()
 
     const MenuItem &item = level.items[level.focus_index];
     if (item.on_activate) {
+        activating_item_label_ = item.label;
         item.on_activate(*this);
+        activating_item_label_.clear();
         refresh_resolved_label();
     }
 }
 
-bool MenuOverlay::push_level(std::vector<MenuItem> items)
+bool MenuOverlay::push_level(std::vector<MenuItem> items, const std::string &name)
 {
     if (!open_ || items.empty()) {
         return false;
     }
 
-    stack_.push_back(MenuLevel {std::move(items), 0});
+    std::string level_name = name;
+    if (level_name.empty()) {
+        level_name = activating_item_label_;
+    }
+    if (level_name.empty()) {
+        level_name = "Submenu";
+    }
+
+    stack_.push_back(MenuLevel {std::move(items), 0, level_name});
     refresh_resolved_label();
     return true;
 }
@@ -145,6 +199,33 @@ MenuLevel &MenuOverlay::current_level()
 const MenuLevel &MenuOverlay::current_level() const
 {
     return stack_.back();
+}
+
+std::string MenuOverlay::current_level_name() const
+{
+    if (!open_ || stack_.empty()) {
+        return "";
+    }
+    return stack_.back().name;
+}
+
+AccessibleElement MenuOverlay::focused_accessible_node() const
+{
+    if (!open_ || stack_.empty()) {
+        return {};
+    }
+
+    const MenuLevel &level = current_level();
+    if (level.items.empty() || level.focus_index >= level.items.size()) {
+        return {};
+    }
+
+    const MenuItem &item = level.items[level.focus_index];
+    AccessibleElement elem = item.get_accessible_node();
+    elem.container = current_level_name();
+    elem.index = level.focus_index;
+    elem.count = level.items.size();
+    return elem;
 }
 
 size_t MenuOverlay::focus_index() const

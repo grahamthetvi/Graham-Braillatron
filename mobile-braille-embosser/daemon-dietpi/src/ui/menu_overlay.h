@@ -1,5 +1,7 @@
 #pragma once
 
+#include "accessible_output.h"
+
 #include <functional>
 #include <string>
 #include <vector>
@@ -12,18 +14,25 @@ struct MenuItem {
     std::string label;
     std::function<std::string()> dynamic_label;
     std::function<void(MenuOverlay &)> on_activate;
+
+    // Accessibility properties for structural RNVS
+    std::string role = ""; // e.g. "Toggle", "Button", "Menu Item" (default)
+    std::function<std::string()> value_provider = nullptr;
+
+    AccessibleElement get_accessible_node() const;
 };
 
 struct MenuLevel {
     std::vector<MenuItem> items;
     size_t focus_index = 0;
+    std::string name; // The name of this submenu/panel container
 };
 
 class MenuOverlay {
 public:
     MenuOverlay();
 
-    void set_root_items(std::vector<MenuItem> items);
+    void set_root_items(std::vector<MenuItem> items, const std::string &name = "Main Menu");
 
     bool is_open() const;
     void open();
@@ -32,7 +41,7 @@ public:
     void move_down();
     void activate();
 
-    bool push_level(std::vector<MenuItem> items);
+    bool push_level(std::vector<MenuItem> items, const std::string &name = "");
     bool pop_level();
 
     size_t depth() const;
@@ -40,12 +49,17 @@ public:
     size_t focus_index() const;
     std::vector<std::string> current_item_labels() const;
 
+    std::string current_level_name() const;
+    AccessibleElement focused_accessible_node() const;
+
 private:
     void refresh_resolved_label();
     MenuLevel &current_level();
     const MenuLevel &current_level() const;
 
     std::vector<MenuItem> root_items_;
+    std::string root_level_name_ = "Main Menu";
+    std::string activating_item_label_;
     std::vector<MenuLevel> stack_;
     std::string resolved_label_;
     bool open_ = false;

@@ -23,6 +23,7 @@ public:
     void stop();
     ~HttpServer();
     void broadcast_frame(const FrameHeader &header, const std::vector<uint16_t> &pixels);
+    void broadcast_speak(const std::string &text);
 
     uint32_t connected_clients() const { return connected_clients_; }
     bool running() const { return running_; }

@@ -5,6 +5,7 @@ After=local-fs.target
 [Service]
 Type=simple
 RuntimeDirectory=braillatron
+RuntimeDirectoryPreserve=yes
 Environment=BRAILLATRON_CONFIG=/etc/braillatron
 ExecStart=/usr/local/bin/braillatron-connectd
 Restart=on-failure

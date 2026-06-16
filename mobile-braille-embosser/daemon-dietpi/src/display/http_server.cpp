@@ -491,6 +491,49 @@ void HttpServer::broadcast_frame(const FrameHeader &header, const std::vector<ui
     }
 }
 
+void HttpServer::broadcast_speak(const std::string &text)
+{
+    std::string payload = "{\"type\":\"speak\",\"text\":\"" + braillatron::connect::json_escape(text) + "\"}";
+    std::vector<uint8_t> frame;
+    frame.reserve(10 + payload.size());
+    frame.push_back(0x81);
+    if (payload.size() <= 125) {
+        frame.push_back(static_cast<uint8_t>(payload.size()));
+    } else if (payload.size() <= 65535) {
+        frame.push_back(126);
+        frame.push_back(static_cast<uint8_t>((payload.size() >> 8) & 0xFF));
+        frame.push_back(static_cast<uint8_t>(payload.size() & 0xFF));
+    } else {
+        frame.push_back(127);
+        const uint64_t len = payload.size();
+        for (int i = 7; i >= 0; --i) {
+            frame.push_back(static_cast<uint8_t>((len >> (i * 8)) & 0xFF));
+        }
+    }
+    frame.insert(frame.end(), payload.begin(), payload.end());
+
+    std::lock_guard<std::mutex> lock(clients_mutex_);
+    std::vector<int> dead;
+    for (const Client &client : clients_) {
+        if (!client.websocket || client.fd < 0) {
+            continue;
+        }
+        if (send(client.fd, frame.data(), frame.size(), MSG_NOSIGNAL) < 0) {
+            dead.push_back(client.fd);
+            ::close(client.fd);
+        }
+    }
+    if (!dead.empty()) {
+        clients_.erase(std::remove_if(clients_.begin(), clients_.end(),
+                                      [&dead](const Client &client) {
+                                          return std::find(dead.begin(), dead.end(), client.fd) !=
+                                                 dead.end();
+                                      }),
+                        clients_.end());
+        connected_clients_ = static_cast<uint32_t>(clients_.size());
+    }
+}
+
 namespace {
 
 bool recv_all(int fd, uint8_t *buf, size_t len)

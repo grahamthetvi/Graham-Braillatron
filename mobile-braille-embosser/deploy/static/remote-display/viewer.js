@@ -192,7 +192,18 @@ function connectSocket() {
   };
   
   ws.onmessage = (event) => {
-    drawFrame(event.data);
+    if (typeof event.data === 'string') {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'speak') {
+          speakText(msg.text);
+        }
+      } catch (err) {
+        console.error('Failed to parse text message:', err);
+      }
+    } else {
+      drawFrame(event.data);
+    }
   };
   
   ws.onclose = () => {
@@ -243,3 +254,11 @@ fetch('/api/status')
   .catch(() => {
     showPanels(false);
   });
+
+function speakText(text) {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utterance);
+  }
+}

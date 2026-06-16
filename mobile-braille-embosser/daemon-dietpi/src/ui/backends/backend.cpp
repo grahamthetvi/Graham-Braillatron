@@ -14,6 +14,10 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 #ifdef BRAILLATRON_A11Y
 #include <libspeechd.h>
@@ -31,6 +35,7 @@ public:
     void speak(const std::string &text) override { std::cerr << "[tts] " << text << "\n"; }
     void pause() override {}
     void resume() override {}
+    void stop() override {}
     void set_rate(int) override {}
     void set_volume(int) override {}
 };
@@ -76,6 +81,13 @@ public:
     {
         if (connection_ != nullptr) {
             spd_resume(connection_);
+        }
+    }
+
+    void stop() override
+    {
+        if (connection_ != nullptr) {
+            spd_cancel(connection_);
         }
     }
 
@@ -143,22 +155,46 @@ private:
 
 class EspeakFallbackTtsBackend final : public TtsBackend {
 public:
+    ~EspeakFallbackTtsBackend() override
+    {
+        stop();
+    }
+
     bool available() const override { return true; }
 
     void speak(const std::string &text) override
     {
-        const std::string cmd =
-            "espeak-ng -s " + std::to_string(rate_) + " \"" + text + "\" 2>/dev/null";
-        std::system(cmd.c_str());
+        stop();
+
+        pid_t pid = fork();
+        if (pid == 0) {
+            // In child process: execute espeak-ng asynchronously
+            execlp("espeak-ng", "espeak-ng", "-s", std::to_string(rate_).c_str(), text.c_str(), nullptr);
+            _exit(127);
+        } else if (pid > 0) {
+            child_pid_ = pid;
+        }
     }
 
     void pause() override {}
     void resume() override {}
+    
+    void stop() override
+    {
+        if (child_pid_ > 0) {
+            kill(child_pid_, SIGKILL);
+            int status;
+            waitpid(child_pid_, &status, 0);
+            child_pid_ = -1;
+        }
+    }
+
     void set_rate(int rate) override { rate_ = rate; }
     void set_volume(int) override {}
 
 private:
     int rate_ = 150;
+    pid_t child_pid_ = -1;
 };
 
 class StubBrailleBackend final : public BrailleBackend {

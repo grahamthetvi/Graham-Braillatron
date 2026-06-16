@@ -97,6 +97,13 @@ std::string DisplayService::handle_command(const std::string &request)
     if (cmd == "ping") {
         return "{\"ok\":true,\"service\":\"displayd\"}";
     }
+    if (cmd == "speak") {
+        const std::string text = connect::json_get_string(request, "text");
+        if (http_server_) {
+            http_server_->broadcast_speak(text);
+        }
+        return "{\"ok\":true}";
+    }
     if (cmd == "status") {
         std::ostringstream out;
         out << "{\"ok\":true,\"enabled\":" << (config_.enabled ? "true" : "false")

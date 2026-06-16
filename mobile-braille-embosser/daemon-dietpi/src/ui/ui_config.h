@@ -15,6 +15,7 @@ struct UiConfig {
     bool morse_output_enabled = false;
     bool display_enabled = true;
     bool document_dictation_enabled = false;
+    bool verbosity_high = true;
 
     std::string spd_voice = "default";
     std::string vosk_model_path = "/data/braillatron/vosk-models/vosk-model-small-en-us-0.15";

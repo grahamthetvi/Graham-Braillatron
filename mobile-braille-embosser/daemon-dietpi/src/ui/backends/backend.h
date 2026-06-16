@@ -28,6 +28,7 @@ public:
     virtual void speak(const std::string &text) = 0;
     virtual void pause() = 0;
     virtual void resume() = 0;
+    virtual void stop() = 0;
     virtual void set_rate(int rate) = 0;
     virtual void set_volume(int volume) = 0;
 };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "accessible_output.h"
 #include "../documents/liblouis_bridge.h"
 #include "../platform/device_status.h"
 #include "backends/backend.h"
@@ -35,19 +36,22 @@ namespace braillatron::ui {
 
 class AppRegistry;
 
-class OutputHub {
+class OutputHub : public IAccessibleOutput {
 public:
     OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_config,
               std::string ui_config_path, DisplayConfig display_config,
               motion::MotionService *motion, documents::BrailleTranslationService *braille);
-    ~OutputHub();
+    ~OutputHub() override;
 
     OutputHub(const OutputHub &) = delete;
     OutputHub &operator=(const OutputHub &) = delete;
 
+    void announce_element(const AccessibleElement &element) override;
+    void announce_message(const std::string &message) override;
+    void stop() override;
+
     void announce_startup(const platform::DeviceStatusReport &report);
     void announce_focus(const std::string &label, bool at_boundary);
-    void announce_message(const std::string &message);
     void announce_spoken(const std::string &message);
     void announce_status_report(const platform::DeviceStatusReport &report);
     void announce_quick_status();
@@ -135,6 +139,7 @@ private:
     bool remote_display_enabled_ = false;
     bool remote_allow_lan_ = false;
     std::string pairing_code_overlay_;
+    std::string last_container_;
 };
 
 } // namespace braillatron::ui

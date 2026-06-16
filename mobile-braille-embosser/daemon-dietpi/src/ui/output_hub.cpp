@@ -23,6 +23,7 @@ extern "C" {
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <thread>
 #include <utility>
 
 namespace braillatron::ui {
@@ -214,6 +215,13 @@ void OutputHub::emit(const std::string &message, bool update_display_toast)
         tts_->speak(message);
     }
 
+    if (remote_display_enabled_) {
+        std::thread([socket = display_config_.remote_display_cmd_socket, message]() {
+            braillatron::display::DisplayClient client(socket);
+            client.request("speak", ",\"text\":\"" + braillatron::connect::json_escape(message) + "\"");
+        }).detach();
+    }
+
     if (ui_config_.braille_enabled && braille_ != nullptr) {
         braille_->write(message);
     }
@@ -252,20 +260,85 @@ void OutputHub::announce_startup(const platform::DeviceStatusReport &report)
     }
 }
 
-void OutputHub::announce_focus(const std::string &label, bool at_boundary)
+void OutputHub::announce_element(const AccessibleElement &element)
 {
-    if (!label.empty()) {
-        emit(label, false);
+    stop();
+
+    std::string spoken_text;
+
+    if (!element.container.empty() && element.container != last_container_) {
+        last_container_ = element.container;
+        spoken_text += "Entering " + element.container + ". ";
     }
-    sync_chrome(at_boundary);
-    if (at_boundary && ui_config_.haptics_enabled && haptics_ != nullptr) {
-        haptics_->play_effect(ui_config_.boundary_haptic_effect);
+
+    std::string element_text;
+    if (!element.name.empty()) {
+        element_text += element.name;
+    }
+    if (!element.role.empty()) {
+        if (!element_text.empty()) element_text += ", ";
+        element_text += element.role;
+    }
+    if (!element.value.empty()) {
+        if (!element_text.empty()) element_text += ", ";
+        element_text += element.value;
+    }
+    if (!element.state.empty()) {
+        if (!element_text.empty()) element_text += ", ";
+        element_text += element.state;
+    }
+
+    spoken_text += element_text;
+
+    if (ui_config_.verbosity_high && element.index != -1 && element.count != -1) {
+        if (!spoken_text.empty()) spoken_text += ", ";
+        spoken_text += "Item " + std::to_string(element.index + 1) + " of " + std::to_string(element.count);
+    }
+
+    if (!spoken_text.empty()) {
+        emit(spoken_text, false);
     }
 }
 
 void OutputHub::announce_message(const std::string &message)
 {
+    stop();
     emit(message);
+}
+
+void OutputHub::stop()
+{
+    if (ui_config_.tts_enabled && tts_ != nullptr) {
+        tts_->stop();
+    }
+}
+
+void OutputHub::announce_focus(const std::string &label, bool at_boundary)
+{
+    if (menu_overlay_.is_open()) {
+        AccessibleElement elem = menu_overlay_.focused_accessible_node();
+        announce_element(elem);
+    } else if (focus_nav_ != nullptr) {
+        AccessibleElement elem;
+        elem.role = "Menu Item";
+        elem.name = focus_nav_->focused_label();
+        elem.state = "Focused";
+        elem.container = "Main Menu";
+        elem.index = focus_nav_->focus_index();
+        elem.count = focus_nav_->entries().size();
+        announce_element(elem);
+    } else if (!label.empty()) {
+        AccessibleElement elem;
+        elem.role = "Menu Item";
+        elem.name = label;
+        elem.state = "Focused";
+        announce_element(elem);
+    }
+
+    sync_chrome(at_boundary);
+    if (at_boundary && ui_config_.haptics_enabled && haptics_ != nullptr) {
+        haptics_->play_effect(ui_config_.boundary_haptic_effect);
+    }
 }
 
 void OutputHub::announce_spoken(const std::string &message)
@@ -399,20 +472,28 @@ void OutputHub::on_menu_overlay(bool open)
             menu_overlay_.close();
             emit("Menu closed");
             sync_chrome(false);
+            if (app_registry_ != nullptr && app_registry_->active() != nullptr) {
+                AccessibleElement elem;
+                elem.role = "Application";
+                elem.name = app_registry_->active()->label();
+                elem.state = "Active";
+                announce_element(elem);
+            } else if (focus_nav_ != nullptr) {
+                announce_focus(focus_nav_->focused_label(), false);
+            }
         }
         return;
     }
 
     if (app_registry_ != nullptr && app_registry_->active() != nullptr) {
-        menu_overlay_.set_root_items(app_registry_->build_inline_menu());
+        menu_overlay_.set_root_items(app_registry_->build_inline_menu(), app_registry_->active()->label());
     } else if (app_registry_ != nullptr) {
-        menu_overlay_.set_root_items(app_registry_->build_launcher_menu());
+        menu_overlay_.set_root_items(app_registry_->build_launcher_menu(), "Main Menu");
     } else {
-        menu_overlay_.set_root_items(build_root_menu());
+        menu_overlay_.set_root_items(build_root_menu(), "Main Menu");
     }
 
     menu_overlay_.open();
-    emit("Menu");
     announce_focus(menu_overlay_.focused_label(), false);
 }
 
@@ -786,6 +867,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             "Accounts",
             {},
             [this](MenuOverlay &mo) { mo.push_level(build_accounts_menu()); },
+            "Menu Item",
+            nullptr
         },
         MenuItem {
             "TTS",
@@ -794,6 +877,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 (void)mo;
                 toggle_bool(ui_config_.tts_enabled, "TTS");
             },
+            "Toggle",
+            [this]() { return ui_config_.tts_enabled ? "On" : "Off"; }
         },
         MenuItem {
             "Braille",
@@ -802,6 +887,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 (void)mo;
                 toggle_bool(ui_config_.braille_enabled, "Braille");
             },
+            "Toggle",
+            [this]() { return ui_config_.braille_enabled ? "On" : "Off"; }
         },
         MenuItem {
             "Embosser",
@@ -812,6 +899,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 (void)mo;
                 toggle_bool(ui_config_.embosser_enabled, "Embosser");
             },
+            "Toggle",
+            [this]() { return ui_config_.embosser_enabled ? "On" : "Off"; }
         },
         MenuItem {
             "Deaf-blind parity",
@@ -823,6 +912,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 (void)mo;
                 toggle_bool(ui_config_.deaf_blind_menu_parity, "Deaf-blind parity");
             },
+            "Toggle",
+            [this]() { return ui_config_.deaf_blind_menu_parity ? "On" : "Off"; }
         },
         MenuItem {
             "Speech to Text",
@@ -833,6 +924,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 (void)mo;
                 toggle_bool(ui_config_.stt_enabled, "Speech to Text");
             },
+            "Toggle",
+            [this]() { return ui_config_.stt_enabled ? "On" : "Off"; }
         },
         MenuItem {
             "Dictation in Document",
@@ -844,6 +937,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 (void)mo;
                 toggle_bool(ui_config_.document_dictation_enabled, "Dictation in Document");
             },
+            "Toggle",
+            [this]() { return ui_config_.document_dictation_enabled ? "On" : "Off"; }
         },
         MenuItem {
             "Haptics",
@@ -852,6 +947,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 (void)mo;
                 toggle_bool(ui_config_.haptics_enabled, "Haptics");
             },
+            "Toggle",
+            [this]() { return ui_config_.haptics_enabled ? "On" : "Off"; }
         },
         MenuItem {
             "Visual display",
@@ -862,6 +959,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 (void)mo;
                 toggle_bool(ui_config_.display_enabled, "Visual display");
             },
+            "Toggle",
+            [this]() { return ui_config_.display_enabled ? "On" : "Off"; }
         },
         MenuItem {
             "Remote display",
@@ -874,6 +973,20 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 sync_remote_display_publisher();
                 emit(remote_display_enabled_ ? "Remote display: On" : "Remote display: Off");
             },
+            "Toggle",
+            [this]() { return remote_display_enabled_ ? "On" : "Off"; }
+        },
+        MenuItem {
+            "Verbosity",
+            [this]() {
+                return ui_config_.verbosity_high ? "Verbosity: High" : "Verbosity: Low";
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                toggle_bool(ui_config_.verbosity_high, "Verbosity");
+            },
+            "Toggle",
+            [this]() { return ui_config_.verbosity_high ? "High" : "Low"; }
         },
         MenuItem {
             "Show pairing code",
@@ -890,6 +1003,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 set_pairing_code_overlay(code);
                 emit("Pairing code " + code + ". Valid for five minutes.");
             },
+            "Menu Item",
+            nullptr
         },
         MenuItem {
             "Allow LAN access",
@@ -909,6 +1024,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                     emit("LAN access disabled. Use SSH tunnel for remote viewing.");
                 }
             },
+            "Toggle",
+            [this]() { return remote_allow_lan_ ? "On" : "Off"; }
         },
         MenuItem {
             "Braille grade",
@@ -927,6 +1044,13 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                     documents::next_braille_grade_preset(braille_service_->current_preset());
                 apply_braille_grade_preset(next);
             },
+            "Setting",
+            [this]() -> std::string {
+                if (braille_service_ != nullptr) {
+                    return braille_service_->display_label();
+                }
+                return ui_config_.braille_table;
+            }
         },
         MenuItem {
             "TTS rate",
@@ -943,6 +1067,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                 }
                 emit("TTS rate: " + std::to_string(ui_config_.tts_rate));
             },
+            "Setting",
+            [this]() { return std::to_string(ui_config_.tts_rate); }
         },
         MenuItem {
             "Audio output",
@@ -951,6 +1077,8 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
                        platform::mode_display_label(platform::read_output_mode());
             },
             [this](MenuOverlay &mo) { mo.push_level(build_audio_output_menu()); },
+            "Setting",
+            [this]() { return platform::mode_display_label(platform::read_output_mode()); }
         },
     };
 }
@@ -969,6 +1097,8 @@ std::vector<MenuItem> OutputHub::build_audio_output_menu()
                 (void)mo;
                 emit(platform::switch_output("aux"));
             },
+            "Menu Item",
+            [current_mode]() { return current_mode == "aux" ? "current" : ""; }
         },
         MenuItem {
             "Bluetooth speaker",
@@ -980,6 +1110,8 @@ std::vector<MenuItem> OutputHub::build_audio_output_menu()
                 (void)mo;
                 emit(platform::switch_output("bluetooth"));
             },
+            "Menu Item",
+            [current_mode]() { return current_mode == "bluetooth" ? "current" : ""; }
         },
         MenuItem {
             "I2S amplifier",
@@ -990,6 +1122,8 @@ std::vector<MenuItem> OutputHub::build_audio_output_menu()
                 (void)mo;
                 emit(platform::switch_output("i2s"));
             },
+            "Menu Item",
+            [current_mode]() { return current_mode == "i2s" ? "current" : ""; }
         },
         MenuItem {
             "Connect Bluetooth",
@@ -998,6 +1132,8 @@ std::vector<MenuItem> OutputHub::build_audio_output_menu()
                 (void)mo;
                 emit(platform::connect_bluetooth());
             },
+            "Button",
+            nullptr
         },
         MenuItem {
             "Pair Bluetooth speaker",
@@ -1009,6 +1145,8 @@ std::vector<MenuItem> OutputHub::build_audio_output_menu()
                     app_registry_->enter("bluetooth_setup");
                 }
             },
+            "Button",
+            nullptr
         },
     };
 }
