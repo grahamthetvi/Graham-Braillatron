@@ -4,6 +4,7 @@
 #include "http_server.h"
 #include "pairing_auth.h"
 #include "remote_display_config.h"
+#include "virtual_keyboard.h"
 
 #include "../connect/socket_server.h"
 
@@ -29,6 +30,7 @@ private:
 
     RemoteDisplayConfig config_;
     PairingAuth auth_;
+    VirtualKeyboard virtual_keyboard_;
     FrameSubscriber frame_subscriber_;
     std::unique_ptr<HttpServer> http_server_;
     connect::SocketServer cmd_server_;

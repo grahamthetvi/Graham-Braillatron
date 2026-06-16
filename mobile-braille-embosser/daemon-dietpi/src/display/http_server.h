@@ -13,9 +13,11 @@
 
 namespace braillatron::display {
 
+class VirtualKeyboard;
+
 class HttpServer {
 public:
-    HttpServer(std::string bind_address, uint16_t port, std::string static_root, PairingAuth *auth);
+    HttpServer(std::string bind_address, uint16_t port, std::string static_root, PairingAuth *auth, VirtualKeyboard *kb = nullptr);
 
     bool start();
     void stop();
@@ -45,12 +47,22 @@ private:
     uint16_t port_;
     std::string static_root_;
     PairingAuth *auth_ = nullptr;
+    VirtualKeyboard *kb_ = nullptr;
     int listen_fd_ = -1;
     std::atomic<bool> running_ {false};
     std::thread accept_thread_;
     std::mutex clients_mutex_;
     std::vector<Client> clients_;
     std::atomic<uint32_t> connected_clients_ {0};
+
+    bool has_frame_ = false;
+    FrameHeader latest_header_ {};
+    std::vector<uint16_t> latest_pixels_;
+
+public:
+    void poll_clients();
+private:
+    void handle_websocket_message(int fd, const std::string &msg);
 };
 
 } // namespace braillatron::display

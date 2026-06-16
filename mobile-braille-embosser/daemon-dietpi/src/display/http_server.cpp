@@ -1,4 +1,5 @@
 #include "http_server.h"
+#include "virtual_keyboard.h"
 
 #include "../connect/json_utils.h"
 
@@ -9,6 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sstream>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -164,11 +166,12 @@ std::string request_body(const std::string &request)
 } // namespace
 
 HttpServer::HttpServer(std::string bind_address, uint16_t port, std::string static_root,
-                         PairingAuth *auth)
+                         PairingAuth *auth, VirtualKeyboard *kb)
     : bind_address_(std::move(bind_address))
     , port_(port)
     , static_root_(std::move(static_root))
     , auth_(auth)
+    , kb_(kb)
 {
 }
 
@@ -213,6 +216,7 @@ void HttpServer::stop()
 {
     running_ = false;
     if (listen_fd_ >= 0) {
+        ::shutdown(listen_fd_, SHUT_RDWR);
         ::close(listen_fd_);
         listen_fd_ = -1;
     }
@@ -316,6 +320,32 @@ bool HttpServer::upgrade_websocket(int fd, const std::string &request,
     std::lock_guard<std::mutex> lock(clients_mutex_);
     clients_.push_back(Client {fd, true});
     connected_clients_ = static_cast<uint32_t>(clients_.size());
+
+    if (has_frame_) {
+        const auto packet = encode_frame_packet(latest_header_, latest_pixels_.data(), latest_pixels_.size());
+        std::vector<uint8_t> frame;
+        frame.reserve(10 + packet.size());
+        frame.push_back(0x82);
+        if (packet.size() <= 125) {
+            frame.push_back(static_cast<uint8_t>(packet.size()));
+        } else if (packet.size() <= 65535) {
+            frame.push_back(126);
+            frame.push_back(static_cast<uint8_t>((packet.size() >> 8) & 0xFF));
+            frame.push_back(static_cast<uint8_t>(packet.size() & 0xFF));
+        } else {
+            frame.push_back(127);
+            const uint64_t len = packet.size();
+            for (int i = 7; i >= 0; --i) {
+                frame.push_back(static_cast<uint8_t>((len >> (i * 8)) & 0xFF));
+            }
+        }
+        frame.insert(frame.end(), packet.begin(), packet.end());
+        std::cerr << "[displayd] sending cached frame to new client (" << frame.size() << " bytes)\n";
+        send(fd, frame.data(), frame.size(), MSG_NOSIGNAL);
+    } else {
+        std::cerr << "[displayd] no cached frame for new client\n";
+    }
+
     return true;
 }
 
@@ -416,18 +446,30 @@ void HttpServer::broadcast_frame(const FrameHeader &header, const std::vector<ui
 {
     const auto packet = encode_frame_packet(header, pixels.data(), pixels.size());
     std::vector<uint8_t> frame;
-    frame.reserve(2 + packet.size());
+    frame.reserve(10 + packet.size());
     frame.push_back(0x82);
     if (packet.size() <= 125) {
         frame.push_back(static_cast<uint8_t>(packet.size()));
-    } else {
+    } else if (packet.size() <= 65535) {
         frame.push_back(126);
         frame.push_back(static_cast<uint8_t>((packet.size() >> 8) & 0xFF));
         frame.push_back(static_cast<uint8_t>(packet.size() & 0xFF));
+    } else {
+        frame.push_back(127);
+        const uint64_t len = packet.size();
+        for (int i = 7; i >= 0; --i) {
+            frame.push_back(static_cast<uint8_t>((len >> (i * 8)) & 0xFF));
+        }
     }
     frame.insert(frame.end(), packet.begin(), packet.end());
 
     std::lock_guard<std::mutex> lock(clients_mutex_);
+    latest_header_ = header;
+    latest_pixels_ = pixels;
+    has_frame_ = true;
+    std::cerr << "[displayd] cached frame " << header.width << "x" << header.height
+              << " (" << packet.size() << " bytes)\n";
+
     std::vector<int> dead;
     for (const Client &client : clients_) {
         if (!client.websocket || client.fd < 0) {
@@ -446,6 +488,159 @@ void HttpServer::broadcast_frame(const FrameHeader &header, const std::vector<ui
                                       }),
                         clients_.end());
         connected_clients_ = static_cast<uint32_t>(clients_.size());
+    }
+}
+
+namespace {
+
+bool recv_all(int fd, uint8_t *buf, size_t len)
+{
+    size_t total = 0;
+    while (total < len) {
+        ssize_t n = recv(fd, buf + total, len - total, 0);
+        if (n <= 0) {
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+                continue;
+            }
+            return false;
+        }
+        total += n;
+    }
+    return true;
+}
+
+} // namespace
+
+void HttpServer::poll_clients()
+{
+    std::vector<Client> active_clients;
+    {
+        std::lock_guard<std::mutex> lock(clients_mutex_);
+        active_clients = clients_;
+    }
+
+    if (active_clients.empty()) {
+        return;
+    }
+
+    std::vector<pollfd> pfds;
+    pfds.reserve(active_clients.size());
+    for (const auto &client : active_clients) {
+        if (client.websocket && client.fd >= 0) {
+            pollfd pfd {};
+            pfd.fd = client.fd;
+            pfd.events = POLLIN;
+            pfds.push_back(pfd);
+        }
+    }
+
+    if (pfds.empty()) {
+        return;
+    }
+
+    int ret = poll(pfds.data(), pfds.size(), 0);
+    if (ret <= 0) {
+        return;
+    }
+
+    std::vector<int> dead_fds;
+
+    for (const auto &pfd : pfds) {
+        if (pfd.revents & (POLLIN | POLLERR | POLLHUP)) {
+            if (pfd.revents & (POLLERR | POLLHUP)) {
+                dead_fds.push_back(pfd.fd);
+                continue;
+            }
+
+            uint8_t header[2];
+            if (!recv_all(pfd.fd, header, 2)) {
+                dead_fds.push_back(pfd.fd);
+                continue;
+            }
+
+            uint8_t opcode = header[0] & 0x0F;
+            bool masked = (header[1] & 0x80) != 0;
+            uint64_t payload_len = header[1] & 0x7F;
+
+            if (payload_len == 126) {
+                uint8_t ext_len[2];
+                if (!recv_all(pfd.fd, ext_len, 2)) {
+                    dead_fds.push_back(pfd.fd);
+                    continue;
+                }
+                payload_len = (static_cast<uint64_t>(ext_len[0]) << 8) | ext_len[1];
+            } else if (payload_len == 127) {
+                uint8_t ext_len[8];
+                if (!recv_all(pfd.fd, ext_len, 8)) {
+                    dead_fds.push_back(pfd.fd);
+                    continue;
+                }
+                payload_len = 0;
+                for (int i = 0; i < 8; ++i) {
+                    payload_len = (payload_len << 8) | ext_len[i];
+                }
+            }
+
+            uint8_t mask_key[4] = {0};
+            if (masked) {
+                if (!recv_all(pfd.fd, mask_key, 4)) {
+                    dead_fds.push_back(pfd.fd);
+                    continue;
+                }
+            }
+
+            if (opcode == 0x08) { // Connection close
+                dead_fds.push_back(pfd.fd);
+                continue;
+            }
+
+            std::vector<uint8_t> payload(payload_len);
+            if (payload_len > 0) {
+                if (!recv_all(pfd.fd, payload.data(), payload_len)) {
+                    dead_fds.push_back(pfd.fd);
+                    continue;
+                }
+
+                if (masked) {
+                    for (uint64_t i = 0; i < payload_len; ++i) {
+                        payload[i] ^= mask_key[i % 4];
+                    }
+                }
+            }
+
+            if (opcode == 0x01) { // Text frame
+                std::string msg(payload.begin(), payload.end());
+                handle_websocket_message(pfd.fd, msg);
+            }
+        }
+    }
+
+    if (!dead_fds.empty()) {
+        std::lock_guard<std::mutex> lock(clients_mutex_);
+        for (int fd : dead_fds) {
+            ::close(fd);
+            clients_.erase(std::remove_if(clients_.begin(), clients_.end(),
+                                          [fd](const Client &client) { return client.fd == fd; }),
+                           clients_.end());
+        }
+        connected_clients_ = static_cast<uint32_t>(clients_.size());
+    }
+}
+
+void HttpServer::handle_websocket_message(int /*fd*/, const std::string &msg)
+{
+    const std::string type = braillatron::connect::json_get_string(msg, "type");
+    if (type == "keydown" || type == "keyup") {
+        const std::string key_str = braillatron::connect::json_get_string(msg, "key");
+        if (!key_str.empty() && kb_ != nullptr) {
+            try {
+                int keycode = std::stoi(key_str);
+                kb_->send_key(keycode, type == "keydown");
+            } catch (...) {
+                // Ignore parsing/stoi exceptions
+            }
+        }
     }
 }
 

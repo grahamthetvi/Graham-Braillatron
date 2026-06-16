@@ -68,6 +68,7 @@ DISPLAYD_OBJS := \
 	src/display/http_server.o \
 	src/display/display_service.o \
 	src/display/display_main.o \
+	src/display/virtual_keyboard.o \
 	src/connect/json_utils.o \
 	src/connect/socket_server.o
 

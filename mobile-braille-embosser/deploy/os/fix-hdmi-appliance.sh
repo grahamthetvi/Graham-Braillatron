@@ -100,6 +100,9 @@ fi
 if [[ -d "${GETTY_DROPIN_DIR}" ]]; then
   while IFS= read -r dropin; do
     [[ -n "${dropin}" ]] || continue
+    if [[ "${dropin##*/}" == "braillatron-appliance.conf" ]]; then
+      continue
+    fi
     if grep -q 'network-online' "${dropin}" 2>/dev/null; then
       echo "Removing getty network-online drop-in: ${dropin}"
       rm -f "${dropin}"

@@ -53,8 +53,10 @@ bool DisplayService::start()
         return true;
     }
 
+    virtual_keyboard_.init();
+
     http_server_ = std::make_unique<HttpServer>(config_.listen_address, config_.listen_port,
-                                                config_.static_root, &auth_);
+                                                config_.static_root, &auth_, &virtual_keyboard_);
     if (!http_server_->start()) {
         std::cerr << "[displayd] HTTP server failed\n";
         return false;
@@ -74,6 +76,7 @@ void DisplayService::stop()
         http_server_->stop();
         http_server_.reset();
     }
+    virtual_keyboard_.destroy();
 }
 
 void DisplayService::poll()
@@ -83,6 +86,9 @@ void DisplayService::poll()
     }
     frame_subscriber_.poll_once();
     cmd_server_.poll_once([this](const std::string &request) { return handle_command(request); });
+    if (http_server_ != nullptr) {
+        http_server_->poll_clients();
+    }
 }
 
 std::string DisplayService::handle_command(const std::string &request)
@@ -104,7 +110,7 @@ std::string DisplayService::handle_command(const std::string &request)
         apply_network_bind();
         if (!http_server_) {
             http_server_ = std::make_unique<HttpServer>(config_.listen_address, config_.listen_port,
-                                                        config_.static_root, &auth_);
+                                                        config_.static_root, &auth_, &virtual_keyboard_);
         }
         if (!http_server_->running() && !http_server_->start()) {
             return "{\"ok\":false,\"error\":\"http start failed\"}";

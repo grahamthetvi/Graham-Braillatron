@@ -43,6 +43,9 @@ install -m 755 "${SCRIPT_DIR}/braillatron-fb-repaint.sh" /usr/local/sbin/brailla
 # DietPi can defer getty@tty1 until network-online (wlan0 ~5min). Late tty1 init wipes fb0 UI.
 while IFS= read -r dropin; do
   [[ -n "${dropin}" ]] || continue
+  if [[ "${dropin##*/}" == "braillatron-appliance.conf" ]]; then
+    continue
+  fi
   if grep -q 'network-online' "${dropin}" 2>/dev/null; then
     echo "Removing DietPi getty network-online drop-in: ${dropin}"
     rm -f "${dropin}"

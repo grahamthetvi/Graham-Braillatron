@@ -3,22 +3,474 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Braillatron Remote Display</title>
+  <title>Braillatron Remote Display & Dev Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: sans-serif; background: #111; color: #eee; margin: 1rem; }
-    #canvas { image-rendering: pixelated; border: 1px solid #444; width: min(90vw, 480px); height: auto; }
-    input, button { font-size: 1rem; margin: 0.25rem 0; }
-    #status { margin-top: 0.5rem; color: #aaa; }
+    :root {
+      --bg-color: #0f172a;       /* Clean dark slate (slate-900) */
+      --card-bg: #1e293b;        /* Slate-800 */
+      --card-border: #334155;    /* Slate-700 */
+      --primary: #3b82f6;        /* Clean developer blue (blue-500) */
+      --primary-hover: #2563eb;  /* Blue-600 */
+      --text: #f8fafc;           /* Slate-50 */
+      --text-muted: #94a3b8;     /* Slate-400 */
+      --input-bg: #0f172a;       /* Slate-900 */
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg-color);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      overflow-x: hidden;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.5px;
+      margin-bottom: 0.25rem;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      font-weight: 400;
+    }
+
+    /* Standard Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      width: 100%;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: border-color 0.2s ease;
+    }
+
+    .card.active {
+      border-color: var(--primary);
+    }
+
+    /* Focus warning overlay style */
+    #focus-warning {
+      display: none;
+      background: #dc2626; /* Red-600 */
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      width: 100%;
+      text-align: center;
+      margin-bottom: 1rem;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0% { opacity: 0.9; }
+      50% { opacity: 0.6; }
+      100% { opacity: 0.9; }
+    }
+
+    /* Pairing Form */
+    #pair-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      width: 100%;
+      max-width: 340px;
+      align-items: center;
+    }
+
+    .form-group {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .form-group label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-weight: 600;
+    }
+
+    .form-group input {
+      background: var(--input-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #fff;
+      font-size: 1.25rem;
+      font-family: 'JetBrains Mono', monospace;
+      text-align: center;
+      letter-spacing: 4px;
+      transition: all 0.2s ease;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    }
+
+    button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      background: var(--primary-hover);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    /* Screen display */
+    .display-wrapper {
+      position: relative;
+      background: #000;
+      border-radius: 8px;
+      padding: 12px;
+      border: 3px solid var(--card-border);
+      margin-bottom: 0.5rem;
+    }
+
+    #canvas {
+      display: block;
+      image-rendering: pixelated;
+      width: 480px;
+      height: 480px;
+      max-width: 100%;
+      height: auto;
+      aspect-ratio: 1 / 1;
+      border-radius: 2px;
+    }
+
+    #status {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 0.5rem;
+    }
+
+    /* Interactive virtual keyboard styling */
+    .keyboard-card {
+      max-width: 600px;
+    }
+
+    .keyboard-title {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 1rem;
+      width: 100%;
+      text-align: center;
+      font-weight: 600;
+    }
+
+    /* Perkins Dot layout */
+    .perkins-row {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 15px;
+      width: 100%;
+    }
+
+    .key-btn {
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      border-radius: 50%;
+      width: 56px;
+      height: 56px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.1s ease;
+      touch-action: manipulation;
+    }
+
+    .key-btn .key-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .key-btn .key-desc {
+      font-size: 0.9rem;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    /* Highlight states for active keys */
+    .key-btn.active, .key-btn:active {
+      background: var(--primary);
+      border-color: var(--primary);
+      transform: scale(0.95);
+    }
+    
+    .key-btn.active .key-label, .key-btn:active .key-label {
+      color: #fff;
+    }
+    
+    .key-btn.active .key-desc, .key-btn:active .key-desc {
+      color: #fff;
+    }
+
+    /* Dot configuration: left hand curves up slightly, right curves up */
+    .perkins-left {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    .perkins-right {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    /* Control keys row */
+    .control-row {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      width: 100%;
+      margin-top: 5px;
+    }
+
+    .rect-key {
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px 16px;
+      min-width: 72px;
+      height: 48px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.1s ease;
+      touch-action: manipulation;
+    }
+
+    .rect-key .key-label {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .rect-key .key-desc {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .rect-key.active, .rect-key:active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+      transform: translateY(1px);
+    }
+    
+    .rect-key.active .key-label, .rect-key:active .key-label {
+      color: #fff;
+    }
+
+    .rect-key.active .key-desc, .rect-key:active .key-desc {
+      color: #fff;
+    }
+
+    .keyboard-hint {
+      margin-top: 1.25rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.4;
+      max-width: 450px;
+    }
+
+    .keyboard-hint code {
+      background: var(--input-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--primary);
+      border: 1px solid var(--card-border);
+    }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      .perkins-row { gap: 6px; }
+      .key-btn { width: 48px; height: 48px; }
+      .rect-key { padding: 8px 10px; min-width: 60px; font-size: 0.85rem; }
+    }
   </style>
 </head>
 <body>
-  <h1>Braillatron Remote Display</h1>
-  <form id="pair-form">
-    <label>Pairing code <input id="code" maxlength="6" pattern="[0-9]{6}" required></label>
-    <button type="submit">Connect</button>
-  </form>
-  <p id="status">Enter the 6-digit code shown on the device.</p>
-  <canvas id="canvas" width="240" height="240"></canvas>
+  <div class="container">
+    <header>
+      <h1>GRAHAM BRAILLATRON</h1>
+      <div class="subtitle">Remote visualizer & dev console</div>
+    </header>
+
+    <div class="card" id="display-card">
+      <div class="display-wrapper">
+        <canvas id="canvas" width="240" height="240"></canvas>
+      </div>
+      <p id="status">Connecting to service...</p>
+    </div>
+
+    <div class="card" id="pairing-card" style="display: none;">
+      <h2 style="font-size: 1.25rem; margin-bottom: 1rem; font-weight: 600;">Pair with Device</h2>
+      <form id="pair-form">
+        <div class="form-group">
+          <label for="code">Enter pairing code</label>
+          <input id="code" maxlength="6" placeholder="000000" pattern="[0-9]{6}" inputmode="numeric" required autofocus autocomplete="off">
+        </div>
+        <button type="submit">Establish Connection</button>
+      </form>
+    </div>
+
+    <!-- Virtual Perkins Keyboard & Control buttons -->
+    <div class="card keyboard-card" id="keyboard-card" style="display: none;">
+      <div id="focus-warning">⚠️ Webpage unfocused. Click here to enable keyboard controls.</div>
+      <div class="keyboard-title">Web Interactive Input</div>
+      
+      <!-- Perkins home row dots -->
+      <div class="perkins-row">
+        <!-- Left Hand Dots 3, 2, 1 -->
+        <div class="perkins-left">
+          <div class="key-btn" data-keycode="31" id="key-dot3">
+            <span class="key-label">Dot 3 [S]</span>
+            <span class="key-desc">●</span>
+          </div>
+          <div class="key-btn" data-keycode="32" id="key-dot2">
+            <span class="key-label">Dot 2 [D]</span>
+            <span class="key-desc">●</span>
+          </div>
+          <div class="key-btn" data-keycode="33" id="key-dot1">
+            <span class="key-label">Dot 1 [F]</span>
+            <span class="key-desc">●</span>
+          </div>
+        </div>
+
+        <!-- Right Hand Dots 4, 5, 6 -->
+        <div class="perkins-right">
+          <div class="key-btn" data-keycode="36" id="key-dot4">
+            <span class="key-label">Dot 4 [J]</span>
+            <span class="key-desc">●</span>
+          </div>
+          <div class="key-btn" data-keycode="37" id="key-dot5">
+            <span class="key-label">Dot 5 [K]</span>
+            <span class="key-desc">●</span>
+          </div>
+          <div class="key-btn" data-keycode="38" id="key-dot6">
+            <span class="key-label">Dot 6 [L]</span>
+            <span class="key-desc">●</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Command row (Backspace, Enter, Speech, Menu, etc.) -->
+      <div class="control-row">
+        <div class="rect-key" data-keycode="14" id="key-backspace">
+          <span class="key-label">Backspace</span>
+          <span class="key-desc">⌫</span>
+        </div>
+        
+        <div class="rect-key" data-keycode="103" id="key-up">
+          <span class="key-label">Up</span>
+          <span class="key-desc">▲</span>
+        </div>
+
+        <div class="rect-key" data-keycode="108" id="key-down">
+          <span class="key-label">Down</span>
+          <span class="key-desc">▼</span>
+        </div>
+
+        <div class="rect-key" data-keycode="28" id="key-enter">
+          <span class="key-label">Enter</span>
+          <span class="key-desc">↵</span>
+        </div>
+      </div>
+
+      <div class="control-row" style="margin-top: 10px;">
+        <div class="rect-key" data-keycode="41" id="key-menu" style="min-width: 90px;">
+          <span class="key-label">Menu</span>
+          <span class="key-desc">Grave [`]</span>
+        </div>
+
+        <div class="rect-key" data-keycode="15" id="key-tab" style="min-width: 90px;">
+          <span class="key-label">TTS Toggle</span>
+          <span class="key-desc">Tab</span>
+        </div>
+
+        <div class="rect-key" data-keycode="126" id="key-speech" style="min-width: 120px;">
+          <span class="key-label">Speech PTT</span>
+          <span class="key-desc">Right Ctrl / Cmd</span>
+        </div>
+      </div>
+
+      <div class="keyboard-hint">
+        Focus this web page and press physical keys to type. Mappings:<br>
+        Perkins braille dots use home row: <code>S D F</code> (Left) & <code>J K L</code> (Right).<br>
+        Navigation: <code>Arrows Up/Down</code>, <code>Enter</code>, <code>Backspace</code>. Menu: <code>`</code>. TTS: <code>Tab</code>. PTT: <code>Right Ctrl</code>.
+      </div>
+    </div>
+  </div>
+
   <script src="/viewer.js"></script>
 </body>
 </html>

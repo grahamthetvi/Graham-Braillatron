@@ -25,6 +25,7 @@ public:
     EvdevInput &operator=(const EvdevInput &) = delete;
 
     static std::string resolve_device_path(const std::string &configured_path);
+    static std::vector<std::string> resolve_device_paths(const std::string &configured_path);
 
     bool start(const EvdevKeymap &keymap);
     void stop();

@@ -21,7 +21,7 @@ FrameSubscriber::~FrameSubscriber()
 
 bool FrameSubscriber::listen()
 {
-    listen_fd_ = socket(AF_UNIX, SOCK_STREAM, 0);
+    listen_fd_ = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (listen_fd_ < 0) {
         return false;
     }

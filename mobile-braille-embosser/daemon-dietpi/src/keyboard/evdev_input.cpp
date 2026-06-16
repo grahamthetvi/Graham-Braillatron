@@ -90,6 +90,23 @@ std::string EvdevInput::resolve_device_path(const std::string &configured_path)
     return {};
 }
 
+std::vector<std::string> EvdevInput::resolve_device_paths(const std::string &configured_path)
+{
+    if (!configured_path.empty() && configured_path != "auto") {
+        return {configured_path};
+    }
+
+    std::vector<std::string> paths;
+    for (int index = 0; index < 32; ++index) {
+        const std::string candidate = "/dev/input/event" + std::to_string(index);
+        if (device_has_bench_keyboard(candidate)) {
+            paths.push_back(candidate);
+        }
+    }
+
+    return paths;
+}
+
 bool EvdevInput::start(const EvdevKeymap &keymap)
 {
     if (running_.load()) {

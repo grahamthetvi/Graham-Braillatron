@@ -102,7 +102,7 @@ private:
             return true;
         }
 
-        connection_ = spd_open("braillatron", "Braillatron UI", nullptr, SPD_MODE_THREADED);
+        connection_ = spd_open("braillatron", "Braillatron UI", nullptr, SPD_MODE_SINGLE);
         if (connection_ == nullptr) {
             return false;
         }

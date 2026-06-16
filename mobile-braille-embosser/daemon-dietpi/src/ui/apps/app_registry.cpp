@@ -266,6 +266,21 @@ std::vector<MenuItem> AppRegistry::build_inline_menu()
         });
     }
 
+    items.push_back(MenuItem {
+        "Back to app list",
+        {},
+        [this](MenuOverlay &mo) {
+            (void)mo;
+            exit_inline();
+            exit();
+            if (ctx_.output != nullptr) {
+                ctx_.output->menu_overlay().close();
+                ctx_.output->announce_message("Back to app list");
+                ctx_.output->sync_chrome(false);
+            }
+        },
+    });
+
     return items;
 }
 

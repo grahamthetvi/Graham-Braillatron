@@ -58,7 +58,7 @@ private:
     FocusNavigator focus_;
     documents::BrailleTranslationService *braille_service_ = nullptr;
 
-    std::unique_ptr<EvdevInput> evdev_;
+    std::vector<std::unique_ptr<EvdevInput>> evdevs_;
     HostChordAssembler host_chord_assembler_;
     KeyDebouncer evdev_debouncer_;
     EvdevKeymap evdev_keymap_;

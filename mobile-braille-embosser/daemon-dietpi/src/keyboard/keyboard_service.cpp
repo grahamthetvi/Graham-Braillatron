@@ -90,21 +90,27 @@ void KeyboardService::start()
         const std::string map_path = resolve_config_path(config_.evdev_map_config);
         evdev_keymap_ = EvdevKeymap::load(map_path);
 
-        const std::string device_path = EvdevInput::resolve_device_path(config_.evdev_device);
-        if (device_path.empty()) {
+        const auto device_paths = EvdevInput::resolve_device_paths(config_.evdev_device);
+        if (device_paths.empty()) {
             std::cerr << "evdev: no suitable input device found\n";
         } else {
-            evdev_ = std::make_unique<EvdevInput>(device_path, config_.evdev_grab);
-            if (evdev_->start(evdev_keymap_)) {
+            bool any_started = false;
+            for (const auto &device_path : device_paths) {
+                auto evdev = std::make_unique<EvdevInput>(device_path, config_.evdev_grab);
+                if (evdev->start(evdev_keymap_)) {
+                    std::cerr << "keyboard: evdev listening on " << device_path
+                              << " (bench mode)\n";
+                    evdevs_.push_back(std::move(evdev));
+                    any_started = true;
+                }
+            }
+            if (any_started) {
                 evdev_started_ = true;
                 host_chord_assembler_.reset();
                 evdev_raw_state_ = 0;
                 evdev_previous_debounced_state_ = 0;
                 evdev_debouncer_.set_raw_state(0);
-                std::cerr << "keyboard: evdev listening on " << device_path
-                          << " (bench mode)\n";
             } else {
-                evdev_.reset();
                 evdev_started_ = false;
             }
         }
@@ -125,10 +131,12 @@ void KeyboardService::stop()
     serial_.stop();
     serial_started_ = false;
 
-    if (evdev_ != nullptr) {
-        evdev_->stop();
-        evdev_.reset();
+    for (auto &evdev : evdevs_) {
+        if (evdev != nullptr) {
+            evdev->stop();
+        }
     }
+    evdevs_.clear();
     evdev_started_ = false;
 }
 
@@ -155,7 +163,15 @@ bool KeyboardService::serial_connected() const
 
 bool KeyboardService::evdev_connected() const
 {
-    return evdev_started_.load() && evdev_ != nullptr && evdev_->is_connected();
+    if (!evdev_started_.load() || evdevs_.empty()) {
+        return false;
+    }
+    for (const auto &evdev : evdevs_) {
+        if (evdev != nullptr && evdev->is_connected()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool KeyboardService::try_serial_reconnect()
@@ -215,12 +231,16 @@ void KeyboardService::drain_frame_queue()
 
 void KeyboardService::poll_evdev()
 {
-    if (!evdev_started_ || evdev_ == nullptr) {
+    if (!evdev_started_ || evdevs_.empty()) {
         return;
     }
 
     std::vector<EvdevKeyEvent> events;
-    evdev_->drain_events(events);
+    for (const auto &evdev : evdevs_) {
+        if (evdev != nullptr) {
+            evdev->drain_events(events);
+        }
+    }
     for (const EvdevKeyEvent &event : events) {
         const uint16_t mask = evdev_keymap_.logical_mask_for_code(event.code);
         if (mask == 0) {
