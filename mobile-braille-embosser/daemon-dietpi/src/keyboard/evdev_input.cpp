@@ -29,6 +29,28 @@ bool device_has_key_code(int fd, unsigned code)
     return (key_bits[code / kBitsPerLong] & (1UL << (code % kBitsPerLong))) != 0;
 }
 
+std::string device_input_name(const std::string &path)
+{
+    const int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
+    if (fd < 0) {
+        return {};
+    }
+
+    char name[256] = {};
+    if (ioctl(fd, EVIOCGNAME(sizeof(name)), name) < 0) {
+        close(fd);
+        return {};
+    }
+    close(fd);
+    return name;
+}
+
+bool is_excluded_evdev_device(const std::string &name)
+{
+    // BRLTTY injects unrelated key events that corrupt Perkins chord assembly.
+    return name.find("BRLTTY") != std::string::npos;
+}
+
 bool device_has_bench_keyboard(const std::string &path)
 {
     const int fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
@@ -99,9 +121,15 @@ std::vector<std::string> EvdevInput::resolve_device_paths(const std::string &con
     std::vector<std::string> paths;
     for (int index = 0; index < 32; ++index) {
         const std::string candidate = "/dev/input/event" + std::to_string(index);
-        if (device_has_bench_keyboard(candidate)) {
-            paths.push_back(candidate);
+        if (!device_has_bench_keyboard(candidate)) {
+            continue;
         }
+
+        const std::string name = device_input_name(candidate);
+        if (is_excluded_evdev_device(name)) {
+            continue;
+        }
+        paths.push_back(candidate);
     }
 
     return paths;

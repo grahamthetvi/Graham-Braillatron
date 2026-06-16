@@ -32,6 +32,7 @@ public:
     virtual void on_chord(uint8_t dot_mask, UiContext &ctx) = 0;
     virtual void on_text(const std::string &text, UiContext &ctx) = 0;
     virtual void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) = 0;
+    virtual std::string composer_line() const { return {}; }
     virtual void on_connect_event(const braillatron::connect::ConnectEvent &event, UiContext &ctx)
     {
         (void)event;

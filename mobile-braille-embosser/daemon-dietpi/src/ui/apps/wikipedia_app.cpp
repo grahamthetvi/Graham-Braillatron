@@ -51,12 +51,21 @@ public:
 
     void on_chord(uint8_t, UiContext &) override {}
 
-    void on_text(const std::string &text, UiContext &) override
+    void on_text(const std::string &text, UiContext &ctx) override
     {
         if (phase_ != Phase::Search || text.empty()) {
             return;
         }
         query_buffer_ += text;
+        refresh_search_input(ctx);
+    }
+
+    std::string composer_line() const override
+    {
+        if (phase_ != Phase::Search) {
+            return {};
+        }
+        return query_buffer_;
     }
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
@@ -94,6 +103,7 @@ private:
         if (key == keyboard::ControlKey::Backspace) {
             if (!query_buffer_.empty()) {
                 query_buffer_.pop_back();
+                refresh_search_input(ctx);
             }
             return;
         }
@@ -119,6 +129,9 @@ private:
         results_ = *results;
         result_index_ = 0;
         phase_ = Phase::PickResult;
+        if (ctx.output != nullptr) {
+            ctx.output->sync_chrome(false);
+        }
         announce_result(ctx);
     }
 
@@ -128,6 +141,7 @@ private:
             phase_ = Phase::Search;
             results_.clear();
             result_index_ = 0;
+            refresh_search_input(ctx);
             announce(ctx, "Search. " + query_buffer_);
             return;
         }
@@ -225,6 +239,17 @@ private:
         const std::string prefix = "Line " + std::to_string(line_index_ + 1) + " of " +
                                    std::to_string(lines_.size()) + ". ";
         announce(ctx, prefix + truncate_for_tts(lines_[line_index_]));
+    }
+
+    void refresh_search_input(UiContext &ctx)
+    {
+        if (ctx.output == nullptr) {
+            return;
+        }
+        ctx.output->sync_chrome(false);
+        if (!query_buffer_.empty()) {
+            ctx.output->announce_spoken("Search: " + query_buffer_);
+        }
     }
 
     Phase phase_ = Phase::Search;

@@ -107,6 +107,7 @@ void KeyboardService::start()
             if (any_started) {
                 evdev_started_ = true;
                 host_chord_assembler_.reset();
+                evdev_device_states_.assign(evdevs_.size(), 0);
                 evdev_raw_state_ = 0;
                 evdev_previous_debounced_state_ = 0;
                 evdev_debouncer_.set_raw_state(0);
@@ -235,24 +236,38 @@ void KeyboardService::poll_evdev()
         return;
     }
 
-    std::vector<EvdevKeyEvent> events;
-    for (const auto &evdev : evdevs_) {
-        if (evdev != nullptr) {
-            evdev->drain_events(events);
-        }
+    if (evdev_device_states_.size() != evdevs_.size()) {
+        evdev_device_states_.assign(evdevs_.size(), 0);
     }
-    for (const EvdevKeyEvent &event : events) {
-        const uint16_t mask = evdev_keymap_.logical_mask_for_code(event.code);
-        if (mask == 0) {
+
+    for (size_t device_index = 0; device_index < evdevs_.size(); ++device_index) {
+        const auto &evdev = evdevs_[device_index];
+        if (evdev == nullptr) {
             continue;
         }
 
-        if (event.pressed) {
-            evdev_raw_state_ = static_cast<uint16_t>(evdev_raw_state_ | mask);
-        } else {
-            evdev_raw_state_ = static_cast<uint16_t>(evdev_raw_state_ & ~mask);
+        std::vector<EvdevKeyEvent> events;
+        evdev->drain_events(events);
+        for (const EvdevKeyEvent &event : events) {
+            const uint16_t mask = evdev_keymap_.logical_mask_for_code(event.code);
+            if (mask == 0) {
+                continue;
+            }
+
+            uint16_t &device_state = evdev_device_states_[device_index];
+            if (event.pressed) {
+                device_state = static_cast<uint16_t>(device_state | mask);
+            } else {
+                device_state = static_cast<uint16_t>(device_state & ~mask);
+            }
         }
     }
+
+    uint16_t combined_state = 0;
+    for (uint16_t device_state : evdev_device_states_) {
+        combined_state = static_cast<uint16_t>(combined_state | device_state);
+    }
+    evdev_raw_state_ = combined_state;
 
     evdev_debouncer_.set_raw_state(evdev_raw_state_);
 

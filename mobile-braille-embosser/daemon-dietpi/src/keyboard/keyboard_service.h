@@ -62,6 +62,7 @@ private:
     HostChordAssembler host_chord_assembler_;
     KeyDebouncer evdev_debouncer_;
     EvdevKeymap evdev_keymap_;
+    std::vector<uint16_t> evdev_device_states_;
     uint16_t evdev_raw_state_ = 0;
     uint16_t evdev_previous_debounced_state_ = 0;
 

@@ -48,6 +48,7 @@ public:
     void announce_startup(const platform::DeviceStatusReport &report);
     void announce_focus(const std::string &label, bool at_boundary);
     void announce_message(const std::string &message);
+    void announce_spoken(const std::string &message);
     void announce_status_report(const platform::DeviceStatusReport &report);
     void announce_quick_status();
 

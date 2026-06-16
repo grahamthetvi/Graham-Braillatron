@@ -52,6 +52,10 @@ bool AppRegistry::enter(const std::string &id)
 {
     for (const auto &app : apps_) {
         if (app->id() == id && app->kind() == AppKind::Standalone) {
+            if (active_inline_ != nullptr) {
+                active_inline_->on_exit(ctx_);
+                active_inline_ = nullptr;
+            }
             if (active_ != nullptr) {
                 active_->on_exit(ctx_);
             }

@@ -40,6 +40,9 @@ RenderedChrome ChromeRenderer::build(const UiChromeModel &model) const
         model.at_boundary && !model.items.empty() && model.focus_index + 1 >= model.items.size();
 
     if (model.surface == ChromeSurface::InApp) {
+        if (!model.composer_line.empty()) {
+            frame.rows.push_back("> " + model.composer_line);
+        }
         if (!frame.toast.empty()) {
             frame.rows.push_back(frame.toast);
         }

@@ -268,6 +268,11 @@ void OutputHub::announce_message(const std::string &message)
     emit(message);
 }
 
+void OutputHub::announce_spoken(const std::string &message)
+{
+    emit(message, false);
+}
+
 void OutputHub::announce_status_report(const platform::DeviceStatusReport &report)
 {
     std::ostringstream stream;
@@ -615,7 +620,7 @@ void OutputHub::sync_chrome(bool at_boundary)
     } else if (app_registry_ != nullptr && app_registry_->active() != nullptr) {
         chrome_model_.surface = ChromeSurface::InApp;
         chrome_model_.header = app_registry_->active()->label();
-        chrome_model_.composer_line.clear();
+        chrome_model_.composer_line = app_registry_->active()->composer_line();
         chrome_model_.items.clear();
         chrome_model_.focus_index = 0;
         chrome_model_.breadcrumb.clear();
