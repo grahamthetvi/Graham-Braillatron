@@ -66,6 +66,15 @@ if [[ ! -f /data/braillatron/settings/remote-display.conf ]]; then
   install -m 644 "${ROOT}/deploy/config/remote-display.conf" /data/braillatron/settings/remote-display.conf
 fi
 install -d /data/braillatron/timer /data/braillatron/dictionary /data/braillatron/spelling-lists /data/braillatron/spelling-sessions /data/braillatron/contacts/import /data/braillatron/music /data/braillatron/weather /data/braillatron/podcasts/import /data/braillatron/podcasts/downloads /data/braillatron/radio /data/braillatron/library/books /data/braillatron/library/import /data/braillatron/library/state /data/braillatron/documents/gmail || true
+if [[ -d "${ROOT}/deploy/data/contacts" ]]; then
+  for seed in "${ROOT}/deploy/data/contacts/"*.csv "${ROOT}/deploy/data/contacts/"*.vcf "${ROOT}/deploy/data/contacts/"*.vcard; do
+    [[ -f "${seed}" ]] || continue
+    base="$(basename "${seed}")"
+    if [[ ! -f "/data/braillatron/contacts/import/${base}" && ! -f "/data/braillatron/contacts/import/processed/${base}" ]]; then
+      install -m 644 "${seed}" "/data/braillatron/contacts/import/${base}"
+    fi
+  done
+fi
 install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/credentials/signal-cli /data/braillatron/credentials/gmail || true
 
 install -m 755 "${ROOT}/deploy/install-dictionary-data.sh" "${PREFIX}/bin/braillatron-install-dictionary-data"

@@ -3,11 +3,15 @@
 #include "chrome_frame.h"
 #include "ui_chrome_model.h"
 
-#include <chrono>
 #include <cstdint>
 #include <string>
 
 namespace braillatron::ui {
+
+inline bool should_publish_remote_frame(uint32_t crc32, uint32_t last_crc32)
+{
+    return crc32 != last_crc32;
+}
 
 class RemoteFramePublisher {
 public:
@@ -27,7 +31,6 @@ private:
     bool connect_failed_logged_ = false;
     uint32_t frame_id_ = 0;
     uint32_t last_crc32_ = 0;
-    std::chrono::steady_clock::time_point last_publish_time_ {};
     ChromeRenderer renderer_;
     ChromeRasterizer rasterizer_;
     DisplaySurfaceLayout layout_;

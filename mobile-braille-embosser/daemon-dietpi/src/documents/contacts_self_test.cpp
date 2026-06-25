@@ -120,12 +120,44 @@ bool test_vcard_import_round_trip()
     return true;
 }
 
+bool test_add_contact_round_trip()
+{
+    const std::string dir = temp_dir() + "-add";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+
+    braillatron::documents::ContactsConfig config;
+    config.store_path = dir + "/contacts.json";
+    config.import_dir = dir + "/import";
+    braillatron::documents::ContactsStore store(config);
+
+    expect_true(store.add_contact("Addison Graham", "555-1234"), "add contact saved");
+    expect_true(store.contacts().size() == 1, "add contact count");
+    const auto matches = store.search("addison");
+    expect_true(matches.size() == 1, "add contact searchable");
+    if (!matches.empty()) {
+        expect_true(matches[0].phones.size() == 1, "add contact phone count");
+        expect_true(matches[0].phones[0] == "555-1234", "add contact phone value");
+    }
+
+    expect_true(store.add_contact("", "555-0000") == false, "empty name rejected");
+
+    braillatron::documents::ContactsStore reloaded(config);
+    reloaded.load();
+    expect_true(reloaded.contacts().size() == 1, "add contact reload count");
+    expect_true(!reloaded.search("addison").empty(), "add contact persists after reload");
+
+    std::filesystem::remove_all(dir, ec);
+    return true;
+}
+
 } // namespace
 
 int main()
 {
     test_csv_import_round_trip();
     test_vcard_import_round_trip();
+    test_add_contact_round_trip();
 
     if (failures != 0) {
         std::cerr << failures << " contacts self-test failure(s)\n";

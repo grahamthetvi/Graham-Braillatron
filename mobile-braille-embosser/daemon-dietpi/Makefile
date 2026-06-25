@@ -389,9 +389,12 @@ GMAIL_TEST_OBJS := \
 	src/connect/gmail_backend.o \
 	src/connect/gmail_self_test.o
 
-.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test remote-display-test liblouis-test timer-test dictionary-test spelling-test contacts-test music-test library-test gmail-test sentinel connectd displayd connect-test ui-test install a11y liblouis display
+CALCULATOR_TEST_OBJS := \
+	src/ui/apps/calculator_self_test.o
 
-all: braillatron-ui braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-remote-display-test braillatron-sentinel braillatron-connectd braillatron-displayd braillatron-ui-test braillatron-connect-test
+.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test remote-display-test liblouis-test timer-test dictionary-test spelling-test contacts-test music-test library-test gmail-test calculator-test sentinel connectd displayd connect-test ui-test install a11y liblouis display
+
+all: braillatron-ui braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-remote-display-test braillatron-calculator-test braillatron-sentinel braillatron-connectd braillatron-displayd braillatron-ui-test braillatron-connect-test
 
 keyboard: braillatron-ui
 
@@ -452,7 +455,9 @@ library-test: braillatron-library-test braillatron-library-backend-test
 
 gmail-test: braillatron-gmail-test
 
-check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-gmail-test
+calculator-test: braillatron-calculator-test
+
+check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-gmail-test braillatron-calculator-test
 	./braillatron-motion-test
 	./braillatron-motion-gate-sync-test
 	./braillatron-host-chord-test
@@ -473,6 +478,7 @@ check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelli
 	./braillatron-library-test
 	./braillatron-library-backend-test
 	./braillatron-gmail-test
+	./braillatron-calculator-test
 
 check-liblouis:
 	$(MAKE) BRAILLATRON_LIBLOUIS=1 braillatron-liblouis-test
@@ -525,6 +531,9 @@ braillatron-library-backend-test: $(LIBRARY_BACKEND_TEST_OBJS)
 
 braillatron-gmail-test: $(GMAIL_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(GMAIL_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-calculator-test: $(CALCULATOR_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(CALCULATOR_TEST_OBJS) -o $@
 
 # Dedicated object so check-liblouis never reuses liblouis_bridge.o from a stub build.
 src/documents/liblouis_bridge_louis.o: src/documents/liblouis_bridge.cpp
@@ -618,6 +627,6 @@ ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_T
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \
-		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-remote-display-test braillatron-liblouis-test braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-gmail-test braillatron-connect-test braillatron-sentinel braillatron-connectd braillatron-displayd
+		braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-remote-display-test braillatron-liblouis-test braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-gmail-test braillatron-calculator-test braillatron-connect-test braillatron-sentinel braillatron-connectd braillatron-displayd
 
 -include $(ALL_OBJS:.o=.d)

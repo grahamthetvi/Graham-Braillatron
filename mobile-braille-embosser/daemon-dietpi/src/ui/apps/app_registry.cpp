@@ -270,6 +270,24 @@ std::vector<MenuItem> AppRegistry::build_inline_menu()
         });
     }
 
+    if (active_ != nullptr && active_->id() == "contacts") {
+        items.insert(items.begin(),
+                     MenuItem {
+                         "Add contact",
+                         {},
+                         [this](MenuOverlay &mo) {
+                             (void)mo;
+                             if (active_ != nullptr) {
+                                 active_->on_menu_action("add_contact", ctx_);
+                             }
+                             if (ctx_.output != nullptr) {
+                                 ctx_.output->menu_overlay().close();
+                                 ctx_.output->sync_chrome(false);
+                             }
+                         },
+                     });
+    }
+
     if (active_ != nullptr && active_->id() == "brailler") {
         items.push_back(MenuItem {
             "Look up word",

@@ -524,6 +524,8 @@ void OutputHub::on_menu_activate()
     menu_overlay_.activate();
     if (menu_overlay_.depth() > depth_before) {
         announce_focus(menu_overlay_.focused_label(), false);
+    } else {
+        sync_chrome(false);
     }
 }
 

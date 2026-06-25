@@ -19,19 +19,7 @@ RemoteFramePublisher::RemoteFramePublisher(std::string socket_path)
 
 bool RemoteFramePublisher::should_publish(uint32_t crc32)
 {
-    if (crc32 == last_crc32_) {
-        return false;
-    }
-
-    const auto now = std::chrono::steady_clock::now();
-    if (last_publish_time_.time_since_epoch().count() != 0) {
-        const auto elapsed =
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - last_publish_time_);
-        if (elapsed.count() < 100) {
-            return false;
-        }
-    }
-    return true;
+    return should_publish_remote_frame(crc32, last_crc32_);
 }
 
 bool RemoteFramePublisher::send_packet(const std::vector<uint8_t> &packet)
@@ -91,7 +79,6 @@ void RemoteFramePublisher::publish(const UiChromeModel &model)
         braillatron::display::encode_frame_packet(header, frame.pixels.data(), frame.pixels.size());
     if (send_packet(packet)) {
         last_crc32_ = crc32;
-        last_publish_time_ = std::chrono::steady_clock::now();
     }
 }
 

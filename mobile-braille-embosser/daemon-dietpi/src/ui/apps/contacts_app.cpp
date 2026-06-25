@@ -19,6 +19,8 @@ enum class Phase {
     PickMatch,
     Detail,
     Actions,
+    AddName,
+    AddPhone,
 };
 
 enum class ActionKind {
@@ -37,11 +39,11 @@ public:
         reset_session();
         store_.refresh();
         if (store_.contacts().empty()) {
-            announce(ctx, "Contacts ready. No contacts yet. Import CSV or vCard files.");
+            announce(ctx, "Contacts ready. No contacts yet. Menu to add a contact or import files.");
             return;
         }
         announce(ctx, "Contacts ready. " + std::to_string(store_.contacts().size()) +
-                           " contacts. Type a name and press Enter.");
+                           " contacts. Type a name and press Enter. Menu to add contact.");
     }
 
     void on_exit(UiContext &ctx) override
@@ -53,12 +55,44 @@ public:
     void on_poll(UiContext &) override {}
     void on_chord(uint8_t, UiContext &) override {}
 
-    void on_text(const std::string &text, UiContext &) override
+    std::string composer_line() const override
     {
-        if (phase_ != Phase::Search || text.empty()) {
+        if (phase_ == Phase::AddName) {
+            return add_name_buffer_;
+        }
+        if (phase_ == Phase::AddPhone) {
+            return add_phone_buffer_;
+        }
+        return query_buffer_;
+    }
+
+    void on_menu_action(const std::string &action, UiContext &ctx) override
+    {
+        if (action == "add_contact") {
+            start_add_contact(ctx);
+        }
+    }
+
+    void on_text(const std::string &text, UiContext &ctx) override
+    {
+        if (text.empty()) {
+            return;
+        }
+        if (phase_ == Phase::AddName) {
+            add_name_buffer_ += text;
+            sync_composer(ctx);
+            return;
+        }
+        if (phase_ == Phase::AddPhone) {
+            add_phone_buffer_ += text;
+            sync_composer(ctx);
+            return;
+        }
+        if (phase_ != Phase::Search) {
             return;
         }
         query_buffer_ += text;
+        sync_composer(ctx);
     }
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
@@ -80,6 +114,12 @@ public:
         case Phase::Actions:
             handle_actions_control(key, ctx);
             break;
+        case Phase::AddName:
+            handle_add_name_control(key, ctx);
+            break;
+        case Phase::AddPhone:
+            handle_add_phone_control(key, ctx);
+            break;
         }
     }
 
@@ -92,6 +132,84 @@ private:
         match_index_ = 0;
         action_index_ = 0;
         selected_contact_ = nullptr;
+        add_name_buffer_.clear();
+        add_phone_buffer_.clear();
+    }
+
+    void sync_composer(UiContext &ctx)
+    {
+        if (ctx.output != nullptr) {
+            ctx.output->sync_chrome(false);
+        }
+    }
+
+    void start_add_contact(UiContext &ctx)
+    {
+        phase_ = Phase::AddName;
+        add_name_buffer_.clear();
+        add_phone_buffer_.clear();
+        announce(ctx, "Add contact. Enter name.");
+        sync_composer(ctx);
+    }
+
+    void return_to_search(UiContext &ctx)
+    {
+        phase_ = Phase::Search;
+        add_name_buffer_.clear();
+        add_phone_buffer_.clear();
+        sync_composer(ctx);
+        announce(ctx, query_buffer_.empty() ? "Search." : "Search. " + query_buffer_);
+    }
+
+    void handle_add_name_control(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            if (!add_name_buffer_.empty()) {
+                add_name_buffer_.pop_back();
+                sync_composer(ctx);
+                return;
+            }
+            return_to_search(ctx);
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter) {
+            return;
+        }
+        if (add_name_buffer_.empty()) {
+            announce(ctx, "Enter a name first");
+            return;
+        }
+
+        phase_ = Phase::AddPhone;
+        add_phone_buffer_.clear();
+        announce(ctx, "Enter phone number.");
+        sync_composer(ctx);
+    }
+
+    void handle_add_phone_control(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            if (!add_phone_buffer_.empty()) {
+                add_phone_buffer_.pop_back();
+                sync_composer(ctx);
+                return;
+            }
+            phase_ = Phase::AddName;
+            announce(ctx, "Name. " + add_name_buffer_);
+            sync_composer(ctx);
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter) {
+            return;
+        }
+
+        if (!store_.add_contact(add_name_buffer_, add_phone_buffer_)) {
+            announce(ctx, "Could not save contact");
+            return;
+        }
+
+        announce(ctx, "Contact saved");
+        return_to_search(ctx);
     }
 
     void handle_search_control(keyboard::ControlKey key, UiContext &ctx)
@@ -99,6 +217,7 @@ private:
         if (key == keyboard::ControlKey::Backspace) {
             if (!query_buffer_.empty()) {
                 query_buffer_.pop_back();
+                sync_composer(ctx);
             }
             return;
         }
@@ -106,9 +225,11 @@ private:
             return;
         }
 
+        store_.refresh();
         matches_ = store_.search(query_buffer_);
         if (matches_.empty()) {
-            announce(ctx, query_buffer_.empty() ? "No contacts loaded" : "No matches for " + query_buffer_);
+            announce(ctx, query_buffer_.empty() ? "No contacts yet. Menu to add a contact."
+                                                : "No matches for " + query_buffer_);
             return;
         }
         if (matches_.size() == 1) {
@@ -298,6 +419,8 @@ private:
     documents::ContactsStore store_ {config_};
     Phase phase_ = Phase::Search;
     std::string query_buffer_;
+    std::string add_name_buffer_;
+    std::string add_phone_buffer_;
     std::vector<documents::Contact> matches_;
     size_t match_index_ = 0;
     const documents::Contact *selected_contact_ = nullptr;

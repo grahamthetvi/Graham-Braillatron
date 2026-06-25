@@ -40,6 +40,10 @@ public:
     bool import_csv_file(const std::string &path);
     bool import_vcard_file(const std::string &path);
 
+    bool add_contact(const std::string &name, const std::string &phone = {},
+                     const std::string &email = {}, const std::string &organization = {},
+                     const std::string &notes = {});
+
 private:
     bool load_json_store();
     bool process_import_dir();

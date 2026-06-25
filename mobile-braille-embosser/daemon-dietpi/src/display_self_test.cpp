@@ -3,6 +3,7 @@
 #include "ui/display/display_config.h"
 #include "ui/display/chrome_renderer.h"
 #include "ui/display/chrome_rasterizer.h"
+#include "ui/display/remote_frame_publisher.h"
 #include "ui/display/ui_chrome_model.h"
 #include "ui/ui_config.h"
 #include "ui/menu_overlay.h"
@@ -64,6 +65,7 @@ int main()
         return 1;
     }
 
+    model.composer_line.clear();
     model.surface = braillatron::ui::ChromeSurface::InApp;
     model.header = "Calculator";
     model.toast = "Ready";
@@ -131,6 +133,15 @@ int main()
     if (disabled_backend == nullptr ||
         braillatron::ui::display_backend_name(disabled_backend.get()) != "stub") {
         std::cerr << "disabled display backend mismatch\n";
+        return 1;
+    }
+
+    if (braillatron::ui::should_publish_remote_frame(42, 42)) {
+        std::cerr << "remote frame dedup mismatch: identical crc published\n";
+        return 1;
+    }
+    if (!braillatron::ui::should_publish_remote_frame(43, 42)) {
+        std::cerr << "remote frame dedup mismatch: different crc suppressed\n";
         return 1;
     }
 

@@ -384,6 +384,32 @@ void ContactsStore::upsert_contact(Contact contact)
     contacts_.push_back(std::move(contact));
 }
 
+bool ContactsStore::add_contact(const std::string &name, const std::string &phone,
+                                const std::string &email, const std::string &organization,
+                                const std::string &notes)
+{
+    if (name.empty()) {
+        return false;
+    }
+
+    Contact contact;
+    contact.name = name;
+    if (!phone.empty()) {
+        contact.phones.push_back(phone);
+    }
+    if (!email.empty()) {
+        contact.emails.push_back(email);
+    }
+    contact.organization = organization;
+    contact.notes = notes;
+    upsert_contact(std::move(contact));
+    if (!save()) {
+        return false;
+    }
+    refresh();
+    return true;
+}
+
 bool ContactsStore::import_csv_file(const std::string &path)
 {
     std::ifstream in(path);
