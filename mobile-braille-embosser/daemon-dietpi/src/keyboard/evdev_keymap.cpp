@@ -120,6 +120,15 @@ EvdevKeymap EvdevKeymap::load(const std::string &path)
         const std::string evdev_name = trim(line.substr(0, eq));
         const std::string logical_name = trim(line.substr(eq + 1));
         const unsigned code = evdev_code_from_name(evdev_name);
+        if (logical_name.rfind("text:", 0) == 0) {
+            const std::string text_value = logical_name.substr(5);
+            if (text_value == "space") {
+                map.code_to_text_[code] = ' ';
+            } else if (text_value.size() == 1) {
+                map.code_to_text_[code] = text_value[0];
+            }
+            continue;
+        }
         const uint16_t mask = logical_mask_from_name(logical_name);
         if (mask != 0) {
             map.code_to_mask_[code] = mask;
@@ -140,7 +149,17 @@ uint16_t EvdevKeymap::logical_mask_for_code(unsigned evdev_code) const
 
 bool EvdevKeymap::has_mapping(unsigned evdev_code) const
 {
-    return code_to_mask_.find(evdev_code) != code_to_mask_.end();
+    return code_to_mask_.find(evdev_code) != code_to_mask_.end() ||
+           code_to_text_.find(evdev_code) != code_to_text_.end();
+}
+
+std::optional<char> EvdevKeymap::text_for_code(unsigned evdev_code) const
+{
+    const auto it = code_to_text_.find(evdev_code);
+    if (it == code_to_text_.end()) {
+        return std::nullopt;
+    }
+    return it->second;
 }
 
 } // namespace braillatron::keyboard

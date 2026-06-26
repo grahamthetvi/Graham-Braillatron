@@ -1,5 +1,6 @@
 #include "app_session.h"
 #include "app_util.h"
+#include "calculator_braille.h"
 #include "calculator_eval.h"
 #include "ui_context.h"
 
@@ -31,7 +32,14 @@ public:
     void on_exit(UiContext &ctx) override { announce(ctx, "Calculator closed"); }
     void on_poll(UiContext &) override {}
 
-    void on_chord(uint8_t, UiContext &) override {}
+    void on_chord(uint8_t dot_mask, UiContext &ctx) override
+    {
+        const auto ch = calculator_char_from_dot_mask(dot_mask);
+        if (!ch.has_value()) {
+            return;
+        }
+        on_text(std::string(1, *ch), ctx);
+    }
 
     std::string composer_line() const override { return buffer_; }
 
@@ -44,6 +52,19 @@ public:
             }
 
             if (ch == ' ') {
+                const std::string trimmed = trim_trailing_spaces(buffer_);
+                if (!trimmed.empty()) {
+                    const auto spaced_result = evaluate_calculator_expression(trimmed);
+                    if (spaced_result.has_value()) {
+                        const std::string result_text =
+                            format_calculator_result(*spaced_result);
+                        announce(ctx, "Result: " + result_text);
+                        buffer_ = result_text;
+                        refresh_display(ctx);
+                        continue;
+                    }
+                }
+
                 if (mode_ != CalcAudioMode::Silent) {
                     announce(ctx, "Equation: " + buffer_);
                 }
@@ -110,6 +131,15 @@ public:
     }
 
 private:
+    static std::string trim_trailing_spaces(const std::string &value)
+    {
+        size_t end = value.size();
+        while (end > 0 && value[end - 1] == ' ') {
+            --end;
+        }
+        return value.substr(0, end);
+    }
+
     static std::string audio_mode_label(CalcAudioMode mode)
     {
         switch (mode) {

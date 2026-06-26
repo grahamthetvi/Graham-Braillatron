@@ -28,6 +28,7 @@ void on_safety_broadcast(uint8_t fault_code, uint8_t severity, uint16_t detail);
 
 bool standalone_app_active();
 bool inline_app_active();
+std::string active_standalone_app_id();
 void on_app_chord(uint8_t dot_mask);
 void on_app_text(const std::string &text);
 void on_app_control(keyboard::ControlKey key, bool pressed);

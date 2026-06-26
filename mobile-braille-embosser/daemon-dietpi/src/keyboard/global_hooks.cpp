@@ -86,6 +86,14 @@ bool inline_app_active()
     return g_app_registry != nullptr && g_app_registry->active_inline() != nullptr;
 }
 
+std::string active_standalone_app_id()
+{
+    if (g_app_registry == nullptr || g_app_registry->active() == nullptr) {
+        return {};
+    }
+    return g_app_registry->active()->id();
+}
+
 void on_app_chord(uint8_t dot_mask)
 {
     if (g_app_registry != nullptr) {

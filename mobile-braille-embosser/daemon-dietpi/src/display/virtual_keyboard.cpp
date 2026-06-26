@@ -30,7 +30,7 @@ bool VirtualKeyboard::init() {
     const int keys[] = {
         KEY_F, KEY_D, KEY_S, KEY_J, KEY_K, KEY_L,
         KEY_UP, KEY_DOWN, KEY_BACKSPACE, KEY_ENTER,
-        KEY_GRAVE, KEY_TAB, KEY_RIGHTMETA
+        KEY_GRAVE, KEY_TAB, KEY_RIGHTMETA, KEY_SPACE
     };
 
     for (int key : keys) {

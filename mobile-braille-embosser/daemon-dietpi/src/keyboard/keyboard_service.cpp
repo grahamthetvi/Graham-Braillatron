@@ -1,6 +1,7 @@
 #include "keyboard_service.h"
 
 #include "../motion_gate.h"
+#include "../ui/apps/calculator_braille.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -249,6 +250,17 @@ void KeyboardService::poll_evdev()
         std::vector<EvdevKeyEvent> events;
         evdev->drain_events(events);
         for (const EvdevKeyEvent &event : events) {
+            if (const auto text_ch = evdev_keymap_.text_for_code(event.code)) {
+                if (event.pressed) {
+                    if (hooks::standalone_app_active() || hooks::inline_app_active()) {
+                        hooks::on_app_text(std::string(1, *text_ch));
+                    } else {
+                        focus_.on_text(std::string(1, *text_ch));
+                    }
+                }
+                continue;
+            }
+
             const uint16_t mask = evdev_keymap_.logical_mask_for_code(event.code);
             if (mask == 0) {
                 continue;
@@ -300,6 +312,14 @@ void KeyboardService::handle_chord(uint8_t dot_mask)
 
     if (hooks::standalone_app_active() || hooks::inline_app_active()) {
         hooks::on_app_chord(dot_mask);
+
+        const bool calculator_chord =
+            hooks::active_standalone_app_id() == "calculator" &&
+            braillatron::ui::calculator_char_from_dot_mask(dot_mask).has_value();
+        if (calculator_chord) {
+            return;
+        }
+
         if (text.has_value()) {
             hooks::on_app_text(*text);
         } else if (dot_mask != 0) {

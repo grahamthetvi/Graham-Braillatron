@@ -1,3 +1,4 @@
+#include "calculator_braille.h"
 #include "calculator_eval.h"
 #include "ui/display/remote_frame_publisher.h"
 
@@ -73,6 +74,13 @@ int main()
                 "identical crc should not publish");
     expect_true(braillatron::ui::should_publish_remote_frame(101, 100),
                 "different crc should publish");
+
+    expect_true(*braillatron::ui::calculator_char_from_dot_mask(0x19) == '4',
+                "dot 145 maps to digit 4");
+    expect_true(*braillatron::ui::calculator_char_from_dot_mask(0x2c) == '+',
+                "dot 346 maps to plus");
+    expect_true(!braillatron::ui::calculator_char_from_dot_mask(0x00).has_value(),
+                "empty chord has no calculator mapping");
 
     if (failures != 0) {
         std::cerr << failures << " calculator self-test failure(s)\n";
