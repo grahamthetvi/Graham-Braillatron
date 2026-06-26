@@ -54,6 +54,15 @@ void FocusNavigator::on_text(const std::string &text)
     notify_input_changed();
 }
 
+void FocusNavigator::clear_input_buffer()
+{
+    if (input_buffer_.empty()) {
+        return;
+    }
+    input_buffer_.clear();
+    notify_input_changed();
+}
+
 size_t FocusNavigator::focus_index() const
 {
     return focus_index_;

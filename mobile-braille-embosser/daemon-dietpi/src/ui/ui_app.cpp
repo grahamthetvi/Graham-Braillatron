@@ -219,7 +219,9 @@ void UiApp::handle_activate(size_t index, const std::string &label)
 
     const std::string app_id = app_registry_.launcher_id_for_label(label);
     if (!app_id.empty()) {
-        app_registry_.enter(app_id);
+        if (app_registry_.enter(app_id)) {
+            keyboard_.focus_nav().clear_input_buffer();
+        }
         return;
     }
 
