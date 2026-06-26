@@ -56,6 +56,7 @@ private:
     std::string ui_config_path_;
     DisplayConfig display_config_;
     documents::BrailleTranslationService braille_service_;
+    documents::BrailleTranslationService braille_input_service_;
 
     platform::DeviceStatus device_status_;
     platform::DeviceStatusReport status_report_;

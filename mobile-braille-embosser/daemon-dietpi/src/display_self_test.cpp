@@ -1,6 +1,7 @@
 #include "ui/display/chrome_frame.h"
 #include "ui/display/display_backend.h"
 #include "ui/display/display_config.h"
+#include "ui/display/chrome_rasterizer.h"
 #include "ui/display/chrome_renderer.h"
 #include "ui/display/chrome_rasterizer.h"
 #include "ui/display/remote_frame_publisher.h"
@@ -151,6 +152,25 @@ int main()
     }
     if (!braillatron::ui::should_publish_remote_frame(43, 42)) {
         std::cerr << "remote frame dedup mismatch: different crc suppressed\n";
+        return 1;
+    }
+
+    const int panel_budget = 240 - braillatron::ui::layout_for_panel(240, 240).margin_left - 8;
+    const int long_width =
+        braillatron::ui::text_width_pixels(std::string("Pomodoro work finished. Break time.").size(),
+                                           9);
+    if (!braillatron::ui::marquee_animation_active(long_width, panel_budget, 1000, 1000)) {
+        std::cerr << "marquee should be active during initial pause for overflow text\n";
+        return 1;
+    }
+    if (braillatron::ui::compute_marquee_scroll_offset(long_width, panel_budget, 1000, 1000) != 0) {
+        std::cerr << "marquee should hold at start during initial pause\n";
+        return 1;
+    }
+    const int mid_offset =
+        braillatron::ui::compute_marquee_scroll_offset(long_width, panel_budget, 1000, 3200);
+    if (mid_offset <= 0) {
+        std::cerr << "marquee should scroll after initial pause\n";
         return 1;
     }
 

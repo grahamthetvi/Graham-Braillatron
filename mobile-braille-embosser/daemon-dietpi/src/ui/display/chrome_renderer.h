@@ -17,6 +17,7 @@ struct RenderedChrome {
     bool at_top_boundary = false;
     bool at_bottom_boundary = false;
     std::string toast;
+    int toast_scroll_offset_px = 0;
     bool tts_paused = false;
     bool dictation_active = false;
 };

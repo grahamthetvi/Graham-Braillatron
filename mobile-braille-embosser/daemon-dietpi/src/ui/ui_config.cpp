@@ -82,6 +82,10 @@ UiConfig load_ui_config(const std::string &path)
             config.vosk_model_path = value;
         } else if (key == "braille_table") {
             config.braille_table = value;
+        } else if (key == "braille_input_table") {
+            config.braille_input_table = value;
+        } else if (key == "braille_input_configured") {
+            config.braille_input_configured = parse_bool(value);
         } else if (key == "language") {
             config.language = value;
         } else if (key == "tts_rate") {
@@ -126,6 +130,9 @@ void save_ui_config(const std::string &path, const UiConfig &config)
     stream << "spd_voice=" << config.spd_voice << "\n";
     stream << "vosk_model_path=" << config.vosk_model_path << "\n";
     stream << "braille_table=" << config.braille_table << "\n";
+    stream << "braille_input_table=" << config.braille_input_table << "\n";
+    stream << "braille_input_configured="
+           << (config.braille_input_configured ? "true" : "false") << "\n";
     stream << "language=" << config.language << "\n";
     stream << "tts_rate=" << config.tts_rate << "\n";
     stream << "tts_volume=" << config.tts_volume << "\n";

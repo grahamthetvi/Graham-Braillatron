@@ -18,6 +18,18 @@ const char *braille_grade_preset_display_label(BrailleGradePreset preset);
 BrailleGradePreset braille_grade_preset_from_string(const std::string &name);
 BrailleGradePreset next_braille_grade_preset(BrailleGradePreset preset);
 
+enum class BrailleInputPreset {
+    UebMath,
+    Nemeth,
+};
+
+const char *braille_input_preset_config_value(BrailleInputPreset preset);
+const char *braille_input_preset_display_label(BrailleInputPreset preset);
+BrailleInputPreset braille_input_preset_from_string(const std::string &name);
+BrailleInputPreset next_braille_input_preset(BrailleInputPreset preset);
+BrailleGradePreset braille_grade_for_input_preset(BrailleInputPreset preset);
+bool braille_input_uses_nemeth_overlay(BrailleInputPreset preset);
+
 class BrailleTranslationService {
 public:
     explicit BrailleTranslationService(BrailleGradePreset preset = BrailleGradePreset::UebG2Math);
@@ -31,6 +43,11 @@ public:
     BrailleGradePreset current_preset() const { return preset_; }
     const char *display_label() const { return braille_grade_preset_display_label(preset_); }
     const char *config_value() const { return braille_grade_preset_config_value(preset_); }
+    bool nemeth_overlay_active() const
+    {
+        const_cast<BrailleTranslationService *>(this)->ensure_tables_ready();
+        return nemeth_overlay_active_;
+    }
 
     void set_grade_preset(BrailleGradePreset preset);
     void set_grade_preset_from_config(const std::string &name);
@@ -48,6 +65,7 @@ private:
     std::string resolved_table_list_;
     bool available_ = false;
     bool tables_verified_ = false;
+    bool nemeth_overlay_active_ = false;
 };
 
 uint8_t braille_char_to_dot_mask(wchar_t braille_char);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,8 @@ struct UiChromeModel {
     size_t focus_index = 0;
     bool at_boundary = false;
     std::string toast;
+    uint64_t toast_marquee_epoch_ms = 0;
+    int toast_scroll_offset_px = 0;
     bool menu_open = false;
     size_t menu_depth = 0;
     bool tts_paused = false;

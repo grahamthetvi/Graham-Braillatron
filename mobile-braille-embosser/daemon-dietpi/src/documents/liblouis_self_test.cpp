@@ -87,6 +87,15 @@ int main()
         }
     }
 
+    service.set_grade_preset(braille_grade_for_input_preset(BrailleInputPreset::UebMath));
+    if (!expect_back_translation(service, BrailleGradePreset::UebG2Math, 0x01, "a")) {
+        return 1;
+    }
+    service.set_grade_preset(braille_grade_for_input_preset(BrailleInputPreset::Nemeth));
+    if (!expect_back_translation(service, BrailleGradePreset::UebG2Nemeth, 0x01, "a")) {
+        return 1;
+    }
+
     std::cout << "liblouis self-test ok\n";
     return 0;
 }

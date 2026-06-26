@@ -10,6 +10,7 @@
 #include "../connect/json_utils.h"
 #include "../display/display_client.h"
 #include "../display/remote_display_config.h"
+#include "display/chrome_rasterizer.h"
 #include "apps/app_registry.h"
 #include "../keyboard/focus_nav.h"
 
@@ -141,13 +142,15 @@ std::string weather_chrome_line()
 
 OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_config,
                      std::string ui_config_path, DisplayConfig display_config,
-                     motion::MotionService *motion, documents::BrailleTranslationService *braille)
+                     motion::MotionService *motion, documents::BrailleTranslationService *braille,
+                     documents::BrailleTranslationService *braille_input)
     : ui_config_(ui_config)
     , telemetry_config_(std::move(telemetry_config))
     , ui_config_path_(std::move(ui_config_path))
     , display_config_(std::move(display_config))
     , motion_(motion)
     , braille_service_(braille)
+    , braille_input_service_(braille_input != nullptr ? braille_input : braille)
     , tts_(create_tts_backend(ui_config_))
     , braille_(create_braille_backend(ui_config_, braille_service_))
     , stt_(create_stt_backend(ui_config_))
@@ -183,6 +186,64 @@ void OutputHub::apply_braille_grade_preset(documents::BrailleGradePreset preset)
     emit(std::string("Braille grade: ") + documents::braille_grade_preset_display_label(preset));
 }
 
+void OutputHub::apply_braille_input_preset(documents::BrailleInputPreset preset)
+{
+    if (braille_input_service_ != nullptr) {
+        braille_input_service_->set_grade_preset(
+            documents::braille_grade_for_input_preset(preset));
+    }
+    ui_config_.braille_input_table = documents::braille_input_preset_config_value(preset);
+    ui_config_.braille_input_configured = true;
+    persist_ui_config();
+
+    std::string message =
+        std::string("Braille input: ") + documents::braille_input_preset_display_label(preset);
+    if (braille_input_service_ != nullptr &&
+        documents::braille_input_uses_nemeth_overlay(preset) &&
+        !braille_input_service_->nemeth_overlay_active()) {
+        message += ". Nemeth tables unavailable on this device; using UEB Grade 2.";
+    }
+    emit(message);
+}
+
+void OutputHub::show_braille_input_setup_if_needed()
+{
+    if (ui_config_.braille_input_configured) {
+        return;
+    }
+
+    menu_overlay_.open();
+    menu_overlay_.push_level(build_braille_input_setup_menu(), "Braille input code");
+    sync_chrome(false);
+    announce_message("Choose braille input code. UEB Math or Nemeth.");
+}
+
+std::vector<MenuItem> OutputHub::build_braille_input_setup_menu()
+{
+    return {
+        MenuItem {
+            "UEB Math",
+            {},
+            [this](MenuOverlay &mo) {
+                apply_braille_input_preset(documents::BrailleInputPreset::UebMath);
+                mo.close();
+            },
+            "Menu Item",
+            nullptr
+        },
+        MenuItem {
+            "Nemeth",
+            {},
+            [this](MenuOverlay &mo) {
+                apply_braille_input_preset(documents::BrailleInputPreset::Nemeth);
+                mo.close();
+            },
+            "Menu Item",
+            nullptr
+        },
+    };
+}
+
 void OutputHub::release_backends()
 {
     if (display_ != nullptr) {
@@ -199,6 +260,54 @@ void OutputHub::release_backends()
 
 OutputHub::~OutputHub() = default;
 
+void OutputHub::note_toast_changed(uint64_t now_ms)
+{
+    chrome_model_.toast_marquee_epoch_ms = now_ms;
+    chrome_model_.toast_scroll_offset_px = 0;
+    last_toast_message_ = chrome_model_.toast;
+}
+
+void OutputHub::update_toast_scroll_offset(uint64_t now_ms)
+{
+    if (chrome_model_.toast.empty() || chrome_model_.toast_marquee_epoch_ms == 0) {
+        chrome_model_.toast_scroll_offset_px = 0;
+        return;
+    }
+
+    const DisplaySurfaceLayout layout = layout_for_panel(display_config_.width, display_config_.height);
+    const int glyph = std::max(1, layout.font_scale) * 8;
+    const int char_advance = glyph + layout.font_scale;
+    const int budget = static_cast<int>(layout.width) - layout.margin_left - glyph;
+    const int text_width = text_width_pixels(chrome_model_.toast.size(), char_advance);
+    chrome_model_.toast_scroll_offset_px =
+        compute_marquee_scroll_offset(text_width, budget, chrome_model_.toast_marquee_epoch_ms,
+                                      now_ms);
+}
+
+void OutputHub::tick_display_scroll(uint64_t now_ms)
+{
+    if (!ui_config_.display_enabled || display_ == nullptr || chrome_model_.toast.empty()) {
+        return;
+    }
+
+    const DisplaySurfaceLayout layout = layout_for_panel(display_config_.width, display_config_.height);
+    const int glyph = std::max(1, layout.font_scale) * 8;
+    const int char_advance = glyph + layout.font_scale;
+    const int budget = static_cast<int>(layout.width) - layout.margin_left - glyph;
+    const int text_width = text_width_pixels(chrome_model_.toast.size(), char_advance);
+
+    if (!marquee_animation_active(text_width, budget, chrome_model_.toast_marquee_epoch_ms,
+                                  now_ms)) {
+        return;
+    }
+
+    const int previous_offset = chrome_model_.toast_scroll_offset_px;
+    update_toast_scroll_offset(now_ms);
+    if (chrome_model_.toast_scroll_offset_px != previous_offset) {
+        render_chrome();
+    }
+}
+
 void OutputHub::emit(const std::string &message, bool update_display_toast)
 {
     std::cerr << "[ui] " << message << "\n";
@@ -206,6 +315,10 @@ void OutputHub::emit(const std::string &message, bool update_display_toast)
     if (media_playing_ && ui_config_.tts_enabled) {
         if (update_display_toast && ui_config_.display_enabled && display_ != nullptr) {
             chrome_model_.toast = message;
+            note_toast_changed(static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count()));
             render_chrome();
         }
         return;
@@ -238,6 +351,10 @@ void OutputHub::emit(const std::string &message, bool update_display_toast)
 
     if (update_display_toast && ui_config_.display_enabled && display_ != nullptr) {
         chrome_model_.toast = message;
+        note_toast_changed(static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count()));
         render_chrome();
     }
 }
@@ -731,6 +848,11 @@ void OutputHub::render_chrome()
         chrome_model_.toast = "Pair code: " + pairing_code_overlay_;
     }
 
+    update_toast_scroll_offset(static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count()));
+
     display_->render(chrome_model_);
     if (remote_display_enabled_) {
         remote_publisher_.publish(chrome_model_);
@@ -1087,6 +1209,27 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             },
             "Toggle",
             [this]() { return remote_allow_lan_ ? "On" : "Off"; }
+        },
+        MenuItem {
+            "Braille input code",
+            [this]() {
+                const documents::BrailleInputPreset preset =
+                    documents::braille_input_preset_from_string(ui_config_.braille_input_table);
+                return std::string("Braille input: ") +
+                       documents::braille_input_preset_display_label(preset);
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                const documents::BrailleInputPreset current =
+                    documents::braille_input_preset_from_string(ui_config_.braille_input_table);
+                apply_braille_input_preset(documents::next_braille_input_preset(current));
+            },
+            "Setting",
+            [this]() {
+                const documents::BrailleInputPreset preset =
+                    documents::braille_input_preset_from_string(ui_config_.braille_input_table);
+                return documents::braille_input_preset_display_label(preset);
+            }
         },
         MenuItem {
             "Braille grade",

@@ -32,7 +32,8 @@ RenderedChrome ChromeRenderer::build(const UiChromeModel &model) const
     frame.header = model.header;
     frame.breadcrumb = model.breadcrumb;
     frame.weather_line = truncate_line(model.weather_line, 72);
-    frame.toast = truncate_line(model.toast, 72);
+    frame.toast = model.toast;
+    frame.toast_scroll_offset_px = model.toast_scroll_offset_px;
     frame.tts_paused = model.tts_paused;
     frame.dictation_active = model.dictation_active;
     frame.at_top_boundary = model.at_boundary && model.focus_index == 0;

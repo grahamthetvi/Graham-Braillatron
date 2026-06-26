@@ -29,6 +29,50 @@ std::string fit_text_to_width(const std::string &text, int max_pixels, int char_
     return text.substr(0, max_chars - 3) + "...";
 }
 
+} // namespace
+
+int text_width_pixels(size_t char_count, int char_advance)
+{
+    if (char_advance <= 0) {
+        return 0;
+    }
+    return static_cast<int>(char_count) * char_advance;
+}
+
+int compute_marquee_scroll_offset(int text_width_px, int budget_px, uint64_t epoch_ms,
+                                  uint64_t now_ms)
+{
+    if (text_width_px <= budget_px || budget_px <= 0 || epoch_ms == 0) {
+        return 0;
+    }
+
+    const int overflow = text_width_px - budget_px;
+    const uint64_t elapsed = now_ms >= epoch_ms ? now_ms - epoch_ms : 0;
+    if (elapsed < kMarqueePauseMs) {
+        return 0;
+    }
+
+    const uint64_t scroll_elapsed = elapsed - kMarqueePauseMs;
+    const int scroll_px =
+        static_cast<int>(std::min<uint64_t>(overflow, scroll_elapsed / kMarqueeScrollPeriodMs));
+    return scroll_px;
+}
+
+bool marquee_animation_active(int text_width_px, int budget_px, uint64_t epoch_ms, uint64_t now_ms)
+{
+    if (text_width_px <= budget_px || budget_px <= 0 || epoch_ms == 0) {
+        return false;
+    }
+
+    const int overflow = text_width_px - budget_px;
+    const uint64_t scroll_duration = static_cast<uint64_t>(overflow) * kMarqueeScrollPeriodMs;
+    const uint64_t total = kMarqueePauseMs + scroll_duration + kMarqueeEndHoldMs;
+    const uint64_t elapsed = now_ms >= epoch_ms ? now_ms - epoch_ms : 0;
+    return elapsed < total;
+}
+
+namespace {
+
 int body_start_y(const DisplaySurfaceLayout &layout, const RenderedChrome &frame)
 {
     const int glyph = scaled_glyph_size(layout.font_scale);
@@ -129,10 +173,17 @@ void ChromeRasterizer::render(const RenderedChrome &frame, std::vector<uint16_t>
 
     const int text_budget = static_cast<int>(layout.width) - layout.margin_left - glyph;
 
-    const auto draw_text = [&](int x, int y, std::string text, uint16_t color) {
-        text = fit_text_to_width(text, text_budget - (x - layout.margin_left), char_advance);
-        int cursor_x = x;
-        for (unsigned char ch : text) {
+    const auto draw_text = [&](int x, int y, const std::string &text, uint16_t color,
+                               int scroll_offset_px = 0, bool allow_ellipsis = true) {
+        const int clip_left = layout.margin_left;
+        const int clip_right = static_cast<int>(layout.width) - layout.font_scale;
+        std::string draw_text_value = text;
+        if (allow_ellipsis && scroll_offset_px == 0) {
+            draw_text_value =
+                fit_text_to_width(text, text_budget - (x - layout.margin_left), char_advance);
+        }
+        int cursor_x = x - scroll_offset_px;
+        for (unsigned char ch : draw_text_value) {
             if (ch < 32 || ch > 126) {
                 ch = '?';
             }
@@ -145,14 +196,18 @@ void ChromeRasterizer::render(const RenderedChrome &frame, std::vector<uint16_t>
                     }
                     for (int sy = 0; sy < layout.font_scale; ++sy) {
                         for (int sx = 0; sx < layout.font_scale; ++sx) {
-                            put_pixel(cursor_x + col * layout.font_scale + sx,
-                                      y + row * layout.font_scale + sy, color);
+                            const int px = cursor_x + col * layout.font_scale + sx;
+                            const int py = y + row * layout.font_scale + sy;
+                            if (px < clip_left || px >= clip_right) {
+                                continue;
+                            }
+                            put_pixel(px, py, color);
                         }
                     }
                 }
             }
             cursor_x += char_advance;
-            if (cursor_x >= static_cast<int>(layout.width) - glyph) {
+            if (cursor_x >= clip_right + char_advance) {
                 break;
             }
         }
@@ -194,7 +249,8 @@ void ChromeRasterizer::render(const RenderedChrome &frame, std::vector<uint16_t>
         fill_rect(0, static_cast<int>(layout.height) - layout.toast_band, layout.width,
                   layout.toast_band, rgb565(32, 32, 32));
         draw_text(layout.margin_left, static_cast<int>(layout.height) - layout.toast_band +
-                                           layout.font_scale * 2, frame.toast, kColorYellow);
+                                           layout.font_scale * 2, frame.toast, kColorYellow,
+                      frame.toast_scroll_offset_px, false);
     }
 }
 

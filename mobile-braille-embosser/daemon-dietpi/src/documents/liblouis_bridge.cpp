@@ -173,6 +173,63 @@ BrailleGradePreset next_braille_grade_preset(BrailleGradePreset preset)
     return BrailleGradePreset::UebG1Math;
 }
 
+const char *braille_input_preset_config_value(BrailleInputPreset preset)
+{
+    switch (preset) {
+    case BrailleInputPreset::UebMath:
+        return "ueb_g2_math";
+    case BrailleInputPreset::Nemeth:
+        return "nemeth";
+    }
+    return "ueb_g2_math";
+}
+
+const char *braille_input_preset_display_label(BrailleInputPreset preset)
+{
+    switch (preset) {
+    case BrailleInputPreset::UebMath:
+        return "UEB Math";
+    case BrailleInputPreset::Nemeth:
+        return "Nemeth";
+    }
+    return "UEB Math";
+}
+
+BrailleInputPreset braille_input_preset_from_string(const std::string &name)
+{
+    if (name == "nemeth" || name == "ueb_g2_nemeth" || name == "ueb_g1_nemeth") {
+        return BrailleInputPreset::Nemeth;
+    }
+    return BrailleInputPreset::UebMath;
+}
+
+BrailleInputPreset next_braille_input_preset(BrailleInputPreset preset)
+{
+    switch (preset) {
+    case BrailleInputPreset::UebMath:
+        return BrailleInputPreset::Nemeth;
+    case BrailleInputPreset::Nemeth:
+        return BrailleInputPreset::UebMath;
+    }
+    return BrailleInputPreset::UebMath;
+}
+
+BrailleGradePreset braille_grade_for_input_preset(BrailleInputPreset preset)
+{
+    switch (preset) {
+    case BrailleInputPreset::Nemeth:
+        return BrailleGradePreset::UebG2Nemeth;
+    case BrailleInputPreset::UebMath:
+        return BrailleGradePreset::UebG2Math;
+    }
+    return BrailleGradePreset::UebG2Math;
+}
+
+bool braille_input_uses_nemeth_overlay(BrailleInputPreset preset)
+{
+    return preset == BrailleInputPreset::Nemeth;
+}
+
 BrailleTranslationService::BrailleTranslationService(BrailleGradePreset preset)
     : preset_(preset)
     , resolved_table_list_(preset_table_list_string(preset))
@@ -208,7 +265,12 @@ void BrailleTranslationService::set_grade_preset(BrailleGradePreset preset)
 
 void BrailleTranslationService::refresh_table_list()
 {
+    const std::string expected = preset_table_list_string(preset_);
     resolved_table_list_ = resolve_table_list(preset_);
+    nemeth_overlay_active_ =
+        (preset_ == BrailleGradePreset::UebG1Nemeth ||
+         preset_ == BrailleGradePreset::UebG2Nemeth) &&
+        resolved_table_list_ == expected;
 }
 
 void BrailleTranslationService::set_grade_preset_from_config(const std::string &name)

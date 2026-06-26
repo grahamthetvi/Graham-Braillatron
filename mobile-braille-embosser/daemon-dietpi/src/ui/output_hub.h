@@ -40,7 +40,8 @@ class OutputHub : public IAccessibleOutput {
 public:
     OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_config,
               std::string ui_config_path, DisplayConfig display_config,
-              motion::MotionService *motion, documents::BrailleTranslationService *braille);
+              motion::MotionService *motion, documents::BrailleTranslationService *braille,
+              documents::BrailleTranslationService *braille_input = nullptr);
     ~OutputHub() override;
 
     OutputHub(const OutputHub &) = delete;
@@ -83,6 +84,7 @@ public:
     void push_power_confirm(MenuOverlay &mo);
 
     void sync_chrome(bool at_boundary);
+    void tick_display_scroll(uint64_t now_ms);
     void rebuild_display_backend();
     void set_pairing_code_overlay(const std::string &code);
     void clear_pairing_code_overlay();
@@ -94,11 +96,15 @@ public:
     UiConfig &ui_config() { return ui_config_; }
 
     void apply_braille_grade_preset(documents::BrailleGradePreset preset);
+    void apply_braille_input_preset(documents::BrailleInputPreset preset);
+    void show_braille_input_setup_if_needed();
 
     void release_backends();
 
 private:
     void emit(const std::string &message, bool update_display_toast = true);
+    void note_toast_changed(uint64_t now_ms);
+    void update_toast_scroll_offset(uint64_t now_ms);
     void persist_ui_config();
     void toggle_bool(bool &field, const char *name);
     void render_chrome();
@@ -127,8 +133,11 @@ private:
     bool signal_link_pending_ = false;
     bool gmail_link_pending_ = false;
 
+    std::vector<MenuItem> build_braille_input_setup_menu();
+
     motion::MotionService *motion_ = nullptr;
     documents::BrailleTranslationService *braille_service_ = nullptr;
+    documents::BrailleTranslationService *braille_input_service_ = nullptr;
 
     UiChromeModel chrome_model_;
 
@@ -145,6 +154,7 @@ private:
     bool remote_allow_lan_ = false;
     std::string pairing_code_overlay_;
     std::string last_container_;
+    std::string last_toast_message_;
 };
 
 } // namespace braillatron::ui
