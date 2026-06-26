@@ -693,6 +693,7 @@ void OutputHub::sync_chrome(bool at_boundary)
         chrome_model_.surface = ChromeSurface::Menu;
         chrome_model_.header = "Menu";
         chrome_model_.composer_line.clear();
+        chrome_model_.result_line.clear();
         chrome_model_.items = menu_overlay_.current_item_labels();
         chrome_model_.focus_index = menu_overlay_.focus_index();
         if (menu_overlay_.depth() > 1) {
@@ -704,6 +705,7 @@ void OutputHub::sync_chrome(bool at_boundary)
         chrome_model_.surface = ChromeSurface::InApp;
         chrome_model_.header = app_registry_->active()->label();
         chrome_model_.composer_line = app_registry_->active()->composer_line();
+        chrome_model_.result_line = app_registry_->active()->result_line();
         chrome_model_.items.clear();
         chrome_model_.focus_index = 0;
         chrome_model_.breadcrumb.clear();

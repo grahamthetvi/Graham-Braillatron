@@ -25,11 +25,19 @@ public:
     void on_enter(UiContext &ctx) override
     {
         buffer_.clear();
+        result_line_.clear();
         mode_ = CalcAudioMode::Char;
-        announce(ctx, "Calculator ready.");
+        announce(ctx, "Calculator ready. Character mode. Menu to change audio mode.");
+        refresh_display(ctx);
     }
 
-    void on_exit(UiContext &ctx) override { announce(ctx, "Calculator closed"); }
+    void on_exit(UiContext &ctx) override
+    {
+        buffer_.clear();
+        result_line_.clear();
+        announce(ctx, "Calculator closed");
+    }
+
     void on_poll(UiContext &) override {}
 
     void on_chord(uint8_t dot_mask, UiContext &ctx) override
@@ -43,6 +51,8 @@ public:
 
     std::string composer_line() const override { return buffer_; }
 
+    std::string result_line() const override { return result_line_; }
+
     void on_text(const std::string &text, UiContext &ctx) override
     {
         for (char ch : text) {
@@ -52,34 +62,14 @@ public:
             }
 
             if (ch == ' ') {
-                const std::string trimmed = trim_trailing_spaces(buffer_);
-                if (!trimmed.empty()) {
-                    const auto spaced_result = evaluate_calculator_expression(trimmed);
-                    if (spaced_result.has_value()) {
-                        const std::string result_text =
-                            format_calculator_result(*spaced_result);
-                        announce(ctx, "Result: " + result_text);
-                        buffer_ = result_text;
-                        refresh_display(ctx);
-                        continue;
-                    }
-                }
-
-                if (mode_ != CalcAudioMode::Silent) {
-                    announce(ctx, "Equation: " + buffer_);
-                }
-                if (ctx.motion != nullptr && ctx.braille != nullptr &&
-                    mode_ == CalcAudioMode::SpaceAffirm) {
-                    ctx.motion->emboss_text(buffer_, *ctx.braille);
-                }
-                buffer_.push_back(ch);
-                refresh_display(ctx);
+                handle_space(ctx);
                 continue;
             }
 
+            result_line_.clear();
             buffer_.push_back(ch);
             if (mode_ == CalcAudioMode::Char) {
-                announce(ctx, std::string(1, ch));
+                announce(ctx, calculator_char_spoken(ch));
             }
             refresh_display(ctx);
         }
@@ -97,15 +87,12 @@ public:
         }
 
         if (key == keyboard::ControlKey::Backspace) {
-            if (buffer_.empty()) {
-                return;
-            }
-            const char removed = buffer_.back();
-            buffer_.pop_back();
-            refresh_display(ctx);
-            if (mode_ == CalcAudioMode::Char) {
-                announce(ctx, std::string(1, removed));
-            }
+            handle_backspace(ctx);
+            return;
+        }
+
+        if (key == keyboard::ControlKey::DpadDown) {
+            clear_all(ctx);
             return;
         }
 
@@ -113,21 +100,7 @@ public:
             return;
         }
 
-        if (buffer_.empty()) {
-            announce(ctx, "Enter an equation first");
-            return;
-        }
-
-        const auto result = evaluate_calculator_expression(buffer_);
-        if (!result.has_value()) {
-            announce(ctx, "Invalid equation");
-            return;
-        }
-
-        const std::string result_text = format_calculator_result(*result);
-        announce(ctx, "Result: " + result_text);
-        buffer_ = result_text;
-        refresh_display(ctx);
+        evaluate_buffer(ctx, true);
     }
 
 private:
@@ -176,7 +149,126 @@ private:
         }
     }
 
+    void handle_backspace(UiContext &ctx)
+    {
+        if (!buffer_.empty()) {
+            const char removed = buffer_.back();
+            buffer_.pop_back();
+            result_line_.clear();
+            refresh_display(ctx);
+            if (mode_ == CalcAudioMode::Char) {
+                announce(ctx, "Deleted " + calculator_char_spoken(removed));
+            }
+            return;
+        }
+
+        if (!result_line_.empty()) {
+            result_line_.clear();
+            refresh_display(ctx);
+            if (mode_ == CalcAudioMode::Char) {
+                announce(ctx, "Result cleared");
+            }
+        }
+    }
+
+    void clear_all(UiContext &ctx)
+    {
+        if (buffer_.empty() && result_line_.empty()) {
+            return;
+        }
+        buffer_.clear();
+        result_line_.clear();
+        refresh_display(ctx);
+        announce(ctx, "Cleared");
+    }
+
+    void handle_space(UiContext &ctx)
+    {
+        const std::string trimmed = trim_trailing_spaces(buffer_);
+        if (!trimmed.empty()) {
+            const auto outcome = evaluate_calculator_expression_outcome(trimmed);
+            if (outcome.value.has_value()) {
+                if (mode_ != CalcAudioMode::Silent) {
+                    announce(ctx, "Equation: " + trimmed);
+                }
+                finish_evaluation(ctx, trimmed, *outcome.value);
+                return;
+            }
+            if (outcome.error != CalculatorEvalError::None) {
+                if (mode_ != CalcAudioMode::Silent) {
+                    announce(ctx, "Equation: " + trimmed);
+                }
+                announce(ctx, calculator_eval_error_message(outcome.error));
+                return;
+            }
+        }
+
+        if (mode_ != CalcAudioMode::Silent) {
+            announce(ctx, trimmed.empty() ? "Equation empty" : "Equation: " + buffer_);
+        }
+        if (mode_ == CalcAudioMode::SpaceAffirm && !trimmed.empty()) {
+            try_emboss_text(ctx, trimmed, false);
+        }
+
+        buffer_.push_back(' ');
+        refresh_display(ctx);
+    }
+
+    void evaluate_buffer(UiContext &ctx, bool from_enter)
+    {
+        const std::string trimmed = trim_trailing_spaces(buffer_);
+        if (trimmed.empty()) {
+            announce(ctx, from_enter ? "Enter an equation first" : "Equation empty");
+            return;
+        }
+
+        if (mode_ != CalcAudioMode::Silent) {
+            announce(ctx, "Equation: " + trimmed);
+        }
+
+        const auto outcome = evaluate_calculator_expression_outcome(trimmed);
+        if (!outcome.value.has_value()) {
+            announce(ctx, calculator_eval_error_message(outcome.error));
+            return;
+        }
+
+        finish_evaluation(ctx, trimmed, *outcome.value);
+    }
+
+    void finish_evaluation(UiContext &ctx, const std::string &equation, double value)
+    {
+        const std::string result_text = format_calculator_result(value);
+
+        if (mode_ != CalcAudioMode::Silent) {
+            announce(ctx, "Result: " + result_text);
+        }
+
+        result_line_ = result_text;
+        buffer_ = result_text;
+        refresh_display(ctx);
+        try_emboss_text(ctx, equation + " = " + result_text, true);
+    }
+
+    void try_emboss_text(UiContext &ctx, const std::string &text, bool advance_paper)
+    {
+        const bool emboss_enabled =
+            ctx.output != nullptr && ctx.output->ui_config().embosser_enabled;
+        if (!emboss_enabled || ctx.motion == nullptr || ctx.braille == nullptr) {
+            if (advance_paper) {
+                announce(ctx, "Embossing not available");
+            }
+            return;
+        }
+
+        ctx.motion->emboss_text(text, *ctx.braille);
+        if (advance_paper) {
+            ctx.motion->advance_line();
+        }
+        announce(ctx, advance_paper ? "Embossing result" : "Embossing equation");
+    }
+
     std::string buffer_;
+    std::string result_line_;
     CalcAudioMode mode_ = CalcAudioMode::Char;
 };
 

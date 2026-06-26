@@ -43,6 +43,9 @@ RenderedChrome ChromeRenderer::build(const UiChromeModel &model) const
         if (!model.composer_line.empty()) {
             frame.rows.push_back("> " + model.composer_line);
         }
+        if (!model.result_line.empty()) {
+            frame.rows.push_back("= " + model.result_line);
+        }
         if (!frame.toast.empty()) {
             frame.rows.push_back(frame.toast);
         }

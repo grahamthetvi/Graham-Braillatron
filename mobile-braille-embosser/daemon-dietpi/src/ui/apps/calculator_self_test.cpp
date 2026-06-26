@@ -44,6 +44,14 @@ void expect_invalid(const std::string &expr)
                 ("expected invalid expression: " + expr).c_str());
 }
 
+void expect_error(const std::string &expr, braillatron::ui::CalculatorEvalError expected)
+{
+    const auto outcome = braillatron::ui::evaluate_calculator_expression_outcome(expr);
+    expect_true(!outcome.value.has_value(), ("expected invalid expression: " + expr).c_str());
+    expect_true(outcome.error == expected,
+                ("expected specific eval error for " + expr).c_str());
+}
+
 } // namespace
 
 int main()
@@ -63,7 +71,17 @@ int main()
     expect_invalid("2+");
     expect_invalid("(2+3");
     expect_invalid("1/0");
+    expect_error("1/0", braillatron::ui::CalculatorEvalError::DivideByZero);
+    expect_error("2+", braillatron::ui::CalculatorEvalError::Invalid);
     expect_invalid("2 & 3");
+
+    expect_true(braillatron::ui::calculator_char_spoken('+') == "plus",
+                "plus spoken label");
+    expect_true(braillatron::ui::calculator_char_spoken('3') == "3",
+                "digit spoken label");
+    expect_true(braillatron::ui::calculator_eval_error_message(
+                    braillatron::ui::CalculatorEvalError::DivideByZero) == "Divide by zero",
+                "divide by zero message");
 
     expect_true(braillatron::ui::format_calculator_result(42.0) == "42",
                 "integer result formatting");

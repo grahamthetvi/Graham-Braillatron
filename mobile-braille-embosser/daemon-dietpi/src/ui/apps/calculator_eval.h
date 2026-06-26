@@ -9,6 +9,52 @@
 
 namespace braillatron::ui {
 
+enum class CalculatorEvalError {
+    None,
+    Invalid,
+    DivideByZero,
+};
+
+struct CalculatorEvalOutcome {
+    std::optional<double> value;
+    CalculatorEvalError error = CalculatorEvalError::None;
+};
+
+inline std::string calculator_char_spoken(char ch)
+{
+    switch (ch) {
+    case '+':
+        return "plus";
+    case '-':
+        return "minus";
+    case '*':
+        return "times";
+    case '/':
+        return "divided by";
+    case '(':
+        return "open parenthesis";
+    case ')':
+        return "close parenthesis";
+    case '.':
+        return "point";
+    default:
+        return std::string(1, ch);
+    }
+}
+
+inline std::string calculator_eval_error_message(CalculatorEvalError error)
+{
+    switch (error) {
+    case CalculatorEvalError::DivideByZero:
+        return "Divide by zero";
+    case CalculatorEvalError::Invalid:
+        return "Invalid equation";
+    case CalculatorEvalError::None:
+        return {};
+    }
+    return "Invalid equation";
+}
+
 inline bool is_valid_calculator_char(char ch)
 {
     return std::isdigit(static_cast<unsigned char>(ch)) || ch == '+' || ch == '-' ||
@@ -36,15 +82,34 @@ public:
     {
     }
 
-    std::optional<double> parse()
+    CalculatorEvalOutcome parse_outcome()
     {
         skip_spaces();
         const auto value = parse_expression();
         skip_spaces();
-        if (!value.has_value() || pos_ != input_.size()) {
-            return std::nullopt;
+        if (!value.has_value()) {
+            CalculatorEvalOutcome outcome;
+            outcome.value = std::nullopt;
+            outcome.error = divide_by_zero_ ? CalculatorEvalError::DivideByZero
+                                            : CalculatorEvalError::Invalid;
+            return outcome;
         }
-        return value;
+        if (pos_ != input_.size()) {
+            CalculatorEvalOutcome outcome;
+            outcome.value = std::nullopt;
+            outcome.error = CalculatorEvalError::Invalid;
+            return outcome;
+        }
+        CalculatorEvalOutcome outcome;
+        outcome.value = value;
+        outcome.error = CalculatorEvalError::None;
+        return outcome;
+    }
+
+    std::optional<double> parse()
+    {
+        const CalculatorEvalOutcome outcome = parse_outcome();
+        return outcome.value;
     }
 
 private:
@@ -114,6 +179,7 @@ private:
             }
             if (op == '/') {
                 if (std::abs(*rhs) < 1e-12) {
+                    divide_by_zero_ = true;
                     return std::nullopt;
                 }
                 value = *value / *rhs;
@@ -195,14 +261,20 @@ private:
 
     std::string_view input_;
     size_t pos_ = 0;
+    bool divide_by_zero_ = false;
 };
 
 } // namespace detail
 
-inline std::optional<double> evaluate_calculator_expression(const std::string &input)
+inline CalculatorEvalOutcome evaluate_calculator_expression_outcome(const std::string &input)
 {
     detail::CalculatorExpressionParser parser(input);
-    return parser.parse();
+    return parser.parse_outcome();
+}
+
+inline std::optional<double> evaluate_calculator_expression(const std::string &input)
+{
+    return evaluate_calculator_expression_outcome(input).value;
 }
 
 } // namespace braillatron::ui

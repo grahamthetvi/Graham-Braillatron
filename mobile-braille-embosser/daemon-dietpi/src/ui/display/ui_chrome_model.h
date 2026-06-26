@@ -14,6 +14,7 @@ struct UiChromeModel {
     std::string breadcrumb;
     std::string weather_line;
     std::string composer_line;
+    std::string result_line;
     std::vector<std::string> items;
     size_t focus_index = 0;
     bool at_boundary = false;

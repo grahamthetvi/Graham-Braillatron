@@ -38,6 +38,7 @@ public:
         (void)ctx;
     }
     virtual std::string composer_line() const { return {}; }
+    virtual std::string result_line() const { return {}; }
     virtual void on_connect_event(const braillatron::connect::ConnectEvent &event, UiContext &ctx)
     {
         (void)event;

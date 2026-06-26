@@ -76,6 +76,15 @@ int main()
         return 1;
     }
 
+    model.composer_line = "4+4";
+    model.result_line = "8";
+    const braillatron::ui::RenderedChrome calc_frame = renderer.build(model);
+    if (calc_frame.rows.size() != 3 || calc_frame.rows[0] != "> 4+4" ||
+        calc_frame.rows[1] != "= 8" || calc_frame.rows[2] != "Ready") {
+        std::cerr << "in-app calculator rows mismatch\n";
+        return 1;
+    }
+
     braillatron::ui::ChromeRasterizer rasterizer;
     braillatron::ui::DisplaySurfaceLayout layout =
         braillatron::ui::layout_for_panel(240, 240);
