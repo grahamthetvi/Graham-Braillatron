@@ -77,6 +77,10 @@ public:
     void play_morse(const std::string &text);
     void play_boundary_haptic();
     void request_shutdown();
+    void request_restart();
+    void open_shutdown_confirm();
+    void open_restart_confirm();
+    void push_power_confirm(MenuOverlay &mo);
 
     void sync_chrome(bool at_boundary);
     void rebuild_display_backend();
@@ -103,6 +107,7 @@ private:
     std::vector<MenuItem> build_root_menu();
     std::vector<MenuItem> build_accounts_menu();
     std::vector<MenuItem> build_audio_output_menu();
+    std::vector<MenuItem> build_power_confirm_items(std::function<void(MenuOverlay &)> on_cancel);
 
     UiConfig &ui_config_;
     telemetry::TelemetryConfig telemetry_config_;

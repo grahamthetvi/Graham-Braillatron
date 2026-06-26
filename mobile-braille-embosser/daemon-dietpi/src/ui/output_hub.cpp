@@ -821,6 +821,63 @@ void OutputHub::request_shutdown()
     telemetry::request_clean_shutdown();
 }
 
+void OutputHub::request_restart()
+{
+    emit("Restarting");
+    telemetry::request_clean_reboot();
+}
+
+std::vector<MenuItem> OutputHub::build_power_confirm_items(
+    std::function<void(MenuOverlay &)> on_cancel)
+{
+    return {
+        MenuItem {
+            "Cancel",
+            {},
+            [on_cancel = std::move(on_cancel)](MenuOverlay &mo) { on_cancel(mo); },
+        },
+        MenuItem {
+            "Restart",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                request_restart();
+            },
+        },
+        MenuItem {
+            "Shut down now",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                request_shutdown();
+            },
+        },
+    };
+}
+
+void OutputHub::open_shutdown_confirm()
+{
+    menu_overlay_.set_root_items(
+        build_power_confirm_items([this](MenuOverlay &mo) {
+            (void)mo;
+            on_menu_overlay(false);
+        }),
+        "Power");
+    menu_overlay_.open();
+    announce_focus(menu_overlay_.focused_label(), false);
+    sync_chrome(false);
+}
+
+void OutputHub::open_restart_confirm()
+{
+    open_shutdown_confirm();
+}
+
+void OutputHub::push_power_confirm(MenuOverlay &mo)
+{
+    mo.push_level(build_power_confirm_items([](MenuOverlay &mo) { mo.pop_level(); }), "Power");
+}
+
 MenuOverlay &OutputHub::menu_overlay()
 {
     return menu_overlay_;
@@ -1318,10 +1375,7 @@ std::vector<MenuItem> OutputHub::build_root_menu()
         MenuItem {
             "Power",
             {},
-            [this](MenuOverlay &mo) {
-                (void)mo;
-                request_shutdown();
-            },
+            [this](MenuOverlay &mo) { push_power_confirm(mo); },
         },
     };
 }

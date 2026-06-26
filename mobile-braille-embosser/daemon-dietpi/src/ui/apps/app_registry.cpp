@@ -222,9 +222,8 @@ std::vector<MenuItem> AppRegistry::build_launcher_menu()
         "Power",
         {},
         [this](MenuOverlay &mo) {
-            (void)mo;
             if (ctx_.output != nullptr) {
-                ctx_.output->request_shutdown();
+                ctx_.output->push_power_confirm(mo);
             }
         },
     });

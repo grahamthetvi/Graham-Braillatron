@@ -14,6 +14,21 @@ int scaled_glyph_size(int font_scale)
     return std::max(1, font_scale) * 8;
 }
 
+std::string fit_text_to_width(const std::string &text, int max_pixels, int char_advance)
+{
+    if (max_pixels <= 0 || char_advance <= 0) {
+        return {};
+    }
+    const size_t max_chars = static_cast<size_t>(max_pixels / char_advance);
+    if (text.size() <= max_chars) {
+        return text;
+    }
+    if (max_chars <= 3) {
+        return text.substr(0, max_chars);
+    }
+    return text.substr(0, max_chars - 3) + "...";
+}
+
 int body_start_y(const DisplaySurfaceLayout &layout, const RenderedChrome &frame)
 {
     const int glyph = scaled_glyph_size(layout.font_scale);
@@ -112,7 +127,10 @@ void ChromeRasterizer::render(const RenderedChrome &frame, std::vector<uint16_t>
         }
     };
 
-    const auto draw_text = [&](int x, int y, const std::string &text, uint16_t color) {
+    const int text_budget = static_cast<int>(layout.width) - layout.margin_left - glyph;
+
+    const auto draw_text = [&](int x, int y, std::string text, uint16_t color) {
+        text = fit_text_to_width(text, text_budget - (x - layout.margin_left), char_advance);
         int cursor_x = x;
         for (unsigned char ch : text) {
             if (ch < 32 || ch > 126) {

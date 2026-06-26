@@ -12,4 +12,12 @@ bool request_clean_shutdown()
     return false;
 }
 
+bool request_clean_reboot()
+{
+    const char *shutdown_path = "/usr/sbin/shutdown";
+    const char *argv[] = {"/usr/sbin/shutdown", "-r", "now", nullptr};
+    execv(shutdown_path, const_cast<char *const *>(argv));
+    return false;
+}
+
 } // namespace braillatron::telemetry

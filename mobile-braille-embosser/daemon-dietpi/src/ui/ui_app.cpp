@@ -200,7 +200,7 @@ void UiApp::handle_activate(size_t index, const std::string &label)
     }
 
     if (label == "Power") {
-        output_hub_.request_shutdown();
+        output_hub_.open_shutdown_confirm();
         return;
     }
 
