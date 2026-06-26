@@ -61,6 +61,9 @@ int main()
     expect_eval("3*4", 12);
     expect_eval("15/4", 3.75);
     expect_eval("2*(3+4)", 14);
+    expect_eval("2(5+5)", 20);
+    expect_eval("3(4+1)", 15);
+    expect_eval("(2+3)(4+1)", 25);
     expect_eval("(2+3)*5", 25);
     expect_eval("-5+2", -3);
     expect_eval("2 + 2", 4);

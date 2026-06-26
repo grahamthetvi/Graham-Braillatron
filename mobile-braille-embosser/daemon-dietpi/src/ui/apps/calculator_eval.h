@@ -156,6 +156,16 @@ private:
         return value;
     }
 
+    bool starts_implicit_factor() const
+    {
+        if (pos_ >= input_.size()) {
+            return false;
+        }
+        const char ch = input_[pos_];
+        return ch == '(' || ch == '.' ||
+               std::isdigit(static_cast<unsigned char>(ch));
+    }
+
     std::optional<double> parse_term()
     {
         auto value = parse_factor();
@@ -169,23 +179,31 @@ private:
                 break;
             }
             const char op = input_[pos_];
-            if (op != '*' && op != '/') {
+            if (op == '*' || op == '/') {
+                ++pos_;
+                const auto rhs = parse_factor();
+                if (!rhs.has_value()) {
+                    return std::nullopt;
+                }
+                if (op == '/') {
+                    if (std::abs(*rhs) < 1e-12) {
+                        divide_by_zero_ = true;
+                        return std::nullopt;
+                    }
+                    value = *value / *rhs;
+                } else {
+                    value = *value * *rhs;
+                }
+                continue;
+            }
+            if (!starts_implicit_factor()) {
                 break;
             }
-            ++pos_;
             const auto rhs = parse_factor();
             if (!rhs.has_value()) {
                 return std::nullopt;
             }
-            if (op == '/') {
-                if (std::abs(*rhs) < 1e-12) {
-                    divide_by_zero_ = true;
-                    return std::nullopt;
-                }
-                value = *value / *rhs;
-            } else {
-                value = *value * *rhs;
-            }
+            value = *value * *rhs;
         }
         return value;
     }
