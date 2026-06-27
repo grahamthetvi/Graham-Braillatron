@@ -215,6 +215,16 @@ void AppRegistry::on_control(keyboard::ControlKey key, bool pressed)
         return;
     }
 
+    if (pressed && key == keyboard::ControlKey::Enter && word_buffer_active()) {
+        const std::string word = word_buffer_.commit_word(ctx_.braille_input);
+        if (!word.empty()) {
+            deliver_text(focused_app(), word);
+        }
+        if (ctx_.output != nullptr) {
+            ctx_.output->sync_chrome(false);
+        }
+    }
+
     if (active_inline_ != nullptr) {
         active_inline_->on_control(key, pressed, ctx_);
         return;

@@ -528,9 +528,24 @@ std::string WeatherBackend::set_location(const std::string &city_name)
         return "{\"ok\":false,\"error\":\"city_name required\"}";
     }
 
+    const std::string previous_city = config_.city_name;
+    const double previous_lat = config_.latitude;
+    const double previous_lon = config_.longitude;
+
     config_.city_name = city_name;
     config_.latitude = 0.0;
     config_.longitude = 0.0;
+
+    double latitude = 0.0;
+    double longitude = 0.0;
+    std::string location_name = city_name;
+    if (!resolve_coordinates(latitude, longitude, location_name)) {
+        config_.city_name = previous_city;
+        config_.latitude = previous_lat;
+        config_.longitude = previous_lon;
+        return "{\"ok\":false,\"error\":\"city not found\"}";
+    }
+
     save_config();
     return fetch();
 }

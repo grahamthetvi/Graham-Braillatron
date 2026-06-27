@@ -127,11 +127,26 @@ public:
 
     void on_connect_event(const braillatron::connect::ConnectEvent &event, UiContext &ctx) override
     {
-        if (event.type == "weather.updated" && background_fetch_pending_) {
-            background_fetch_pending_ = false;
-            pending_announce_ = "Forecast updated";
+        if (event.type != "weather.updated" || ctx.connect == nullptr) {
+            return;
         }
-        (void)ctx;
+
+        if (phase_ == Phase::Loading || background_fetch_pending_) {
+            const std::string read_response = ctx.connect->request("weather.read");
+            if (braillatron::connect::json_get_bool(read_response, "ok", false)) {
+                const bool fresh = braillatron::connect::json_get_bool(read_response, "fresh", false);
+                parse_cache_response(read_response, !fresh);
+                phase_ = Phase::Menu;
+                menu_index_ = loading_menu_index_;
+                pending_announce_ = background_fetch_pending_
+                                        ? "Forecast updated"
+                                        : build_ready_announcement(fresh ? "" : "Showing cached forecast");
+            }
+            background_fetch_pending_ = false;
+            return;
+        }
+
+        pending_announce_ = "Forecast updated";
     }
 
 private:
@@ -148,12 +163,14 @@ private:
         temperature_unit_ = "celsius";
         city_buffer_.clear();
         background_fetch_pending_ = false;
+        loading_menu_index_ = 0;
     }
 
     void start_fetch(UiContext &ctx, bool background)
     {
         background_fetch_pending_ = background;
         if (!background) {
+            loading_menu_index_ = menu_index_;
             phase_ = Phase::Loading;
         }
         ctx.connect->request_async("weather.fetch", "", [this, background](const std::string &response) {
@@ -161,6 +178,7 @@ private:
                 if (!background) {
                     pending_announce_ = "Weather fetch failed";
                     phase_ = Phase::Menu;
+                    menu_index_ = loading_menu_index_;
                 }
                 background_fetch_pending_ = false;
                 return;
@@ -168,7 +186,7 @@ private:
             const bool stale = braillatron::connect::json_get_bool(response, "stale", false);
             parse_cache_response(response, stale);
             phase_ = Phase::Menu;
-            menu_index_ = 0;
+            menu_index_ = background ? menu_index_ : loading_menu_index_;
             if (background) {
                 pending_announce_ = "Forecast updated";
             } else {
@@ -228,7 +246,10 @@ private:
                 const std::string precip =
                     braillatron::connect::json_get_string(current_block, "precipitation_probability");
 
-                current_summary_ = format_temperature(temp) + ". " + desc;
+                current_summary_ = format_temperature(temp);
+                if (!desc.empty()) {
+                    current_summary_ += ". " + desc;
+                }
                 if (!humidity.empty() && humidity != "0") {
                     current_summary_ += ". Humidity " + humidity + " percent";
                 }
@@ -354,7 +375,7 @@ private:
         }
         if (menu_index_ == 3) {
             phase_ = Phase::Location;
-            city_buffer_ = location_;
+            city_buffer_.clear();
             announce(ctx, "Enter city name and press Enter. Current location " +
                                (location_.empty() ? "not set" : location_));
             return;
@@ -384,6 +405,7 @@ private:
             return;
         }
 
+        loading_menu_index_ = menu_index_;
         phase_ = Phase::Loading;
         announce(ctx, "Updating location to " + city_buffer_);
         const std::string fields =
@@ -392,12 +414,12 @@ private:
             if (!braillatron::connect::json_get_bool(response, "ok", false)) {
                 pending_announce_ = "Location update failed";
                 phase_ = Phase::Menu;
-                menu_index_ = 3;
+                menu_index_ = loading_menu_index_;
                 return;
             }
             parse_cache_response(response, false);
             phase_ = Phase::Menu;
-            menu_index_ = 3;
+            menu_index_ = loading_menu_index_;
             pending_announce_ = build_ready_announcement("");
         });
     }
@@ -509,6 +531,7 @@ private:
     std::vector<HourlyItem> hourly_;
     std::vector<DailyItem> daily_;
     size_t menu_index_ = 0;
+    size_t loading_menu_index_ = 0;
     size_t list_index_ = 0;
     std::string pending_announce_;
     bool background_fetch_pending_ = false;
