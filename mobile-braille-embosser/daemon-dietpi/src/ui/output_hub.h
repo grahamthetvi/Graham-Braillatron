@@ -91,6 +91,7 @@ public:
 
     MenuOverlay &menu_overlay();
     std::vector<MenuItem> build_settings_menu();
+    std::vector<MenuItem> build_app_settings_menu();
     void rebuild_root_menu();
 
     UiConfig &ui_config() { return ui_config_; }

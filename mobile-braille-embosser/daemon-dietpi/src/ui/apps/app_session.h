@@ -25,6 +25,7 @@ public:
     virtual std::string id() const = 0;
     virtual std::string label() const = 0;
     virtual AppKind kind() const = 0;
+    virtual bool show_in_launcher() const { return kind() == AppKind::Standalone; }
 
     virtual void on_enter(UiContext &ctx) = 0;
     virtual void on_exit(UiContext &ctx) = 0;

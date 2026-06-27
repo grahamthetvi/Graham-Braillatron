@@ -195,6 +195,33 @@ std::string format_day_label(const std::string &iso_date)
     return std::string(day_name) + " " + iso_date;
 }
 
+bool is_americas_country(const std::string &country_code)
+{
+    if (country_code.size() != 2) {
+        return false;
+    }
+    const char c0 = static_cast<char>(std::toupper(static_cast<unsigned char>(country_code[0])));
+    const char c1 = static_cast<char>(std::toupper(static_cast<unsigned char>(country_code[1])));
+    const std::string code = std::string(1, c0) + c1;
+    return code == "US" || code == "CA" || code == "MX";
+}
+
+bool coords_in_americas(double latitude, double longitude)
+{
+    return latitude >= 14.0 && latitude <= 84.0 && longitude >= -168.0 && longitude <= -52.0;
+}
+
+std::string infer_temperature_unit(const std::string &country_code, double latitude, double longitude)
+{
+    if (is_americas_country(country_code)) {
+        return "fahrenheit";
+    }
+    if (!country_code.empty()) {
+        return "celsius";
+    }
+    return coords_in_americas(latitude, longitude) ? "fahrenheit" : "celsius";
+}
+
 } // namespace
 
 WeatherBackend::WeatherBackend(WeatherConfig config, EventWriter *events)
@@ -271,7 +298,7 @@ std::string WeatherBackend::build_forecast_url(double latitude, double longitude
         << "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_"
            "max,uv_index_max"
         << "&forecast_days=" << config_.daily_limit << "&timezone=auto";
-    if (config_.temperature_unit == "fahrenheit") {
+    if (effective_temperature_unit() == "fahrenheit") {
         out << "&temperature_unit=fahrenheit";
     }
     return out.str();
@@ -286,6 +313,7 @@ bool WeatherBackend::resolve_coordinates(double &latitude, double &longitude,
             out << std::fixed << std::setprecision(2) << latitude << ", " << longitude;
             location_name = out.str();
         }
+        resolved_country_code_.clear();
         return true;
     }
 
@@ -316,7 +344,16 @@ bool WeatherBackend::resolve_coordinates(double &latitude, double &longitude,
     if (location_name.empty()) {
         location_name = config_.city_name;
     }
+    resolved_country_code_ = json_get_string(slice, "country_code");
     return true;
+}
+
+std::string WeatherBackend::effective_temperature_unit() const
+{
+    if (config_.temperature_unit != "auto" && !config_.temperature_unit.empty()) {
+        return config_.temperature_unit;
+    }
+    return infer_temperature_unit(resolved_country_code_, config_.latitude, config_.longitude);
 }
 
 std::string WeatherBackend::build_cache_from_api(const std::string &api_json, double latitude,
@@ -378,7 +415,7 @@ std::string WeatherBackend::build_cache_from_api(const std::string &api_json, do
         << "  \"location\": \"" << json_escape(location_name) << "\",\n"
         << "  \"latitude\": " << latitude << ",\n"
         << "  \"longitude\": " << longitude << ",\n"
-        << "  \"temperature_unit\": \"" << json_escape(config_.temperature_unit) << "\",\n"
+        << "  \"temperature_unit\": \"" << json_escape(effective_temperature_unit()) << "\",\n"
         << "  \"current\": {\n"
         << "    \"time\": \"" << json_escape(current_time) << "\",\n"
         << "    \"temperature\": " << current_temp_val << ",\n"
@@ -531,10 +568,12 @@ std::string WeatherBackend::set_location(const std::string &city_name)
     const std::string previous_city = config_.city_name;
     const double previous_lat = config_.latitude;
     const double previous_lon = config_.longitude;
+    const std::string previous_country = resolved_country_code_;
 
     config_.city_name = city_name;
     config_.latitude = 0.0;
     config_.longitude = 0.0;
+    resolved_country_code_.clear();
 
     double latitude = 0.0;
     double longitude = 0.0;
@@ -543,11 +582,35 @@ std::string WeatherBackend::set_location(const std::string &city_name)
         config_.city_name = previous_city;
         config_.latitude = previous_lat;
         config_.longitude = previous_lon;
+        resolved_country_code_ = previous_country;
         return "{\"ok\":false,\"error\":\"city not found\"}";
     }
 
+    config_.latitude = latitude;
+    config_.longitude = longitude;
     save_config();
     return fetch();
+}
+
+std::string WeatherBackend::set_temperature_unit(const std::string &unit)
+{
+    if (!config_.enabled) {
+        return "{\"ok\":false,\"error\":\"weather disabled\"}";
+    }
+    if (unit != "celsius" && unit != "fahrenheit" && unit != "auto") {
+        return "{\"ok\":false,\"error\":\"temperature_unit must be celsius, fahrenheit, or auto\"}";
+    }
+
+    config_.temperature_unit = unit;
+    save_config();
+    return fetch();
+}
+
+std::string WeatherBackend::config_status() const
+{
+    const std::string effective = effective_temperature_unit();
+    return "{\"ok\":true,\"temperature_unit\":\"" + json_escape(config_.temperature_unit) +
+           "\",\"effective_temperature_unit\":\"" + json_escape(effective) + "\"}";
 }
 
 std::string WeatherBackend::alerts() const

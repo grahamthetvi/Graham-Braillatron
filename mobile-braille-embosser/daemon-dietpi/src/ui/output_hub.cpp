@@ -1058,6 +1058,39 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             nullptr
         },
         MenuItem {
+            "App Settings",
+            {},
+            [this](MenuOverlay &mo) { mo.push_level(build_app_settings_menu()); },
+            "Menu Item",
+            nullptr
+        },
+        MenuItem {
+            "Network and Devices",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                menu_overlay_.close();
+                if (app_registry_ != nullptr) {
+                    app_registry_->enter("network");
+                }
+            },
+            "Menu Item",
+            nullptr
+        },
+        MenuItem {
+            "Pair Bluetooth",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                menu_overlay_.close();
+                if (app_registry_ != nullptr) {
+                    app_registry_->enter("bluetooth_setup");
+                }
+            },
+            "Menu Item",
+            nullptr
+        },
+        MenuItem {
             "TTS",
             [this]() { return ui_config_.tts_enabled ? "TTS: On" : "TTS: Off"; },
             [this](MenuOverlay &mo) {
@@ -1291,6 +1324,60 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
     };
 }
 
+std::vector<MenuItem> OutputHub::build_app_settings_menu()
+{
+    return {
+        MenuItem {
+            "Weather temperature",
+            [this]() {
+                if (connect_client_ == nullptr) {
+                    return std::string("Weather temperature: unavailable");
+                }
+                const std::string response = connect_client_->request("weather.config");
+                const std::string effective =
+                    connect::json_get_string(response, "effective_temperature_unit");
+                if (effective == "fahrenheit") {
+                    return std::string("Weather temperature: Fahrenheit");
+                }
+                return std::string("Weather temperature: Celsius");
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                const std::string response = connect_client_->request("weather.config");
+                const std::string effective =
+                    connect::json_get_string(response, "effective_temperature_unit");
+                const std::string next = effective == "fahrenheit" ? "celsius" : "fahrenheit";
+                const std::string fields =
+                    "\"temperature_unit\":\"" + connect::json_escape(next) + "\"";
+                connect_client_->request_async("weather.set_temperature_unit", fields,
+                                               [this, next](const std::string &result) {
+                                                   if (!connect::json_get_bool(result, "ok", false)) {
+                                                       emit("Weather temperature update failed");
+                                                       return;
+                                                   }
+                                                   emit(next == "fahrenheit"
+                                                            ? "Weather temperature: Fahrenheit"
+                                                            : "Weather temperature: Celsius");
+                                               });
+            },
+            "Toggle",
+            [this]() {
+                if (connect_client_ == nullptr) {
+                    return std::string("unavailable");
+                }
+                const std::string response = connect_client_->request("weather.config");
+                const std::string effective =
+                    connect::json_get_string(response, "effective_temperature_unit");
+                return effective == "fahrenheit" ? std::string("Fahrenheit") : std::string("Celsius");
+            }
+        },
+    };
+}
+
 std::vector<MenuItem> OutputHub::build_audio_output_menu()
 {
     const std::string current_mode = platform::read_output_mode();
@@ -1339,19 +1426,6 @@ std::vector<MenuItem> OutputHub::build_audio_output_menu()
             [this](MenuOverlay &mo) {
                 (void)mo;
                 emit(platform::connect_bluetooth());
-            },
-            "Button",
-            nullptr
-        },
-        MenuItem {
-            "Pair Bluetooth speaker",
-            {},
-            [this](MenuOverlay &mo) {
-                (void)mo;
-                menu_overlay_.close();
-                if (app_registry_ != nullptr) {
-                    app_registry_->enter("bluetooth_setup");
-                }
             },
             "Button",
             nullptr

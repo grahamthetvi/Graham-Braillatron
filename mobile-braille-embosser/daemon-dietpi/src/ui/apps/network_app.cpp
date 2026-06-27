@@ -48,6 +48,7 @@ public:
     std::string id() const override { return "network"; }
     std::string label() const override { return "Network and Devices"; }
     AppKind kind() const override { return AppKind::Standalone; }
+    bool show_in_launcher() const override { return false; }
 
     void on_enter(UiContext &ctx) override
     {

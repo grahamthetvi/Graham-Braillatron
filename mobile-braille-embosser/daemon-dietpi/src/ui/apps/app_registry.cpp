@@ -16,7 +16,7 @@ std::vector<const AppSession *> standalone_apps_sorted(
 {
     std::vector<const AppSession *> standalone;
     for (const auto &app : apps) {
-        if (app->kind() == AppKind::Standalone) {
+        if (app->kind() == AppKind::Standalone && app->show_in_launcher()) {
             standalone.push_back(app.get());
         }
     }

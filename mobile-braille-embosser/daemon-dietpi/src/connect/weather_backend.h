@@ -16,7 +16,9 @@ public:
     std::string fetch();
     std::string read_cache() const;
     std::string status() const;
+    std::string config_status() const;
     std::string set_location(const std::string &city_name);
+    std::string set_temperature_unit(const std::string &unit);
     std::string alerts() const;
     void poll_refresh(uint64_t now_sec);
 
@@ -26,6 +28,7 @@ public:
 
 private:
     bool resolve_coordinates(double &latitude, double &longitude, std::string &location_name);
+    std::string effective_temperature_unit() const;
     std::string build_forecast_url(double latitude, double longitude) const;
     std::string curl_fetch(const std::string &url) const;
     bool save_cache(const std::string &cache_json) const;
@@ -39,6 +42,7 @@ private:
 
     WeatherConfig config_;
     EventWriter *events_ = nullptr;
+    std::string resolved_country_code_;
     uint64_t last_poll_refresh_sec_ = 0;
     std::string last_alert_signature_;
 };

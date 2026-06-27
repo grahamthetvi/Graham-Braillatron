@@ -1,5 +1,6 @@
 #include "../../connect/connect_client.h"
 #include "../../connect/json_utils.h"
+#include "app_registry.h"
 #include "app_session.h"
 #include "app_util.h"
 #include "ui_context.h"
@@ -31,12 +32,22 @@ struct DailyItem {
     std::string uv_index;
 };
 
-enum class Phase {
-    Loading,
-    Menu,
+enum class NavKind {
     Current,
     Hourly,
     Daily,
+    Location,
+    Refresh,
+};
+
+struct NavItem {
+    NavKind kind = NavKind::Current;
+    size_t index = 0;
+};
+
+enum class Phase {
+    Loading,
+    Browse,
     Location,
 };
 
@@ -59,10 +70,7 @@ public:
         if (braillatron::connect::json_get_bool(read_response, "ok", false)) {
             const bool fresh = braillatron::connect::json_get_bool(read_response, "fresh", false);
             parse_cache_response(read_response, !fresh);
-            phase_ = Phase::Menu;
-            menu_index_ = 0;
-            pending_announce_ =
-                build_ready_announcement(fresh ? "" : "Showing cached forecast");
+            enter_browse(fresh ? "" : "Showing cached forecast");
             start_background_fetch(ctx);
             return;
         }
@@ -83,6 +91,11 @@ public:
         if (!pending_announce_.empty()) {
             announce(ctx, pending_announce_);
             pending_announce_.clear();
+            if (announce_nav_after_ready_) {
+                announce_nav_after_ready_ = false;
+                announce_nav_item(ctx);
+            }
+            return;
         }
     }
 
@@ -105,17 +118,8 @@ public:
         }
 
         switch (phase_) {
-        case Phase::Menu:
-            handle_menu(key, ctx);
-            break;
-        case Phase::Current:
-            handle_current(key, ctx);
-            break;
-        case Phase::Hourly:
-            handle_hourly(key, ctx);
-            break;
-        case Phase::Daily:
-            handle_daily(key, ctx);
+        case Phase::Browse:
+            handle_browse(key, ctx);
             break;
         case Phase::Location:
             handle_location(key, ctx);
@@ -136,11 +140,8 @@ public:
             if (braillatron::connect::json_get_bool(read_response, "ok", false)) {
                 const bool fresh = braillatron::connect::json_get_bool(read_response, "fresh", false);
                 parse_cache_response(read_response, !fresh);
-                phase_ = Phase::Menu;
-                menu_index_ = loading_menu_index_;
-                pending_announce_ = background_fetch_pending_
-                                        ? "Forecast updated"
-                                        : build_ready_announcement(fresh ? "" : "Showing cached forecast");
+                enter_browse(background_fetch_pending_ ? "Forecast updated"
+                                                       : build_ready_suffix(fresh ? "" : "Showing cached forecast"));
             }
             background_fetch_pending_ = false;
             return;
@@ -157,46 +158,58 @@ private:
         current_summary_.clear();
         hourly_.clear();
         daily_.clear();
-        menu_index_ = 0;
-        list_index_ = 0;
+        nav_items_.clear();
+        nav_index_ = 0;
         pending_announce_.clear();
         temperature_unit_ = "celsius";
         city_buffer_.clear();
         background_fetch_pending_ = false;
-        loading_menu_index_ = 0;
+        loading_nav_index_ = 0;
+        announce_nav_after_ready_ = false;
     }
 
     void start_fetch(UiContext &ctx, bool background)
     {
         background_fetch_pending_ = background;
         if (!background) {
-            loading_menu_index_ = menu_index_;
+            loading_nav_index_ = nav_index_;
             phase_ = Phase::Loading;
         }
         ctx.connect->request_async("weather.fetch", "", [this, background](const std::string &response) {
             if (!braillatron::connect::json_get_bool(response, "ok", false)) {
                 if (!background) {
                     pending_announce_ = "Weather fetch failed";
-                    phase_ = Phase::Menu;
-                    menu_index_ = loading_menu_index_;
+                    phase_ = Phase::Browse;
+                    nav_index_ = loading_nav_index_;
                 }
                 background_fetch_pending_ = false;
                 return;
             }
             const bool stale = braillatron::connect::json_get_bool(response, "stale", false);
             parse_cache_response(response, stale);
-            phase_ = Phase::Menu;
-            menu_index_ = background ? menu_index_ : loading_menu_index_;
             if (background) {
                 pending_announce_ = "Forecast updated";
             } else {
-                pending_announce_ = build_ready_announcement(stale ? "Showing cached forecast" : "");
+                enter_browse(stale ? "Showing cached forecast" : "");
             }
             background_fetch_pending_ = false;
         });
     }
 
     void start_background_fetch(UiContext &ctx) { start_fetch(ctx, true); }
+
+    void enter_browse(const std::string &suffix)
+    {
+        phase_ = Phase::Browse;
+        rebuild_nav_items();
+        if (nav_index_ >= nav_items_.size()) {
+            nav_index_ = 0;
+        }
+        pending_announce_ = build_ready_announcement(suffix);
+        announce_nav_after_ready_ = !nav_items_.empty();
+    }
+
+    std::string build_ready_suffix(const std::string &suffix) const { return suffix; }
 
     std::string build_ready_announcement(const std::string &suffix) const
     {
@@ -205,8 +218,33 @@ private:
         if (!suffix.empty()) {
             message += ". " + suffix;
         }
-        message += ". Current, Hourly, Daily, Location, or Refresh. Press Enter.";
+        message += ". Use up and down to browse. Press Enter on Location or Refresh.";
+        if (!nav_items_.empty()) {
+            message += " " + nav_position_label();
+        }
         return message;
+    }
+
+    std::string nav_position_label() const
+    {
+        if (nav_items_.empty()) {
+            return {};
+        }
+        return std::to_string(nav_index_ + 1) + " of " + std::to_string(nav_items_.size());
+    }
+
+    void rebuild_nav_items()
+    {
+        nav_items_.clear();
+        nav_items_.push_back({NavKind::Current, 0});
+        for (size_t i = 0; i < hourly_.size(); ++i) {
+            nav_items_.push_back({NavKind::Hourly, i});
+        }
+        for (size_t i = 0; i < daily_.size(); ++i) {
+            nav_items_.push_back({NavKind::Daily, i});
+        }
+        nav_items_.push_back({NavKind::Location, 0});
+        nav_items_.push_back({NavKind::Refresh, 0});
     }
 
     void parse_cache_response(const std::string &response, bool stale)
@@ -215,7 +253,8 @@ private:
         const size_t cache_pos = response.find("\"cache\":{");
         if (cache_pos == std::string::npos) {
             pending_announce_ = "Weather data unavailable";
-            phase_ = Phase::Menu;
+            phase_ = Phase::Browse;
+            rebuild_nav_items();
             return;
         }
 
@@ -312,6 +351,8 @@ private:
                 }
             }
         }
+
+        rebuild_nav_items();
     }
 
     std::string format_temperature(const std::string &value) const
@@ -325,22 +366,32 @@ private:
         return value + " degrees Celsius";
     }
 
-    void handle_menu(keyboard::ControlKey key, UiContext &ctx)
+    void handle_browse(keyboard::ControlKey key, UiContext &ctx)
     {
-        static const std::vector<std::string> kMenuItems = {"Current", "Hourly", "Daily",
-                                                            "Location", "Refresh"};
+        if (nav_items_.empty()) {
+            if (key == keyboard::ControlKey::Backspace && ctx.registry != nullptr) {
+                ctx.registry->exit();
+            }
+            return;
+        }
 
         if (key == keyboard::ControlKey::DpadUp) {
-            if (menu_index_ > 0) {
-                --menu_index_;
-                announce(ctx, kMenuItems[menu_index_]);
+            if (nav_index_ > 0) {
+                --nav_index_;
+                announce_nav_item(ctx);
             }
             return;
         }
         if (key == keyboard::ControlKey::DpadDown) {
-            if (menu_index_ + 1 < kMenuItems.size()) {
-                ++menu_index_;
-                announce(ctx, kMenuItems[menu_index_]);
+            if (nav_index_ + 1 < nav_items_.size()) {
+                ++nav_index_;
+                announce_nav_item(ctx);
+            }
+            return;
+        }
+        if (key == keyboard::ControlKey::Backspace) {
+            if (ctx.registry != nullptr) {
+                ctx.registry->exit();
             }
             return;
         }
@@ -348,42 +399,20 @@ private:
             return;
         }
 
-        if (menu_index_ == 0) {
-            phase_ = Phase::Current;
-            announce(ctx, current_summary_.empty() ? "No current conditions" : current_summary_);
-            return;
-        }
-        if (menu_index_ == 1) {
-            if (hourly_.empty()) {
-                announce(ctx, "No hourly forecast");
-                return;
-            }
-            phase_ = Phase::Hourly;
-            list_index_ = 0;
-            announce_hourly(ctx);
-            return;
-        }
-        if (menu_index_ == 2) {
-            if (daily_.empty()) {
-                announce(ctx, "No daily forecast");
-                return;
-            }
-            phase_ = Phase::Daily;
-            list_index_ = 0;
-            announce_daily(ctx);
-            return;
-        }
-        if (menu_index_ == 3) {
+        const NavItem &item = nav_items_[nav_index_];
+        if (item.kind == NavKind::Location) {
             phase_ = Phase::Location;
             city_buffer_.clear();
             announce(ctx, "Enter city name and press Enter. Current location " +
                                (location_.empty() ? "not set" : location_));
             return;
         }
-        if (menu_index_ == 4) {
+        if (item.kind == NavKind::Refresh) {
             announce(ctx, "Refreshing forecast");
             start_fetch(ctx, false);
+            return;
         }
+        announce_nav_item(ctx);
     }
 
     void handle_location(keyboard::ControlKey key, UiContext &ctx)
@@ -392,8 +421,8 @@ private:
             if (!city_buffer_.empty()) {
                 city_buffer_.pop_back();
             } else {
-                phase_ = Phase::Menu;
-                announce(ctx, "Weather menu. Location selected");
+                phase_ = Phase::Browse;
+                announce(ctx, "Location. " + nav_position_label());
             }
             return;
         }
@@ -405,7 +434,7 @@ private:
             return;
         }
 
-        loading_menu_index_ = menu_index_;
+        loading_nav_index_ = nav_index_;
         phase_ = Phase::Loading;
         announce(ctx, "Updating location to " + city_buffer_);
         const std::string fields =
@@ -413,84 +442,57 @@ private:
         ctx.connect->request_async("weather.set_location", fields, [this](const std::string &response) {
             if (!braillatron::connect::json_get_bool(response, "ok", false)) {
                 pending_announce_ = "Location update failed";
-                phase_ = Phase::Menu;
-                menu_index_ = loading_menu_index_;
+                phase_ = Phase::Browse;
+                nav_index_ = loading_nav_index_;
                 return;
             }
             parse_cache_response(response, false);
-            phase_ = Phase::Menu;
-            menu_index_ = loading_menu_index_;
-            pending_announce_ = build_ready_announcement("");
+            enter_browse("");
         });
     }
 
-    void handle_current(keyboard::ControlKey key, UiContext &ctx)
+    void announce_nav_item(UiContext &ctx)
     {
-        if (key == keyboard::ControlKey::Backspace) {
-            phase_ = Phase::Menu;
-            announce(ctx, "Weather menu. Current selected");
+        if (nav_items_.empty()) {
+            announce(ctx, "No forecast data");
+            return;
         }
+
+        const NavItem &item = nav_items_[nav_index_];
+        std::string message;
+        switch (item.kind) {
+        case NavKind::Current:
+            message = "Current. ";
+            message += current_summary_.empty() ? "No current conditions" : current_summary_;
+            break;
+        case NavKind::Hourly:
+            if (item.index >= hourly_.size()) {
+                message = "No hourly forecast";
+                break;
+            }
+            message = hourly_message(hourly_[item.index]);
+            break;
+        case NavKind::Daily:
+            if (item.index >= daily_.size()) {
+                message = "No daily forecast";
+                break;
+            }
+            message = daily_message(daily_[item.index]);
+            break;
+        case NavKind::Location:
+            message = "Location. ";
+            message += location_.empty() ? "Not set. Press Enter to change." : location_ + ". Press Enter to change.";
+            break;
+        case NavKind::Refresh:
+            message = "Refresh forecast. Press Enter to refresh.";
+            break;
+        }
+        message += ". " + nav_position_label();
+        announce(ctx, message);
     }
 
-    void handle_hourly(keyboard::ControlKey key, UiContext &ctx)
+    std::string hourly_message(const HourlyItem &item) const
     {
-        if (key == keyboard::ControlKey::Backspace) {
-            phase_ = Phase::Menu;
-            announce(ctx, "Weather menu. Hourly selected");
-            return;
-        }
-        if (key == keyboard::ControlKey::DpadUp) {
-            if (list_index_ > 0) {
-                --list_index_;
-                announce_hourly(ctx);
-            }
-            return;
-        }
-        if (key == keyboard::ControlKey::DpadDown) {
-            if (list_index_ + 1 < hourly_.size()) {
-                ++list_index_;
-                announce_hourly(ctx);
-            }
-            return;
-        }
-        if (key == keyboard::ControlKey::Enter) {
-            announce_hourly(ctx);
-        }
-    }
-
-    void handle_daily(keyboard::ControlKey key, UiContext &ctx)
-    {
-        if (key == keyboard::ControlKey::Backspace) {
-            phase_ = Phase::Menu;
-            announce(ctx, "Weather menu. Daily selected");
-            return;
-        }
-        if (key == keyboard::ControlKey::DpadUp) {
-            if (list_index_ > 0) {
-                --list_index_;
-                announce_daily(ctx);
-            }
-            return;
-        }
-        if (key == keyboard::ControlKey::DpadDown) {
-            if (list_index_ + 1 < daily_.size()) {
-                ++list_index_;
-                announce_daily(ctx);
-            }
-            return;
-        }
-        if (key == keyboard::ControlKey::Enter) {
-            announce_daily(ctx);
-        }
-    }
-
-    void announce_hourly(UiContext &ctx)
-    {
-        if (hourly_.empty()) {
-            announce(ctx, "No hourly forecast");
-            return;
-        }
-        const HourlyItem &item = hourly_[list_index_];
         std::string message =
             item.label + ". " + format_temperature(item.temperature) + ". " + item.description;
         if (!item.precip_probability.empty() && item.precip_probability != "0") {
@@ -502,16 +504,11 @@ private:
         if (!item.uv_index.empty() && item.uv_index != "0") {
             message += ". UV " + item.uv_index;
         }
-        announce(ctx, message);
+        return message;
     }
 
-    void announce_daily(UiContext &ctx)
+    std::string daily_message(const DailyItem &item) const
     {
-        if (daily_.empty()) {
-            announce(ctx, "No daily forecast");
-            return;
-        }
-        const DailyItem &item = daily_[list_index_];
         std::string message = item.label + ". High " + format_temperature(item.temp_max) + ". Low " +
                               format_temperature(item.temp_min) + ". " + item.description;
         if (!item.precip_probability.empty() && item.precip_probability != "0") {
@@ -520,7 +517,7 @@ private:
         if (!item.uv_index.empty() && item.uv_index != "0") {
             message += ". UV " + item.uv_index;
         }
-        announce(ctx, message);
+        return message;
     }
 
     Phase phase_ = Phase::Loading;
@@ -530,11 +527,12 @@ private:
     std::string city_buffer_;
     std::vector<HourlyItem> hourly_;
     std::vector<DailyItem> daily_;
-    size_t menu_index_ = 0;
-    size_t loading_menu_index_ = 0;
-    size_t list_index_ = 0;
+    std::vector<NavItem> nav_items_;
+    size_t nav_index_ = 0;
+    size_t loading_nav_index_ = 0;
     std::string pending_announce_;
     bool background_fetch_pending_ = false;
+    bool announce_nav_after_ready_ = false;
 };
 
 } // namespace

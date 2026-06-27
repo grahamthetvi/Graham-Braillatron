@@ -210,6 +210,12 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     if (cmd == "weather.set_location") {
         return weather_.set_location(json_get_string(request, "city_name"));
     }
+    if (cmd == "weather.set_temperature_unit") {
+        return weather_.set_temperature_unit(json_get_string(request, "temperature_unit"));
+    }
+    if (cmd == "weather.config") {
+        return weather_.config_status();
+    }
     if (cmd == "weather.alerts") {
         return weather_.alerts();
     }
@@ -370,6 +376,9 @@ std::string ConnectService::handle_request(const std::string &request)
                 result = weather_ptr->fetch();
             } else if (cmd == "weather.set_location") {
                 result = weather_ptr->set_location(json_get_string(request, "city_name"));
+            } else if (cmd == "weather.set_temperature_unit") {
+                result = weather_ptr->set_temperature_unit(
+                    json_get_string(request, "temperature_unit"));
             } else if (cmd == "podcasts.refresh") {
                 result = podcasts_ptr->refresh();
             } else if (cmd == "podcasts.download") {

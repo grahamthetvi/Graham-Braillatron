@@ -54,7 +54,7 @@ struct WeatherConfig {
     std::string config_path;
     uint32_t cache_ttl_sec = 1800;
     uint32_t refresh_interval_sec = 1800;
-    std::string temperature_unit = "celsius";
+    std::string temperature_unit = "auto";
     uint32_t hourly_limit = 24;
     uint32_t daily_limit = 7;
     bool alerts_enabled = true;
