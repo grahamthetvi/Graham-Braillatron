@@ -2,14 +2,18 @@
 
 #include "../../keyboard/chord_engine.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace braillatron::connect {
 struct ConnectEvent;
 }
 
 namespace braillatron::ui {
+
+class LayeredBrowseList;
 
 struct UiContext;
 
@@ -41,6 +45,11 @@ public:
     }
     virtual std::string composer_line() const { return {}; }
     virtual std::string result_line() const { return {}; }
+    virtual bool browse_list_active() const { return false; }
+    virtual const LayeredBrowseList *browse_list() const { return nullptr; }
+    virtual std::vector<std::string> browse_items() const { return {}; }
+    virtual size_t browse_focus_index() const { return 0; }
+    virtual std::string browse_breadcrumb() const { return {}; }
     virtual void on_connect_event(const braillatron::connect::ConnectEvent &event, UiContext &ctx)
     {
         (void)event;

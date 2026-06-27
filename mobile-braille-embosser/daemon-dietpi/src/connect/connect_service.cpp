@@ -204,6 +204,18 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     if (cmd == "weather.read") {
         return weather_.read_cache();
     }
+    if (cmd == "weather.list") {
+        return weather_.list_cities();
+    }
+    if (cmd == "weather.select") {
+        const std::string slot = json_get_string(request, "slot");
+        return weather_.select_city(slot.empty() ? 0 : static_cast<size_t>(std::stoul(slot)));
+    }
+    if (cmd == "weather.set_city") {
+        const std::string slot = json_get_string(request, "slot");
+        return weather_.set_city(slot.empty() ? 0 : static_cast<size_t>(std::stoul(slot)),
+                                 json_get_string(request, "city_name"));
+    }
     if (cmd == "weather.status") {
         return weather_.status();
     }
@@ -376,6 +388,10 @@ std::string ConnectService::handle_request(const std::string &request)
                 result = weather_ptr->fetch();
             } else if (cmd == "weather.set_location") {
                 result = weather_ptr->set_location(json_get_string(request, "city_name"));
+            } else if (cmd == "weather.set_city") {
+                const std::string slot = json_get_string(request, "slot");
+                result = weather_ptr->set_city(slot.empty() ? 0 : static_cast<size_t>(std::stoul(slot)),
+                                               json_get_string(request, "city_name"));
             } else if (cmd == "weather.set_temperature_unit") {
                 result = weather_ptr->set_temperature_unit(
                     json_get_string(request, "temperature_unit"));

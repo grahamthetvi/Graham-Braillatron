@@ -5,6 +5,7 @@
 #include "subprocess.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
@@ -288,7 +289,31 @@ std::string WeatherBackend::curl_fetch(const std::string &url) const
     return run_command(cmd);
 }
 
-std::string WeatherBackend::build_forecast_url(double latitude, double longitude) const
+std::string WeatherBackend::slot_cache_path(size_t slot) const
+{
+    static const char kSlotLetters[] = {'a', 'b', 'c'};
+    if (slot >= WeatherConfig::kMaxCities) {
+        slot = 0;
+    }
+    if (!config_.cache_dir.empty()) {
+        return config_.cache_dir + "/cache_" + kSlotLetters[slot] + ".json";
+    }
+    if (slot == 0 && !config_.cache_path.empty()) {
+        return config_.cache_path;
+    }
+    return "/data/braillatron/weather/cache_" + std::string(1, kSlotLetters[slot]) + ".json";
+}
+
+void WeatherBackend::sync_legacy_fields_from_active()
+{
+    const WeatherCitySlot &active = config_.cities[config_.active_slot];
+    config_.city_name = active.city_name;
+    config_.latitude = active.latitude;
+    config_.longitude = active.longitude;
+}
+
+std::string WeatherBackend::build_forecast_url(double latitude, double longitude,
+                                               const std::string &temperature_unit) const
 {
     std::ostringstream out;
     out << config_.provider_url << "?latitude=" << latitude << "&longitude=" << longitude
@@ -298,30 +323,31 @@ std::string WeatherBackend::build_forecast_url(double latitude, double longitude
         << "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_"
            "max,uv_index_max"
         << "&forecast_days=" << config_.daily_limit << "&timezone=auto";
-    if (effective_temperature_unit() == "fahrenheit") {
+    if (temperature_unit == "fahrenheit") {
         out << "&temperature_unit=fahrenheit";
     }
     return out.str();
 }
 
-bool WeatherBackend::resolve_coordinates(double &latitude, double &longitude,
-                                        std::string &location_name)
+bool WeatherBackend::resolve_coordinates(WeatherCitySlot &city, std::string &location_name,
+                                         std::string &country_code)
 {
+    double latitude = city.latitude;
+    double longitude = city.longitude;
     if (latitude != 0.0 || longitude != 0.0) {
         if (location_name.empty()) {
             std::ostringstream out;
             out << std::fixed << std::setprecision(2) << latitude << ", " << longitude;
             location_name = out.str();
         }
-        resolved_country_code_.clear();
         return true;
     }
 
-    if (config_.city_name.empty()) {
+    if (city.city_name.empty()) {
         return false;
     }
 
-    const std::string url = config_.geocoding_url + "?name=" + url_encode(config_.city_name) +
+    const std::string url = config_.geocoding_url + "?name=" + url_encode(city.city_name) +
                             "&count=1&language=en&format=json";
     const std::string response = curl_fetch(url);
     if (response.empty() || response.find("\"results\"") == std::string::npos) {
@@ -342,24 +368,36 @@ bool WeatherBackend::resolve_coordinates(double &latitude, double &longitude,
     longitude = std::stod(result_lon);
     location_name = json_get_string(slice, "name");
     if (location_name.empty()) {
-        location_name = config_.city_name;
+        location_name = city.city_name;
     }
-    resolved_country_code_ = json_get_string(slice, "country_code");
+    country_code = json_get_string(slice, "country_code");
+    city.latitude = latitude;
+    city.longitude = longitude;
     return true;
 }
 
-std::string WeatherBackend::effective_temperature_unit() const
+std::string WeatherBackend::effective_temperature_unit_for(const std::string &country_code,
+                                                           double latitude,
+                                                           double longitude) const
 {
     if (config_.temperature_unit != "auto" && !config_.temperature_unit.empty()) {
         return config_.temperature_unit;
     }
-    return infer_temperature_unit(resolved_country_code_, config_.latitude, config_.longitude);
+    return infer_temperature_unit(country_code, latitude, longitude);
 }
 
 std::string WeatherBackend::build_cache_from_api(const std::string &api_json, double latitude,
                                                  double longitude,
-                                                 const std::string &location_name)
+                                                 const std::string &location_name, size_t slot)
 {
+    if (slot >= WeatherConfig::kMaxCities) {
+        slot = 0;
+    }
+
+    const WeatherCitySlot &city = config_.cities[slot];
+    const std::string temperature_unit = effective_temperature_unit_for(
+        resolved_country_codes_[slot], city.latitude, city.longitude);
+
     const std::string current_block = find_json_object(api_json, "current");
 
     const std::string current_time = json_get_string(current_block, "time");
@@ -411,11 +449,12 @@ std::string WeatherBackend::build_cache_from_api(const std::string &api_json, do
 
     std::ostringstream out;
     out << "{\n"
+        << "  \"slot\": " << slot << ",\n"
         << "  \"fetched_at\": " << unix_now_sec() << ",\n"
         << "  \"location\": \"" << json_escape(location_name) << "\",\n"
         << "  \"latitude\": " << latitude << ",\n"
         << "  \"longitude\": " << longitude << ",\n"
-        << "  \"temperature_unit\": \"" << json_escape(effective_temperature_unit()) << "\",\n"
+        << "  \"temperature_unit\": \"" << json_escape(temperature_unit) << "\",\n"
         << "  \"current\": {\n"
         << "    \"time\": \"" << json_escape(current_time) << "\",\n"
         << "    \"temperature\": " << current_temp_val << ",\n"
@@ -469,8 +508,10 @@ std::string WeatherBackend::build_cache_from_api(const std::string &api_json, do
     out << "\n  ]\n}\n";
 
     const std::string cache_json = out.str();
-    save_cache(cache_json);
-    evaluate_and_emit_alerts(cache_json);
+    save_cache(cache_json, slot);
+    if (slot == config_.active_slot) {
+        evaluate_and_emit_alerts(cache_json);
+    }
     return cache_json;
 }
 
@@ -483,28 +524,30 @@ bool WeatherBackend::save_config() const
     return true;
 }
 
-bool WeatherBackend::save_cache(const std::string &cache_json) const
+bool WeatherBackend::save_cache(const std::string &cache_json, size_t slot) const
 {
-    const size_t slash = config_.cache_path.find_last_of('/');
+    const std::string cache_path = slot_cache_path(slot);
+    const size_t slash = cache_path.find_last_of('/');
     if (slash != std::string::npos) {
-        ensure_directory(config_.cache_path.substr(0, slash));
+        ensure_directory(cache_path.substr(0, slash));
     }
-    const std::string temp_path = config_.cache_path + ".part";
+    const std::string temp_path = cache_path + ".part";
     std::ofstream out(temp_path);
     if (!out.is_open()) {
         return false;
     }
     out << cache_json;
     out.close();
-    return atomic_move_file(temp_path, config_.cache_path);
+    return atomic_move_file(temp_path, cache_path);
 }
 
-std::string WeatherBackend::load_cache_file() const
+std::string WeatherBackend::load_cache_file(size_t slot) const
 {
-    if (!file_exists(config_.cache_path)) {
+    const std::string cache_path = slot_cache_path(slot);
+    if (!file_exists(cache_path)) {
         return {};
     }
-    std::ifstream in(config_.cache_path);
+    std::ifstream in(cache_path);
     if (!in.is_open()) {
         return {};
     }
@@ -529,67 +572,159 @@ uint64_t WeatherBackend::cache_age_sec(const std::string &cache_json) const
     return now > fetched ? now - fetched : 0;
 }
 
+std::string WeatherBackend::fetch_slot(size_t slot)
+{
+    if (slot >= WeatherConfig::kMaxCities) {
+        return "{\"ok\":false,\"error\":\"invalid city slot\"}";
+    }
+
+    WeatherCitySlot &city = config_.cities[slot];
+    std::string location_name = city.city_name;
+    std::string country_code = resolved_country_codes_[slot];
+    if (!resolve_coordinates(city, location_name, country_code)) {
+        return "{\"ok\":false,\"error\":\"location not configured for slot\"}";
+    }
+    resolved_country_codes_[slot] = country_code;
+    sync_legacy_fields_from_active();
+    save_config();
+
+    const std::string temperature_unit =
+        effective_temperature_unit_for(country_code, city.latitude, city.longitude);
+    const std::string api_json =
+        curl_fetch(build_forecast_url(city.latitude, city.longitude, temperature_unit));
+    if (api_json.empty() || api_json.find("\"current\"") == std::string::npos) {
+        const std::string cached = load_cache_file(slot);
+        if (!cached.empty()) {
+            return "{\"ok\":true,\"stale\":true,\"slot\":" + std::to_string(slot) +
+                   ",\"cache\":" + cached + "}";
+        }
+        return "{\"ok\":false,\"error\":\"forecast fetch failed\"}";
+    }
+
+    const std::string cache_json =
+        build_cache_from_api(api_json, city.latitude, city.longitude, location_name, slot);
+    if (slot == config_.active_slot) {
+        emit_weather_updated(cache_json);
+    }
+    return "{\"ok\":true,\"stale\":false,\"slot\":" + std::to_string(slot) +
+           ",\"cache\":" + cache_json + "}";
+}
+
 std::string WeatherBackend::fetch()
 {
     if (!config_.enabled) {
         return "{\"ok\":false,\"error\":\"weather disabled\"}";
     }
-
-    double latitude = config_.latitude;
-    double longitude = config_.longitude;
-    std::string location_name = config_.city_name;
-    if (!resolve_coordinates(latitude, longitude, location_name)) {
-        return "{\"ok\":false,\"error\":\"location not configured. Set latitude/longitude or city_name in weather.conf\"}";
-    }
-
-    const std::string api_json = curl_fetch(build_forecast_url(latitude, longitude));
-    if (api_json.empty() || api_json.find("\"current\"") == std::string::npos) {
-        const std::string cached = load_cache_file();
-        if (!cached.empty()) {
-            return "{\"ok\":true,\"stale\":true,\"cache\":" + cached + "}";
-        }
-        return "{\"ok\":false,\"error\":\"forecast fetch failed\"}";
-    }
-
-    const std::string cache_json = build_cache_from_api(api_json, latitude, longitude, location_name);
-    emit_weather_updated(cache_json);
-    return "{\"ok\":true,\"stale\":false,\"cache\":" + cache_json + "}";
+    return fetch_slot(config_.active_slot);
 }
 
-std::string WeatherBackend::set_location(const std::string &city_name)
+std::string WeatherBackend::list_cities() const
+{
+    static const char *kLabels[] = {"City A", "City B", "City C"};
+    std::ostringstream out;
+    out << "{\"ok\":true,\"active_slot\":" << config_.active_slot << ",\"cities\":[";
+    for (size_t i = 0; i < WeatherConfig::kMaxCities; ++i) {
+        if (i > 0) {
+            out << ',';
+        }
+        const WeatherCitySlot &city = config_.cities[i];
+        const std::string cache = load_cache_file(i);
+        std::string summary;
+        if (!cache.empty()) {
+            const std::string location = json_get_string(cache, "location");
+            const size_t current_key = cache.find("\"current\"");
+            if (current_key != std::string::npos) {
+                const size_t current_pos = cache.find('{', current_key);
+                if (current_pos != std::string::npos) {
+                    const size_t current_end = cache.find('}', current_pos);
+                    const std::string current_block =
+                        cache.substr(current_pos, current_end - current_pos + 1);
+                    const std::string temp = json_get_string(current_block, "temperature");
+                    const std::string desc =
+                        json_get_string(current_block, "weather_description");
+                    if (!location.empty()) {
+                        summary = location;
+                    }
+                    if (!temp.empty()) {
+                        if (!summary.empty()) {
+                            summary += ": ";
+                        }
+                        summary += temp;
+                        const std::string unit = json_get_string(cache, "temperature_unit");
+                        summary += (unit == "fahrenheit") ? " F" : " C";
+                    }
+                    if (!desc.empty()) {
+                        summary += " " + desc;
+                    }
+                }
+            }
+        }
+
+        out << "\n  {\"slot\":" << i << ",\"label\":\"" << kLabels[i] << "\",\"name\":\""
+            << json_escape(city.city_name) << "\",\"configured\":"
+            << (city.city_name.empty() ? "false" : "true") << ",\"summary\":\""
+            << json_escape(summary) << "\"}";
+    }
+    out << "\n]}";
+    return out.str();
+}
+
+std::string WeatherBackend::select_city(size_t slot)
+{
+    if (slot >= WeatherConfig::kMaxCities) {
+        return "{\"ok\":false,\"error\":\"invalid city slot\"}";
+    }
+    config_.active_slot = slot;
+    sync_legacy_fields_from_active();
+    save_config();
+    const std::string cached = load_cache_file(slot);
+    if (cached.empty()) {
+        return "{\"ok\":true,\"active_slot\":" + std::to_string(slot) + ",\"cached\":false}";
+    }
+    return "{\"ok\":true,\"active_slot\":" + std::to_string(slot) +
+           ",\"fresh\":" + std::string(cache_is_fresh(cached) ? "true" : "false") +
+           ",\"cache\":" + cached + "}";
+}
+
+std::string WeatherBackend::set_city(size_t slot, const std::string &city_name)
 {
     if (!config_.enabled) {
         return "{\"ok\":false,\"error\":\"weather disabled\"}";
+    }
+    if (slot >= WeatherConfig::kMaxCities) {
+        return "{\"ok\":false,\"error\":\"invalid city slot\"}";
     }
     if (city_name.empty()) {
         return "{\"ok\":false,\"error\":\"city_name required\"}";
     }
 
-    const std::string previous_city = config_.city_name;
-    const double previous_lat = config_.latitude;
-    const double previous_lon = config_.longitude;
-    const std::string previous_country = resolved_country_code_;
+    WeatherCitySlot previous = config_.cities[slot];
+    std::string previous_country = resolved_country_codes_[slot];
 
-    config_.city_name = city_name;
-    config_.latitude = 0.0;
-    config_.longitude = 0.0;
-    resolved_country_code_.clear();
+    config_.cities[slot].city_name = city_name;
+    config_.cities[slot].latitude = 0.0;
+    config_.cities[slot].longitude = 0.0;
+    resolved_country_codes_[slot].clear();
 
-    double latitude = 0.0;
-    double longitude = 0.0;
+    WeatherCitySlot &city = config_.cities[slot];
     std::string location_name = city_name;
-    if (!resolve_coordinates(latitude, longitude, location_name)) {
-        config_.city_name = previous_city;
-        config_.latitude = previous_lat;
-        config_.longitude = previous_lon;
-        resolved_country_code_ = previous_country;
+    std::string country_code;
+    if (!resolve_coordinates(city, location_name, country_code)) {
+        config_.cities[slot] = previous;
+        resolved_country_codes_[slot] = previous_country;
         return "{\"ok\":false,\"error\":\"city not found\"}";
     }
 
-    config_.latitude = latitude;
-    config_.longitude = longitude;
+    resolved_country_codes_[slot] = country_code;
+    config_.active_slot = slot;
+    sync_legacy_fields_from_active();
     save_config();
-    return fetch();
+    return fetch_slot(slot);
+}
+
+std::string WeatherBackend::set_location(const std::string &city_name)
+{
+    return set_city(config_.active_slot, city_name);
 }
 
 std::string WeatherBackend::set_temperature_unit(const std::string &unit)
@@ -608,14 +743,16 @@ std::string WeatherBackend::set_temperature_unit(const std::string &unit)
 
 std::string WeatherBackend::config_status() const
 {
-    const std::string effective = effective_temperature_unit();
+    const WeatherCitySlot &active = config_.cities[config_.active_slot];
+    const std::string effective = effective_temperature_unit_for(
+        resolved_country_codes_[config_.active_slot], active.latitude, active.longitude);
     return "{\"ok\":true,\"temperature_unit\":\"" + json_escape(config_.temperature_unit) +
            "\",\"effective_temperature_unit\":\"" + json_escape(effective) + "\"}";
 }
 
 std::string WeatherBackend::alerts() const
 {
-    const std::string cached = load_cache_file();
+    const std::string cached = load_cache_file(config_.active_slot);
     if (cached.empty()) {
         return "{\"ok\":true,\"alerts\":[]}";
     }
@@ -633,7 +770,7 @@ void WeatherBackend::poll_refresh(uint64_t now_sec)
     }
     last_poll_refresh_sec_ = now_sec;
 
-    const std::string cached = load_cache_file();
+    const std::string cached = load_cache_file(config_.active_slot);
     if (!cached.empty() && cache_is_fresh(cached)) {
         return;
     }
@@ -768,17 +905,18 @@ void WeatherBackend::emit_weather_updated(const std::string &cache_json)
 
 std::string WeatherBackend::read_cache() const
 {
-    const std::string cached = load_cache_file();
+    const std::string cached = load_cache_file(config_.active_slot);
     if (cached.empty()) {
         return "{\"ok\":false,\"error\":\"no cached forecast\"}";
     }
     return "{\"ok\":true,\"fresh\":" + std::string(cache_is_fresh(cached) ? "true" : "false") +
-           ",\"cache\":" + cached + "}";
+           ",\"active_slot\":" + std::to_string(config_.active_slot) + ",\"cache\":" + cached +
+           "}";
 }
 
 std::string WeatherBackend::status() const
 {
-    const std::string cached = load_cache_file();
+    const std::string cached = load_cache_file(config_.active_slot);
     if (cached.empty()) {
         return "{\"ok\":true,\"cached\":false}";
     }

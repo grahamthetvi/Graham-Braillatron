@@ -41,6 +41,40 @@ RenderedChrome ChromeRenderer::build(const UiChromeModel &model) const
         model.at_boundary && !model.items.empty() && model.focus_index + 1 >= model.items.size();
 
     if (model.surface == ChromeSurface::InApp) {
+        if (!model.items.empty()) {
+            const size_t focus = std::min(model.focus_index, model.items.size() - 1);
+            size_t scroll = 0;
+            int body_rows = max_body_rows_;
+            if (!model.composer_line.empty()) {
+                frame.rows.push_back("> " + model.composer_line);
+                --body_rows;
+            }
+            if (!model.result_line.empty()) {
+                frame.rows.push_back("= " + model.result_line);
+                --body_rows;
+            }
+            if (body_rows <= 0) {
+                frame.focus_row = kNoFocus;
+                return frame;
+            }
+            if (focus >= static_cast<size_t>(body_rows)) {
+                scroll = focus - static_cast<size_t>(body_rows - 1);
+            }
+            const size_t end = std::min(model.items.size(), scroll + static_cast<size_t>(body_rows));
+            for (size_t i = scroll; i < end; ++i) {
+                frame.rows.push_back(model.items[i]);
+            }
+            if (focus >= scroll && focus < end) {
+                const size_t prefix_rows = frame.rows.size() - (end - scroll);
+                frame.focus_row = focus - scroll + prefix_rows;
+            } else {
+                frame.focus_row = kNoFocus;
+            }
+            if (!frame.toast.empty()) {
+                frame.rows.push_back(frame.toast);
+            }
+            return frame;
+        }
         if (!model.composer_line.empty()) {
             frame.rows.push_back("> " + model.composer_line);
         }

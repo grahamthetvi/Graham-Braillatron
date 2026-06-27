@@ -12,6 +12,7 @@
 #include "../display/remote_display_config.h"
 #include "display/chrome_rasterizer.h"
 #include "apps/app_registry.h"
+#include "layered_browse_list.h"
 #include "../keyboard/focus_nav.h"
 
 extern "C" {
@@ -458,6 +459,15 @@ void OutputHub::announce_focus(const std::string &label, bool at_boundary)
     }
 }
 
+void OutputHub::announce_list_focus(const AccessibleElement &element, bool at_boundary)
+{
+    announce_element(element);
+    sync_chrome(at_boundary);
+    if (at_boundary && ui_config_.haptics_enabled && haptics_ != nullptr) {
+        haptics_->play_effect(ui_config_.boundary_haptic_effect);
+    }
+}
+
 void OutputHub::announce_spoken(const std::string &message)
 {
     emit(message, false);
@@ -819,17 +829,30 @@ void OutputHub::sync_chrome(bool at_boundary)
             chrome_model_.breadcrumb.clear();
         }
     } else if (app_registry_ != nullptr && app_registry_->active() != nullptr) {
+        const AppSession *app = app_registry_->active();
         chrome_model_.surface = ChromeSurface::InApp;
-        chrome_model_.header = app_registry_->active()->label();
-        chrome_model_.composer_line = app_registry_->active()->composer_line();
+        chrome_model_.header = app->label();
+        chrome_model_.composer_line = app->composer_line();
         const std::string preview = app_registry_->chord_preview();
         if (!preview.empty()) {
             chrome_model_.composer_line += preview;
         }
-        chrome_model_.result_line = app_registry_->active()->result_line();
-        chrome_model_.items.clear();
-        chrome_model_.focus_index = 0;
-        chrome_model_.breadcrumb.clear();
+        chrome_model_.result_line = app->result_line();
+        chrome_model_.breadcrumb = app->browse_breadcrumb();
+
+        if (app->browse_list_active()) {
+            const LayeredBrowseList *browse = app->browse_list();
+            if (browse != nullptr) {
+                chrome_model_.items = browse->labels();
+                chrome_model_.focus_index = browse->focus_index();
+            } else {
+                chrome_model_.items.clear();
+                chrome_model_.focus_index = 0;
+            }
+        } else {
+            chrome_model_.items = app->browse_items();
+            chrome_model_.focus_index = app->browse_focus_index();
+        }
     } else if (focus_nav_ != nullptr) {
         chrome_model_.surface = ChromeSurface::Home;
         chrome_model_.header = "Braillatron";

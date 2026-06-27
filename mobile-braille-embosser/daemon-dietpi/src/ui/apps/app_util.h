@@ -14,4 +14,11 @@ inline void announce(UiContext &ctx, const std::string &msg)
     }
 }
 
+inline void sync_chrome(UiContext &ctx, bool at_boundary = false)
+{
+    if (ctx.output != nullptr) {
+        ctx.output->sync_chrome(at_boundary);
+    }
+}
+
 } // namespace braillatron::ui

@@ -1,6 +1,7 @@
 #include "../../connect/connect_client.h"
 #include "../../connect/json_utils.h"
 #include "../../documents/library_store.h"
+#include "../layered_browse_list.h"
 #include "app_session.h"
 #include "app_util.h"
 #include "ui_context.h"
@@ -52,9 +53,10 @@ public:
         reset_session();
         store_.refresh();
         phase_ = Phase::Menu;
-        menu_index_ = 0;
+        rebuild_browse();
         announce(ctx, "Library. Local books or search public domain.");
         announce_menu(ctx);
+        sync_chrome(ctx);
     }
 
     void on_exit(UiContext &ctx) override
@@ -72,7 +74,9 @@ public:
             local_books_ = store_.books();
             if (phase_ == Phase::Downloading) {
                 phase_ = Phase::LocalList;
-                local_index_ = 0;
+                browse_.set_focus(0);
+                rebuild_browse();
+                sync_chrome(ctx);
                 if (local_books_.empty()) {
                     pending_announce_ = "Download complete but book not found locally.";
                 } else {
@@ -84,6 +88,12 @@ public:
         if (!pending_announce_.empty()) {
             announce(ctx, pending_announce_);
             pending_announce_.clear();
+            sync_chrome(ctx);
+            if (phase_ == Phase::LocalList && !local_books_.empty()) {
+                announce_local_book(ctx);
+            } else if (phase_ == Phase::SearchResults && !search_results_.empty()) {
+                announce_search_result(ctx);
+            }
         }
     }
 
@@ -91,12 +101,27 @@ public:
 
     bool buffers_braille_words() const override { return phase_ == Phase::SearchQuery; }
 
-    void on_text(const std::string &text, UiContext &) override
+    std::string composer_line() const override
+    {
+        if (phase_ == Phase::SearchQuery) {
+            return query_buffer_;
+        }
+        return {};
+    }
+
+    std::vector<std::string> browse_items() const override { return browse_.labels(); }
+
+    size_t browse_focus_index() const override { return browse_.focus_index(); }
+
+    std::string browse_breadcrumb() const override { return breadcrumb_; }
+
+    void on_text(const std::string &text, UiContext &ctx) override
     {
         if (phase_ != Phase::SearchQuery || text.empty()) {
             return;
         }
         query_buffer_ += text;
+        sync_chrome(ctx);
     }
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
@@ -120,8 +145,7 @@ public:
             break;
         case Phase::Downloading:
             if (key == keyboard::ControlKey::Backspace) {
-                phase_ = Phase::Menu;
-                announce_menu(ctx);
+                enter_menu(ctx);
             }
             break;
         case Phase::Reading:
@@ -134,11 +158,10 @@ private:
     void reset_session()
     {
         phase_ = Phase::Menu;
-        menu_index_ = 0;
+        browse_.clear();
+        breadcrumb_.clear();
         local_books_.clear();
-        local_index_ = 0;
         search_results_.clear();
-        search_index_ = 0;
         query_buffer_.clear();
         pending_announce_.clear();
         pending_refresh_local_ = false;
@@ -147,22 +170,106 @@ private:
         section_index_ = 0;
     }
 
+    void enter_menu(UiContext &ctx)
+    {
+        phase_ = Phase::Menu;
+        rebuild_browse();
+        sync_chrome(ctx);
+        announce_menu(ctx);
+    }
+
+    void rebuild_browse()
+    {
+        std::vector<std::string> items;
+        switch (phase_) {
+        case Phase::Menu:
+            breadcrumb_.clear();
+            items = {"Local library", "Search public domain"};
+            browse_.set_items(std::move(items), 0);
+            break;
+        case Phase::LocalList:
+            breadcrumb_ = "Local library";
+            items.reserve(local_books_.size());
+            for (const auto &book : local_books_) {
+                items.push_back(format_book_label(book));
+            }
+            browse_.set_items(std::move(items), 0);
+            break;
+        case Phase::SearchQuery:
+            breadcrumb_ = "Search public domain";
+            browse_.clear();
+            break;
+        case Phase::SearchResults:
+            breadcrumb_ = "Search results";
+            items.reserve(search_results_.size());
+            for (const auto &result : search_results_) {
+                items.push_back(format_search_label(result));
+            }
+            browse_.set_items(std::move(items), 0);
+            break;
+        case Phase::Reading:
+            breadcrumb_ = current_book_ != nullptr ? current_book_->title : "Reading";
+            if (document_ != nullptr) {
+                items.reserve(document_->sections().size());
+                for (const auto &section : document_->sections()) {
+                    items.push_back(section.title.empty() ? "Untitled section" : section.title);
+                }
+            }
+            browse_.set_items(std::move(items), static_cast<size_t>(section_index_));
+            break;
+        default:
+            breadcrumb_.clear();
+            browse_.clear();
+            break;
+        }
+    }
+
+    static std::string format_book_label(const documents::LibraryBook &book)
+    {
+        if (book.author.empty()) {
+            return book.title;
+        }
+        return book.title + " - " + book.author;
+    }
+
+    static std::string format_search_label(const SearchResult &result)
+    {
+        if (result.author.empty()) {
+            return result.title;
+        }
+        return result.title + " - " + result.author;
+    }
+
     void announce_menu(UiContext &ctx)
     {
-        const std::string choice =
-            menu_index_ == 0 ? "Local library" : "Search public domain";
-        announce(ctx, choice + ". Press Enter to select.");
+        if (browse_.empty()) {
+            announce(ctx, "Library menu.");
+            return;
+        }
+        announce(ctx, browse_.focused_label() + ". " + browse_.position_label() +
+                           ". Press Enter to select.");
+    }
+
+    void announce_browse_item(UiContext &ctx, const std::string &detail)
+    {
+        if (browse_.empty()) {
+            announce(ctx, detail);
+            return;
+        }
+        announce(ctx, detail + ". " + browse_.position_label());
     }
 
     void handle_menu(keyboard::ControlKey key, UiContext &ctx)
     {
-        if (key == keyboard::ControlKey::DpadUp && menu_index_ > 0) {
-            --menu_index_;
+        if (key == keyboard::ControlKey::DpadUp) {
+            const bool at_boundary = !browse_.move_up();
+            sync_chrome(ctx, at_boundary);
             announce_menu(ctx);
             return;
         }
-        if (key == keyboard::ControlKey::DpadDown && menu_index_ < 1) {
-            ++menu_index_;
+        if (key == keyboard::ControlKey::DpadDown) {
+            const bool at_boundary = !browse_.move_down();
+            sync_chrome(ctx, at_boundary);
             announce_menu(ctx);
             return;
         }
@@ -170,14 +277,15 @@ private:
             return;
         }
 
-        if (menu_index_ == static_cast<int>(MenuChoice::LocalLibrary)) {
+        if (browse_.focus_index() == static_cast<size_t>(MenuChoice::LocalLibrary)) {
             local_books_ = store_.books();
             if (local_books_.empty()) {
                 announce(ctx, "No local books. Search public domain or import EPUB via LocalSend.");
                 return;
             }
             phase_ = Phase::LocalList;
-            local_index_ = 0;
+            rebuild_browse();
+            sync_chrome(ctx);
             announce_local_book(ctx);
             return;
         }
@@ -188,30 +296,33 @@ private:
         }
         phase_ = Phase::SearchQuery;
         query_buffer_.clear();
+        rebuild_browse();
+        sync_chrome(ctx);
         announce(ctx, "Search public domain. Type title or author and press Enter.");
     }
 
     void handle_local_list(keyboard::ControlKey key, UiContext &ctx)
     {
         if (key == keyboard::ControlKey::Backspace) {
-            phase_ = Phase::Menu;
-            announce_menu(ctx);
+            enter_menu(ctx);
             return;
         }
-        if (key == keyboard::ControlKey::DpadUp && local_index_ > 0) {
-            --local_index_;
+        if (key == keyboard::ControlKey::DpadUp) {
+            const bool at_boundary = !browse_.move_up();
+            sync_chrome(ctx, at_boundary);
             announce_local_book(ctx);
             return;
         }
-        if (key == keyboard::ControlKey::DpadDown && local_index_ + 1 < local_books_.size()) {
-            ++local_index_;
+        if (key == keyboard::ControlKey::DpadDown) {
+            const bool at_boundary = !browse_.move_down();
+            sync_chrome(ctx, at_boundary);
             announce_local_book(ctx);
             return;
         }
         if (key != keyboard::ControlKey::Enter || local_books_.empty()) {
             return;
         }
-        open_book(ctx, local_books_[local_index_]);
+        open_book(ctx, local_books_[browse_.focus_index()]);
     }
 
     void handle_search_query(keyboard::ControlKey key, UiContext &ctx)
@@ -219,10 +330,10 @@ private:
         if (key == keyboard::ControlKey::Backspace) {
             if (!query_buffer_.empty()) {
                 query_buffer_.pop_back();
+                sync_chrome(ctx);
                 return;
             }
-            phase_ = Phase::Menu;
-            announce_menu(ctx);
+            enter_menu(ctx);
             return;
         }
         if (key != keyboard::ControlKey::Enter) {
@@ -239,7 +350,8 @@ private:
 
         phase_ = Phase::SearchResults;
         search_results_.clear();
-        search_index_ = 0;
+        rebuild_browse();
+        sync_chrome(ctx);
         announce(ctx, "Searching for " + query_buffer_ + ".");
 
         ctx.connect->request_async(
@@ -251,19 +363,23 @@ private:
     {
         if (key == keyboard::ControlKey::Backspace) {
             phase_ = Phase::SearchQuery;
+            rebuild_browse();
+            sync_chrome(ctx);
             announce(ctx, "Search. " + query_buffer_);
             return;
         }
         if (search_results_.empty()) {
             return;
         }
-        if (key == keyboard::ControlKey::DpadUp && search_index_ > 0) {
-            --search_index_;
+        if (key == keyboard::ControlKey::DpadUp) {
+            const bool at_boundary = !browse_.move_up();
+            sync_chrome(ctx, at_boundary);
             announce_search_result(ctx);
             return;
         }
-        if (key == keyboard::ControlKey::DpadDown && search_index_ + 1 < search_results_.size()) {
-            ++search_index_;
+        if (key == keyboard::ControlKey::DpadDown) {
+            const bool at_boundary = !browse_.move_down();
+            sync_chrome(ctx, at_boundary);
             announce_search_result(ctx);
             return;
         }
@@ -276,8 +392,10 @@ private:
             return;
         }
 
-        const SearchResult &result = search_results_[search_index_];
+        const SearchResult &result = search_results_[browse_.focus_index()];
         phase_ = Phase::Downloading;
+        rebuild_browse();
+        sync_chrome(ctx);
         announce(ctx, "Downloading " + result.title + ".");
 
         ctx.connect->request_async(
@@ -290,6 +408,7 @@ private:
                 } else {
                     pending_announce_ = "Download failed for " + result.title + ".";
                     phase_ = Phase::SearchResults;
+                    rebuild_browse();
                 }
             });
     }
@@ -298,6 +417,8 @@ private:
     {
         if (document_ == nullptr || document_->sections().empty()) {
             phase_ = Phase::LocalList;
+            rebuild_browse();
+            sync_chrome(ctx);
             return;
         }
 
@@ -305,18 +426,26 @@ private:
         if (key == keyboard::ControlKey::Backspace) {
             save_reading_progress();
             phase_ = Phase::LocalList;
+            rebuild_browse();
+            sync_chrome(ctx);
             announce_local_book(ctx);
             return;
         }
-        if (key == keyboard::ControlKey::DpadUp && section_index_ > 0) {
-            --section_index_;
-            announce_section(ctx);
-            save_reading_progress();
+        if (key == keyboard::ControlKey::DpadUp) {
+            if (section_index_ > 0) {
+                --section_index_;
+                browse_.set_focus(static_cast<size_t>(section_index_));
+                sync_chrome(ctx);
+                announce_section(ctx);
+                save_reading_progress();
+            }
             return;
         }
         if (key == keyboard::ControlKey::DpadDown &&
             section_index_ + 1 < static_cast<int>(sections.size())) {
             ++section_index_;
+            browse_.set_focus(static_cast<size_t>(section_index_));
+            sync_chrome(ctx);
             announce_section(ctx);
             save_reading_progress();
             return;
@@ -332,6 +461,7 @@ private:
         if (!braillatron::connect::json_get_bool(response, "ok", false)) {
             pending_announce_ = "Search failed.";
             phase_ = Phase::SearchQuery;
+            rebuild_browse();
             return;
         }
 
@@ -350,11 +480,12 @@ private:
         if (search_results_.empty()) {
             pending_announce_ = "No results for " + query_buffer_ + ".";
             phase_ = Phase::SearchQuery;
+            rebuild_browse();
             return;
         }
 
-        search_index_ = 0;
         phase_ = Phase::SearchResults;
+        rebuild_browse();
         pending_announce_ = "Found " + std::to_string(search_results_.size()) + " results. 1. " +
                             search_results_.front().title + " by " + search_results_.front().author;
     }
@@ -381,6 +512,8 @@ private:
         }
 
         phase_ = Phase::Reading;
+        rebuild_browse();
+        sync_chrome(ctx);
         announce(ctx, "Reading " + book.title +
                            (book.author.empty() ? "" : " by " + book.author) + ".");
         announce_section(ctx);
@@ -388,18 +521,14 @@ private:
 
     void announce_local_book(UiContext &ctx)
     {
-        const documents::LibraryBook &book = local_books_[local_index_];
-        announce(ctx, "Book " + std::to_string(local_index_ + 1) + " of " +
-                           std::to_string(local_books_.size()) + ". " + book.title +
-                           (book.author.empty() ? "" : " by " + book.author));
+        const documents::LibraryBook &book = local_books_[browse_.focus_index()];
+        announce_browse_item(ctx, book.title + (book.author.empty() ? "" : " by " + book.author));
     }
 
     void announce_search_result(UiContext &ctx)
     {
-        const SearchResult &result = search_results_[search_index_];
-        announce(ctx, "Result " + std::to_string(search_index_ + 1) + " of " +
-                           std::to_string(search_results_.size()) + ". " + result.title + " by " +
-                           result.author);
+        const SearchResult &result = search_results_[browse_.focus_index()];
+        announce_browse_item(ctx, result.title + " by " + result.author);
     }
 
     void announce_section(UiContext &ctx)
@@ -413,8 +542,7 @@ private:
             return;
         }
         const documents::BookSection &section = sections[static_cast<size_t>(section_index_)];
-        announce(ctx, "Section " + std::to_string(section_index_ + 1) + " of " +
-                           std::to_string(sections.size()) + ". " + section.title + ".");
+        announce_browse_item(ctx, "Section " + section.title);
     }
 
     void read_section_text(UiContext &ctx)
@@ -450,11 +578,10 @@ private:
     documents::LibraryStoreConfig config_;
     documents::LibraryStore store_;
     Phase phase_ = Phase::Menu;
-    int menu_index_ = 0;
+    LayeredBrowseList browse_;
+    std::string breadcrumb_;
     std::vector<documents::LibraryBook> local_books_;
-    size_t local_index_ = 0;
     std::vector<SearchResult> search_results_;
-    size_t search_index_ = 0;
     std::string query_buffer_;
     std::string pending_announce_;
     bool pending_refresh_local_ = false;

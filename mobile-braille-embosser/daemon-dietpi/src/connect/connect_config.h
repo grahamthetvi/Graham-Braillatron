@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -43,11 +44,22 @@ struct MusicConfig {
                                            ".m4a",  ".aac",  ".wav",  ".wma"};
 };
 
+struct WeatherCitySlot {
+    std::string city_name;
+    double latitude = 0.0;
+    double longitude = 0.0;
+};
+
 struct WeatherConfig {
+    static constexpr size_t kMaxCities = 3;
+
     bool enabled = true;
     double latitude = 0.0;
     double longitude = 0.0;
     std::string city_name;
+    std::array<WeatherCitySlot, kMaxCities> cities {};
+    size_t active_slot = 0;
+    std::string cache_dir = "/data/braillatron/weather";
     std::string provider_url = "https://api.open-meteo.com/v1/forecast";
     std::string geocoding_url = "https://geocoding-api.open-meteo.com/v1/search";
     std::string cache_path = "/data/braillatron/weather/cache.json";

@@ -172,6 +172,26 @@ MusicConfig load_music_config(const std::string &path)
     return config;
 }
 
+void finalize_weather_config(WeatherConfig &config)
+{
+    if (config.cities[0].city_name.empty() && !config.city_name.empty()) {
+        config.cities[0].city_name = config.city_name;
+    }
+    if (config.cities[0].latitude == 0.0 && config.cities[0].longitude == 0.0 &&
+        (config.latitude != 0.0 || config.longitude != 0.0)) {
+        config.cities[0].latitude = config.latitude;
+        config.cities[0].longitude = config.longitude;
+    }
+    if (config.active_slot >= WeatherConfig::kMaxCities) {
+        config.active_slot = 0;
+    }
+
+    const WeatherCitySlot &active = config.cities[config.active_slot];
+    config.city_name = active.city_name;
+    config.latitude = active.latitude;
+    config.longitude = active.longitude;
+}
+
 WeatherConfig load_weather_config(const std::string &path)
 {
     WeatherConfig config;
@@ -185,6 +205,16 @@ WeatherConfig load_weather_config(const std::string &path)
                                 cfg.longitude = std::stod(value);
                             } else if (key == "city_name") {
                                 cfg.city_name = value;
+                            } else if (key == "city_a") {
+                                cfg.cities[0].city_name = value;
+                            } else if (key == "city_b") {
+                                cfg.cities[1].city_name = value;
+                            } else if (key == "city_c") {
+                                cfg.cities[2].city_name = value;
+                            } else if (key == "active_slot") {
+                                cfg.active_slot = static_cast<size_t>(std::stoul(value));
+                            } else if (key == "cache_dir") {
+                                cfg.cache_dir = value;
                             } else if (key == "provider_url") {
                                 cfg.provider_url = value;
                             } else if (key == "geocoding_url") {
@@ -213,29 +243,38 @@ WeatherConfig load_weather_config(const std::string &path)
                             }
                         },
                         config);
+    finalize_weather_config(config);
     return config;
 }
 
 void save_weather_config(const std::string &path, const WeatherConfig &config)
 {
+    WeatherConfig normalized = config;
+    finalize_weather_config(normalized);
+
     std::ostringstream stream;
     stream << "# Open-Meteo weather (no API key required)\n";
-    stream << "enabled=" << (config.enabled ? "true" : "false") << "\n";
-    stream << "latitude=" << config.latitude << "\n";
-    stream << "longitude=" << config.longitude << "\n";
-    stream << "city_name=" << config.city_name << "\n";
-    stream << "provider_url=" << config.provider_url << "\n";
-    stream << "geocoding_url=" << config.geocoding_url << "\n";
-    stream << "cache_path=" << config.cache_path << "\n";
-    stream << "cache_ttl_sec=" << config.cache_ttl_sec << "\n";
-    stream << "refresh_interval_sec=" << config.refresh_interval_sec << "\n";
-    stream << "temperature_unit=" << config.temperature_unit << "\n";
-    stream << "hourly_limit=" << config.hourly_limit << "\n";
-    stream << "daily_limit=" << config.daily_limit << "\n";
-    stream << "alerts_enabled=" << (config.alerts_enabled ? "true" : "false") << "\n";
-    stream << "alert_wind_threshold_kmh=" << config.alert_wind_threshold_kmh << "\n";
-    stream << "alert_precip_threshold_pct=" << config.alert_precip_threshold_pct << "\n";
-    stream << "alert_uv_threshold=" << config.alert_uv_threshold << "\n";
+    stream << "enabled=" << (normalized.enabled ? "true" : "false") << "\n";
+    stream << "city_a=" << normalized.cities[0].city_name << "\n";
+    stream << "city_b=" << normalized.cities[1].city_name << "\n";
+    stream << "city_c=" << normalized.cities[2].city_name << "\n";
+    stream << "active_slot=" << normalized.active_slot << "\n";
+    stream << "cache_dir=" << normalized.cache_dir << "\n";
+    stream << "latitude=" << normalized.latitude << "\n";
+    stream << "longitude=" << normalized.longitude << "\n";
+    stream << "city_name=" << normalized.city_name << "\n";
+    stream << "provider_url=" << normalized.provider_url << "\n";
+    stream << "geocoding_url=" << normalized.geocoding_url << "\n";
+    stream << "cache_path=" << normalized.cache_path << "\n";
+    stream << "cache_ttl_sec=" << normalized.cache_ttl_sec << "\n";
+    stream << "refresh_interval_sec=" << normalized.refresh_interval_sec << "\n";
+    stream << "temperature_unit=" << normalized.temperature_unit << "\n";
+    stream << "hourly_limit=" << normalized.hourly_limit << "\n";
+    stream << "daily_limit=" << normalized.daily_limit << "\n";
+    stream << "alerts_enabled=" << (normalized.alerts_enabled ? "true" : "false") << "\n";
+    stream << "alert_wind_threshold_kmh=" << normalized.alert_wind_threshold_kmh << "\n";
+    stream << "alert_precip_threshold_pct=" << normalized.alert_precip_threshold_pct << "\n";
+    stream << "alert_uv_threshold=" << normalized.alert_uv_threshold << "\n";
 
     const std::string tmp_path = path + ".tmp";
     {

@@ -196,6 +196,7 @@ UI_OBJS := \
 	$(DISPLAY_OBJS) \
 	src/ui/backends/backend.o \
 	src/ui/menu_overlay.o \
+	src/ui/layered_browse_list.o \
 	src/ui/output_hub.o \
 	src/ui/timer_service.o \
 	src/ui/ui_app.o \
@@ -243,6 +244,7 @@ UI_TEST_OBJS := \
 	$(DISPLAY_OBJS) \
 	src/ui/backends/backend.o \
 	src/ui/menu_overlay.o \
+	src/ui/layered_browse_list.o \
 	src/ui/output_hub.o \
 	src/ui/timer_service.o \
 	src/connect/connect_client.o \
