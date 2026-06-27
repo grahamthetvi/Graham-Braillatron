@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <vector>
 
 namespace braillatron::connect {
 
@@ -221,6 +222,210 @@ std::string infer_temperature_unit(const std::string &country_code, double latit
         return "celsius";
     }
     return coords_in_americas(latitude, longitude) ? "fahrenheit" : "celsius";
+}
+
+std::string trim_copy(const std::string &value)
+{
+    size_t start = 0;
+    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+        ++start;
+    }
+    size_t end = value.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return value.substr(start, end - start);
+}
+
+std::string fold_key(const std::string &value)
+{
+    std::string out;
+    out.reserve(value.size());
+    for (unsigned char ch : value) {
+        if (std::isalnum(ch)) {
+            out += static_cast<char>(std::tolower(ch));
+        }
+    }
+    return out;
+}
+
+std::string lookup_alias(const std::string &key,
+                         const std::vector<std::pair<const char *, const char *>> &table)
+{
+    const std::string folded = fold_key(key);
+    for (const auto &entry : table) {
+        if (folded == fold_key(entry.first)) {
+            return entry.second;
+        }
+    }
+    return {};
+}
+
+std::string normalize_country(const std::string &country)
+{
+    const std::string trimmed = trim_copy(country);
+    if (trimmed.empty()) {
+        return {};
+    }
+
+    static const std::vector<std::pair<const char *, const char *>> kCountries = {
+        {"us", "United States"},
+        {"usa", "United States"},
+        {"u.s.", "United States"},
+        {"u.s.a.", "United States"},
+        {"america", "United States"},
+        {"united states of america", "United States"},
+        {"uk", "United Kingdom"},
+        {"u.k.", "United Kingdom"},
+        {"gb", "United Kingdom"},
+        {"great britain", "United Kingdom"},
+        {"england", "United Kingdom"},
+        {"ca", "Canada"},
+        {"can", "Canada"},
+        {"au", "Australia"},
+        {"aus", "Australia"},
+        {"nz", "New Zealand"},
+        {"de", "Germany"},
+        {"fr", "France"},
+        {"es", "Spain"},
+        {"it", "Italy"},
+        {"mx", "Mexico"},
+        {"br", "Brazil"},
+        {"in", "India"},
+        {"jp", "Japan"},
+    };
+
+    const std::string matched = lookup_alias(trimmed, kCountries);
+    if (!matched.empty()) {
+        return matched;
+    }
+    return trimmed;
+}
+
+bool country_hint_is_us_or_ca(const std::string &country)
+{
+    const std::string normalized = normalize_country(country);
+    const std::string folded = fold_key(normalized);
+    return folded == "unitedstates" || folded == "canada" || fold_key(country) == "us" ||
+           fold_key(country) == "usa" || fold_key(country) == "ca" || fold_key(country) == "can";
+}
+
+std::string normalize_region(const std::string &region, const std::string &country_hint)
+{
+    const std::string trimmed = trim_copy(region);
+    if (trimmed.empty()) {
+        return {};
+    }
+
+    static const std::vector<std::pair<const char *, const char *>> kUsStates = {
+        {"al", "Alabama"},       {"alabama", "Alabama"},     {"ak", "Alaska"},
+        {"alaska", "Alaska"},    {"az", "Arizona"},          {"arizona", "Arizona"},
+        {"ar", "Arkansas"},      {"arkansas", "Arkansas"},   {"ca", "California"},
+        {"calif", "California"}, {"cali", "California"},    {"california", "California"},
+        {"co", "Colorado"},      {"colorado", "Colorado"},   {"ct", "Connecticut"},
+        {"connecticut", "Connecticut"}, {"de", "Delaware"},    {"delaware", "Delaware"},
+        {"fl", "Florida"},       {"fla", "Florida"},         {"florida", "Florida"},
+        {"ga", "Georgia"},       {"georgia", "Georgia"},     {"hi", "Hawaii"},
+        {"hawaii", "Hawaii"},    {"id", "Idaho"},            {"idaho", "Idaho"},
+        {"il", "Illinois"},      {"ill", "Illinois"},        {"illinois", "Illinois"},
+        {"in", "Indiana"},       {"ind", "Indiana"},         {"indiana", "Indiana"},
+        {"ia", "Iowa"},          {"iowa", "Iowa"},           {"ks", "Kansas"},
+        {"kansas", "Kansas"},    {"ky", "Kentucky"},         {"kentucky", "Kentucky"},
+        {"la", "Louisiana"},     {"louisiana", "Louisiana"}, {"me", "Maine"},
+        {"maine", "Maine"},      {"md", "Maryland"},         {"maryland", "Maryland"},
+        {"ma", "Massachusetts"}, {"mass", "Massachusetts"},  {"massachusetts", "Massachusetts"},
+        {"mi", "Michigan"},      {"mich", "Michigan"},       {"michigan", "Michigan"},
+        {"mn", "Minnesota"},     {"minn", "Minnesota"},      {"minnesota", "Minnesota"},
+        {"ms", "Mississippi"},   {"miss", "Mississippi"},    {"mississippi", "Mississippi"},
+        {"mo", "Missouri"},      {"missouri", "Missouri"},   {"mt", "Montana"},
+        {"montana", "Montana"},  {"ne", "Nebraska"},         {"nebraska", "Nebraska"},
+        {"nv", "Nevada"},        {"nevada", "Nevada"},       {"nh", "New Hampshire"},
+        {"new hampshire", "New Hampshire"}, {"nj", "New Jersey"}, {"new jersey", "New Jersey"},
+        {"nm", "New Mexico"},    {"new mexico", "New Mexico"}, {"ny", "New York"},
+        {"new york", "New York"}, {"nc", "North Carolina"},  {"north carolina", "North Carolina"},
+        {"nd", "North Dakota"},  {"north dakota", "North Dakota"}, {"oh", "Ohio"},
+        {"ohio", "Ohio"},        {"ok", "Oklahoma"},         {"oklahoma", "Oklahoma"},
+        {"or", "Oregon"},        {"ore", "Oregon"},          {"oregon", "Oregon"},
+        {"pa", "Pennsylvania"},  {"penn", "Pennsylvania"},   {"pennsylvania", "Pennsylvania"},
+        {"ri", "Rhode Island"},  {"rhode island", "Rhode Island"}, {"sc", "South Carolina"},
+        {"south carolina", "South Carolina"}, {"sd", "South Dakota"},
+        {"south dakota", "South Dakota"}, {"tn", "Tennessee"}, {"tenn", "Tennessee"},
+        {"tennessee", "Tennessee"}, {"tx", "Texas"},          {"tex", "Texas"},
+        {"texas", "Texas"},      {"ut", "Utah"},             {"utah", "Utah"},
+        {"vt", "Vermont"},       {"vermont", "Vermont"},     {"va", "Virginia"},
+        {"virginia", "Virginia"}, {"wa", "Washington"},      {"wash", "Washington"},
+        {"washington", "Washington"}, {"wv", "West Virginia"}, {"west virginia", "West Virginia"},
+        {"wi", "Wisconsin"},     {"wis", "Wisconsin"},       {"wisconsin", "Wisconsin"},
+        {"wy", "Wyoming"},       {"wyoming", "Wyoming"},     {"dc", "District of Columbia"},
+        {"d.c.", "District of Columbia"},
+    };
+
+    static const std::vector<std::pair<const char *, const char *>> kCaProvinces = {
+        {"ab", "Alberta"},       {"alberta", "Alberta"},     {"bc", "British Columbia"},
+        {"b.c.", "British Columbia"}, {"british columbia", "British Columbia"},
+        {"mb", "Manitoba"},      {"manitoba", "Manitoba"},   {"nb", "New Brunswick"},
+        {"new brunswick", "New Brunswick"}, {"nl", "Newfoundland and Labrador"},
+        {"newfoundland", "Newfoundland and Labrador"},
+        {"ns", "Nova Scotia"},   {"nova scotia", "Nova Scotia"}, {"nt", "Northwest Territories"},
+        {"nu", "Nunavut"},       {"on", "Ontario"},          {"ont", "Ontario"},
+        {"ontario", "Ontario"},  {"pe", "Prince Edward Island"},
+        {"prince edward island", "Prince Edward Island"}, {"qc", "Quebec"},
+        {"que", "Quebec"},       {"quebec", "Quebec"},       {"sk", "Saskatchewan"},
+        {"sask", "Saskatchewan"}, {"saskatchewan", "Saskatchewan"}, {"yt", "Yukon"},
+        {"yukon", "Yukon"},
+    };
+
+    const bool prefer_ca = fold_key(country_hint) == "ca" || fold_key(country_hint) == "can" ||
+                           fold_key(country_hint) == "canada";
+    const bool prefer_us = country_hint.empty() || country_hint_is_us_or_ca(country_hint);
+
+    if (prefer_ca) {
+        const std::string matched = lookup_alias(trimmed, kCaProvinces);
+        if (!matched.empty()) {
+            return matched;
+        }
+    }
+    if (prefer_us) {
+        const std::string matched = lookup_alias(trimmed, kUsStates);
+        if (!matched.empty()) {
+            return matched;
+        }
+    }
+    {
+        const std::string matched = lookup_alias(trimmed, kCaProvinces);
+        if (!matched.empty()) {
+            return matched;
+        }
+    }
+    {
+        const std::string matched = lookup_alias(trimmed, kUsStates);
+        if (!matched.empty()) {
+            return matched;
+        }
+    }
+    return trimmed;
+}
+
+std::string build_geocode_query(const std::string &city, const std::string &region,
+                                const std::string &country)
+{
+    const std::string city_part = trim_copy(city);
+    if (city_part.empty()) {
+        return {};
+    }
+
+    const std::string country_part = normalize_country(country);
+    const std::string region_part = normalize_region(region, country_part.empty() ? country : country_part);
+
+    std::ostringstream out;
+    out << city_part;
+    if (!region_part.empty()) {
+        out << ", " << region_part;
+    }
+    if (!country_part.empty()) {
+        out << ", " << country_part;
+    }
+    return out.str();
 }
 
 } // namespace
@@ -686,7 +891,8 @@ std::string WeatherBackend::select_city(size_t slot)
            ",\"cache\":" + cached + "}";
 }
 
-std::string WeatherBackend::set_city(size_t slot, const std::string &city_name)
+std::string WeatherBackend::set_city(size_t slot, const std::string &city_name,
+                                     const std::string &region, const std::string &country)
 {
     if (!config_.enabled) {
         return "{\"ok\":false,\"error\":\"weather disabled\"}";
@@ -698,16 +904,21 @@ std::string WeatherBackend::set_city(size_t slot, const std::string &city_name)
         return "{\"ok\":false,\"error\":\"city_name required\"}";
     }
 
+    const std::string geocode_query = build_geocode_query(city_name, region, country);
+    if (geocode_query.empty()) {
+        return "{\"ok\":false,\"error\":\"city_name required\"}";
+    }
+
     WeatherCitySlot previous = config_.cities[slot];
     std::string previous_country = resolved_country_codes_[slot];
 
-    config_.cities[slot].city_name = city_name;
+    config_.cities[slot].city_name = geocode_query;
     config_.cities[slot].latitude = 0.0;
     config_.cities[slot].longitude = 0.0;
     resolved_country_codes_[slot].clear();
 
     WeatherCitySlot &city = config_.cities[slot];
-    std::string location_name = city_name;
+    std::string location_name = geocode_query;
     std::string country_code;
     if (!resolve_coordinates(city, location_name, country_code)) {
         config_.cities[slot] = previous;
@@ -715,6 +926,7 @@ std::string WeatherBackend::set_city(size_t slot, const std::string &city_name)
         return "{\"ok\":false,\"error\":\"city not found\"}";
     }
 
+    config_.cities[slot].city_name = location_name;
     resolved_country_codes_[slot] = country_code;
     config_.active_slot = slot;
     sync_legacy_fields_from_active();
@@ -725,6 +937,86 @@ std::string WeatherBackend::set_city(size_t slot, const std::string &city_name)
 std::string WeatherBackend::set_location(const std::string &city_name)
 {
     return set_city(config_.active_slot, city_name);
+}
+
+std::string WeatherBackend::detect_ip_location() const
+{
+    const std::string url =
+        "http://ip-api.com/json/?fields=status,message,country,countryCode,regionName,city,lat,lon";
+    const std::string response = curl_fetch(url);
+    if (response.empty()) {
+        return "{\"ok\":false,\"error\":\"ip location lookup failed\"}";
+    }
+
+    const std::string status = json_get_string(response, "status");
+    if (status != "success") {
+        const std::string message = json_get_string(response, "message");
+        return "{\"ok\":false,\"error\":\"" + json_escape(message.empty() ? "ip location failed"
+                                                                         : message) +
+               "\"}";
+    }
+
+    const std::string city = json_get_string(response, "city");
+    const std::string region = json_get_string(response, "regionName");
+    const std::string country = json_get_string(response, "country");
+    const std::string country_code = json_get_string(response, "countryCode");
+    const std::string lat = json_get_string(response, "lat");
+    const std::string lon = json_get_string(response, "lon");
+    if (city.empty() || lat.empty() || lon.empty()) {
+        return "{\"ok\":false,\"error\":\"ip location incomplete\"}";
+    }
+
+    std::ostringstream location_name;
+    location_name << city;
+    if (!region.empty()) {
+        location_name << ", " << region;
+    }
+    if (!country.empty()) {
+        location_name << ", " << country;
+    }
+
+    return "{\"ok\":true,\"city\":\"" + json_escape(city) + "\",\"region\":\"" +
+           json_escape(region) + "\",\"country\":\"" + json_escape(country) +
+           "\",\"country_code\":\"" + json_escape(country_code) + "\",\"latitude\":\"" +
+           json_escape(lat) + "\",\"longitude\":\"" + json_escape(lon) + "\",\"location\":\"" +
+           json_escape(location_name.str()) + "\"}";
+}
+
+std::string WeatherBackend::set_city_from_ip(size_t slot)
+{
+    if (!config_.enabled) {
+        return "{\"ok\":false,\"error\":\"weather disabled\"}";
+    }
+    if (slot >= WeatherConfig::kMaxCities) {
+        return "{\"ok\":false,\"error\":\"invalid city slot\"}";
+    }
+
+    const std::string detected = detect_ip_location();
+    if (!json_get_bool(detected, "ok", false)) {
+        return detected;
+    }
+
+    WeatherCitySlot previous = config_.cities[slot];
+    std::string previous_country = resolved_country_codes_[slot];
+
+    const std::string location_name = json_get_string(detected, "location");
+    const std::string country_code = json_get_string(detected, "country_code");
+    const double latitude = std::stod(json_get_string(detected, "latitude"));
+    const double longitude = std::stod(json_get_string(detected, "longitude"));
+
+    config_.cities[slot].city_name = location_name.empty() ? json_get_string(detected, "city")
+                                                           : location_name;
+    config_.cities[slot].latitude = latitude;
+    config_.cities[slot].longitude = longitude;
+    resolved_country_codes_[slot] = country_code;
+
+    const std::string fetched = fetch_slot(slot);
+    if (!json_get_bool(fetched, "ok", false)) {
+        config_.cities[slot] = previous;
+        resolved_country_codes_[slot] = previous_country;
+        return fetched;
+    }
+    return fetched;
 }
 
 std::string WeatherBackend::set_temperature_unit(const std::string &unit)

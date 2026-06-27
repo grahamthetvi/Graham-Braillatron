@@ -17,23 +17,51 @@ namespace braillatron::ui {
 namespace {
 
 struct SearchResult {
-    int gutenberg_id = 0;
+    std::string id;
+    std::string source;
     std::string title;
     std::string author;
+    std::string detail;
+};
+
+struct WorthwhileResult {
+    std::string id;
+    std::string title;
+    std::string kind;
 };
 
 enum class Phase {
     Menu,
+    PublicSources,
     LocalList,
     SearchQuery,
     SearchResults,
     Downloading,
     Reading,
+    WorthwhileMenu,
+    WorthwhileSearch,
+    WorthwhileResults,
+    WorthwhileDownloading,
 };
 
 enum class MenuChoice {
     LocalLibrary,
-    SearchPublicDomain,
+    PublicSources,
+    WorthwhileSecret,
+};
+
+enum class PublicSourceChoice {
+    Gutendex,
+    OpenLibrary,
+    InternetArchive,
+    LibriVox,
+};
+
+enum class WorthwhileMenuChoice {
+    SearchMovies,
+    SearchShows,
+    RecentMovies,
+    RecentShows,
 };
 
 class LibraryApp final : public AppSession {
@@ -56,7 +84,7 @@ public:
         rebuild_browse();
         sync_chrome(ctx);
         announce_browse_focus(ctx, false);
-        announce(ctx, "Library. Local books or search public domain.");
+        announce(ctx, "Library. Local books, public sources, or Worthwhile Secret.");
     }
 
     void on_exit(UiContext &ctx) override
@@ -91,20 +119,24 @@ public:
             sync_chrome(ctx);
             if (phase_ == Phase::LocalList && !local_books_.empty()) {
                 announce_local_book(ctx);
-            } else if (phase_ == Phase::SearchResults && !search_results_.empty()) {
-                announce_search_result(ctx);
+            } else if (phase_ == Phase::WorthwhileResults && !worthwhile_results_.empty()) {
+                announce_worthwhile_result(ctx);
             }
         }
     }
 
     void on_chord(uint8_t, UiContext &) override {}
 
-    bool buffers_braille_words() const override { return phase_ == Phase::SearchQuery; }
+    bool buffers_braille_words() const override
+    {
+        return phase_ == Phase::SearchQuery || phase_ == Phase::WorthwhileSearch;
+    }
 
     bool browse_list_active() const override
     {
-        return phase_ == Phase::Menu || phase_ == Phase::LocalList || phase_ == Phase::SearchResults ||
-               phase_ == Phase::Reading;
+        return phase_ == Phase::Menu || phase_ == Phase::PublicSources || phase_ == Phase::LocalList ||
+               phase_ == Phase::SearchResults || phase_ == Phase::Reading ||
+               phase_ == Phase::WorthwhileMenu || phase_ == Phase::WorthwhileResults;
     }
 
     const LayeredBrowseList *browse_list() const override
@@ -116,6 +148,9 @@ public:
     {
         if (phase_ == Phase::SearchQuery) {
             return query_buffer_;
+        }
+        if (phase_ == Phase::WorthwhileSearch) {
+            return worthwhile_query_;
         }
         return {};
     }
@@ -134,10 +169,17 @@ public:
 
     void on_text(const std::string &text, UiContext &ctx) override
     {
-        if (phase_ != Phase::SearchQuery || text.empty()) {
+        if (text.empty()) {
             return;
         }
-        query_buffer_ += text;
+        if (phase_ != Phase::SearchQuery && phase_ != Phase::WorthwhileSearch) {
+            return;
+        }
+        if (phase_ == Phase::SearchQuery) {
+            query_buffer_ += text;
+        } else {
+            worthwhile_query_ += text;
+        }
         sync_chrome(ctx);
     }
 
@@ -150,6 +192,9 @@ public:
         switch (phase_) {
         case Phase::Menu:
             handle_menu(key, ctx);
+            break;
+        case Phase::PublicSources:
+            handle_public_sources(key, ctx);
             break;
         case Phase::LocalList:
             handle_local_list(key, ctx);
@@ -168,6 +213,20 @@ public:
         case Phase::Reading:
             handle_reading(key, ctx);
             break;
+        case Phase::WorthwhileMenu:
+            handle_worthwhile_menu(key, ctx);
+            break;
+        case Phase::WorthwhileSearch:
+            handle_worthwhile_search(key, ctx);
+            break;
+        case Phase::WorthwhileResults:
+            handle_worthwhile_results(key, ctx);
+            break;
+        case Phase::WorthwhileDownloading:
+            if (key == keyboard::ControlKey::Backspace) {
+                enter_menu(ctx);
+            }
+            break;
         }
     }
 
@@ -179,7 +238,13 @@ private:
         breadcrumb_.clear();
         local_books_.clear();
         search_results_.clear();
+        worthwhile_results_.clear();
         query_buffer_.clear();
+        worthwhile_query_.clear();
+        worthwhile_kind_.clear();
+        worthwhile_mode_recent_ = false;
+        active_source_.clear();
+        active_source_label_.clear();
         pending_announce_.clear();
         pending_refresh_local_ = false;
         current_book_ = nullptr;
@@ -201,7 +266,12 @@ private:
         switch (phase_) {
         case Phase::Menu:
             breadcrumb_.clear();
-            items = {"Local library", "Search public domain"};
+            items = {"Local library", "Public sources", "Worthwhile Secret"};
+            browse_.set_items(std::move(items), 0);
+            break;
+        case Phase::PublicSources:
+            breadcrumb_ = "Public sources";
+            items = {"Project Gutenberg", "Open Library", "Internet Archive", "LibriVox"};
             browse_.set_items(std::move(items), 0);
             break;
         case Phase::LocalList:
@@ -213,11 +283,11 @@ private:
             browse_.set_items(std::move(items), 0);
             break;
         case Phase::SearchQuery:
-            breadcrumb_ = "Search public domain";
+            breadcrumb_ = active_source_label_.empty() ? "Search" : active_source_label_;
             browse_.clear();
             break;
         case Phase::SearchResults:
-            breadcrumb_ = "Search results";
+            breadcrumb_ = active_source_label_.empty() ? "Search results" : active_source_label_;
             items.reserve(search_results_.size());
             for (const auto &result : search_results_) {
                 items.push_back(format_search_label(result));
@@ -233,6 +303,23 @@ private:
                 }
             }
             browse_.set_items(std::move(items), static_cast<size_t>(section_index_));
+            break;
+        case Phase::WorthwhileMenu:
+            breadcrumb_ = "Worthwhile Secret";
+            items = {"Search movies", "Search shows", "Recent movies", "Recent shows"};
+            browse_.set_items(std::move(items), 0);
+            break;
+        case Phase::WorthwhileSearch:
+            breadcrumb_ = "Worthwhile Secret";
+            browse_.clear();
+            break;
+        case Phase::WorthwhileResults:
+            breadcrumb_ = "Worthwhile Secret";
+            items.reserve(worthwhile_results_.size());
+            for (const auto &result : worthwhile_results_) {
+                items.push_back(result.title);
+            }
+            browse_.set_items(std::move(items), 0);
             break;
         default:
             breadcrumb_.clear();
@@ -251,10 +338,30 @@ private:
 
     static std::string format_search_label(const SearchResult &result)
     {
-        if (result.author.empty()) {
-            return result.title;
+        std::string label = result.title;
+        if (!result.author.empty()) {
+            label += " - " + result.author;
         }
-        return result.title + " - " + result.author;
+        if (!result.detail.empty()) {
+            label += " (" + result.detail + ")";
+        }
+        return label;
+    }
+
+    void begin_source_search(UiContext &ctx, const std::string &source_key,
+                             const std::string &source_label)
+    {
+        if (ctx.connect == nullptr) {
+            announce(ctx, "Connectivity unavailable for " + source_label + ".");
+            return;
+        }
+        active_source_ = source_key;
+        active_source_label_ = source_label;
+        phase_ = Phase::SearchQuery;
+        query_buffer_.clear();
+        rebuild_browse();
+        sync_chrome(ctx);
+        announce(ctx, source_label + ". Type title or author and press Enter.");
     }
 
     void announce_menu(UiContext &ctx)
@@ -287,7 +394,7 @@ private:
         if (browse_.focus_index() == static_cast<size_t>(MenuChoice::LocalLibrary)) {
             local_books_ = store_.books();
             if (local_books_.empty()) {
-                announce(ctx, "No local books. Search public domain or import EPUB via LocalSend.");
+                announce(ctx, "No local books. Browse public sources or import EPUB via LocalSend.");
                 return;
             }
             phase_ = Phase::LocalList;
@@ -297,15 +404,63 @@ private:
             return;
         }
 
-        if (ctx.connect == nullptr) {
-            announce(ctx, "Connectivity unavailable for public domain search.");
+        if (browse_.focus_index() == static_cast<size_t>(MenuChoice::PublicSources)) {
+            phase_ = Phase::PublicSources;
+            rebuild_browse();
+            sync_chrome(ctx);
+            announce(ctx,
+                     "Public sources. Project Gutenberg, Open Library, Internet Archive, LibriVox.");
+            announce_browse_focus(ctx, false);
             return;
         }
-        phase_ = Phase::SearchQuery;
-        query_buffer_.clear();
-        rebuild_browse();
-        sync_chrome(ctx);
-        announce(ctx, "Search public domain. Type title or author and press Enter.");
+
+        if (browse_.focus_index() == static_cast<size_t>(MenuChoice::WorthwhileSecret)) {
+            if (ctx.connect == nullptr) {
+                announce(ctx, "Connectivity unavailable for Worthwhile Secret.");
+                return;
+            }
+            phase_ = Phase::WorthwhileMenu;
+            rebuild_browse();
+            sync_chrome(ctx);
+            announce(ctx, "Worthwhile Secret. Search or browse recent audio.");
+            announce_browse_focus(ctx, false);
+        }
+    }
+
+    void handle_public_sources(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            enter_menu(ctx);
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadUp) {
+            announce_browse_focus(ctx, !browse_.move_up());
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadDown) {
+            announce_browse_focus(ctx, !browse_.move_down());
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter) {
+            return;
+        }
+
+        switch (browse_.focus_index()) {
+        case static_cast<size_t>(PublicSourceChoice::Gutendex):
+            begin_source_search(ctx, "gutendex", "Project Gutenberg");
+            break;
+        case static_cast<size_t>(PublicSourceChoice::OpenLibrary):
+            begin_source_search(ctx, "openlibrary", "Open Library");
+            break;
+        case static_cast<size_t>(PublicSourceChoice::InternetArchive):
+            begin_source_search(ctx, "archive", "Internet Archive");
+            break;
+        case static_cast<size_t>(PublicSourceChoice::LibriVox):
+            begin_source_search(ctx, "librivox", "LibriVox");
+            break;
+        default:
+            break;
+        }
     }
 
     void handle_local_list(keyboard::ControlKey key, UiContext &ctx)
@@ -338,7 +493,7 @@ private:
                 sync_chrome(ctx);
                 return;
             }
-            enter_menu(ctx);
+            enter_public_sources(ctx);
             return;
         }
         if (key != keyboard::ControlKey::Enter) {
@@ -357,11 +512,22 @@ private:
         search_results_.clear();
         rebuild_browse();
         sync_chrome(ctx);
-        announce(ctx, "Searching for " + query_buffer_ + ".");
+        announce(ctx, "Searching " + active_source_label_ + " for " + query_buffer_ + ".");
 
-        ctx.connect->request_async(
-            "library.search", "\"query\":\"" + braillatron::connect::json_escape(query_buffer_) + "\"",
-            [this](const std::string &response) { parse_search_response(response); });
+        const std::string payload =
+            "\"query\":\"" + braillatron::connect::json_escape(query_buffer_) + "\",\"source\":\"" +
+            braillatron::connect::json_escape(active_source_) + "\"";
+        ctx.connect->request_async("library.search", payload,
+                                   [this](const std::string &response) { parse_search_response(response); });
+    }
+
+    void enter_public_sources(UiContext &ctx)
+    {
+        phase_ = Phase::PublicSources;
+        rebuild_browse();
+        sync_chrome(ctx);
+        announce(ctx, "Public sources.");
+        announce_browse_focus(ctx, false);
     }
 
     void handle_search_results(keyboard::ControlKey key, UiContext &ctx)
@@ -403,7 +569,8 @@ private:
 
         ctx.connect->request_async(
             "library.download",
-            "\"gutenberg_id\":\"" + std::to_string(result.gutenberg_id) + "\"",
+            "\"source\":\"" + braillatron::connect::json_escape(result.source) + "\",\"id\":\"" +
+                braillatron::connect::json_escape(result.id) + "\"",
             [this, result](const std::string &response) {
                 if (braillatron::connect::json_get_bool(response, "ok", false)) {
                     pending_refresh_local_ = true;
@@ -414,6 +581,207 @@ private:
                     rebuild_browse();
                 }
             });
+    }
+
+    void enter_worthwhile_menu(UiContext &ctx)
+    {
+        phase_ = Phase::WorthwhileMenu;
+        rebuild_browse();
+        sync_chrome(ctx);
+        announce(ctx, "Worthwhile Secret.");
+        announce_browse_focus(ctx, false);
+    }
+
+    void begin_worthwhile_search(UiContext &ctx, const std::string &kind, bool recent)
+    {
+        worthwhile_kind_ = kind;
+        worthwhile_mode_recent_ = recent;
+        if (recent) {
+            phase_ = Phase::WorthwhileResults;
+            worthwhile_results_.clear();
+            rebuild_browse();
+            sync_chrome(ctx);
+            announce(ctx, "Loading recent " + kind + ".");
+            ctx.connect->request_async(
+                "worthwhile.recent", "\"kind\":\"" + braillatron::connect::json_escape(kind) + "\"",
+                [this](const std::string &response) { parse_worthwhile_response(response); });
+            return;
+        }
+        phase_ = Phase::WorthwhileSearch;
+        worthwhile_query_.clear();
+        rebuild_browse();
+        sync_chrome(ctx);
+        announce(ctx, "Search " + kind + ". Type a title and press Enter.");
+    }
+
+    void handle_worthwhile_menu(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            enter_menu(ctx);
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadUp) {
+            announce_browse_focus(ctx, !browse_.move_up());
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadDown) {
+            announce_browse_focus(ctx, !browse_.move_down());
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter || ctx.connect == nullptr) {
+            return;
+        }
+
+        switch (browse_.focus_index()) {
+        case static_cast<size_t>(WorthwhileMenuChoice::SearchMovies):
+            begin_worthwhile_search(ctx, "movies", false);
+            break;
+        case static_cast<size_t>(WorthwhileMenuChoice::SearchShows):
+            begin_worthwhile_search(ctx, "shows", false);
+            break;
+        case static_cast<size_t>(WorthwhileMenuChoice::RecentMovies):
+            begin_worthwhile_search(ctx, "movies", true);
+            break;
+        case static_cast<size_t>(WorthwhileMenuChoice::RecentShows):
+            begin_worthwhile_search(ctx, "shows", true);
+            break;
+        default:
+            break;
+        }
+    }
+
+    void handle_worthwhile_search(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            if (!worthwhile_query_.empty()) {
+                worthwhile_query_.pop_back();
+                sync_chrome(ctx);
+                return;
+            }
+            enter_worthwhile_menu(ctx);
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter) {
+            return;
+        }
+        if (worthwhile_query_.empty()) {
+            announce(ctx, "Enter a search term.");
+            return;
+        }
+        if (ctx.connect == nullptr) {
+            announce(ctx, "Connectivity unavailable.");
+            return;
+        }
+
+        phase_ = Phase::WorthwhileResults;
+        worthwhile_results_.clear();
+        rebuild_browse();
+        sync_chrome(ctx);
+        announce(ctx, "Searching for " + worthwhile_query_ + ".");
+
+        const std::string payload =
+            "\"query\":\"" + braillatron::connect::json_escape(worthwhile_query_) + "\",\"kind\":\"" +
+            braillatron::connect::json_escape(worthwhile_kind_) + "\"";
+        ctx.connect->request_async("worthwhile.search", payload,
+                                   [this](const std::string &response) {
+                                       parse_worthwhile_response(response);
+                                   });
+    }
+
+    void handle_worthwhile_results(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            if (worthwhile_mode_recent_) {
+                enter_worthwhile_menu(ctx);
+            } else {
+                phase_ = Phase::WorthwhileSearch;
+                rebuild_browse();
+                sync_chrome(ctx);
+                announce(ctx, "Search. " + worthwhile_query_);
+            }
+            return;
+        }
+        if (worthwhile_results_.empty()) {
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadUp) {
+            announce_browse_focus(ctx, !browse_.move_up());
+            announce_worthwhile_result(ctx);
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadDown) {
+            announce_browse_focus(ctx, !browse_.move_down());
+            announce_worthwhile_result(ctx);
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter || ctx.connect == nullptr) {
+            return;
+        }
+
+        const WorthwhileResult &result = worthwhile_results_[browse_.focus_index()];
+        phase_ = Phase::WorthwhileDownloading;
+        rebuild_browse();
+        sync_chrome(ctx);
+        announce(ctx, "Downloading " + result.title + ".");
+
+        ctx.connect->request_async(
+            "worthwhile.download",
+            "\"item_id\":\"" + braillatron::connect::json_escape(result.id) + "\"",
+            [this, result](const std::string &response) {
+                if (braillatron::connect::json_get_bool(response, "ok", false)) {
+                    pending_announce_ = "Downloaded " + result.title + ". Open Music to play.";
+                    phase_ = Phase::WorthwhileResults;
+                    rebuild_browse();
+                } else {
+                    pending_announce_ = "Download failed for " + result.title + ".";
+                    phase_ = Phase::WorthwhileResults;
+                    rebuild_browse();
+                }
+            });
+    }
+
+    void parse_worthwhile_response(const std::string &response)
+    {
+        worthwhile_results_.clear();
+        if (!braillatron::connect::json_get_bool(response, "ok", false)) {
+            pending_announce_ = worthwhile_mode_recent_ ? "Recent list failed." : "Search failed.";
+            phase_ = worthwhile_mode_recent_ ? Phase::WorthwhileMenu : Phase::WorthwhileSearch;
+            rebuild_browse();
+            return;
+        }
+
+        const std::string body = braillatron::connect::json_get_array_body(response, "results");
+        for (const auto &obj : braillatron::connect::json_split_objects("[" + body + "]")) {
+            WorthwhileResult result;
+            result.id = braillatron::connect::json_get_string(obj, "id");
+            result.title = braillatron::connect::json_get_string(obj, "title");
+            result.kind = braillatron::connect::json_get_string(obj, "kind");
+            if (result.kind.empty()) {
+                result.kind = worthwhile_kind_;
+            }
+            if (!result.id.empty() && !result.title.empty()) {
+                worthwhile_results_.push_back(std::move(result));
+            }
+        }
+
+        if (worthwhile_results_.empty()) {
+            pending_announce_ = worthwhile_mode_recent_ ? "No recent items found."
+                                                        : "No results for " + worthwhile_query_ + ".";
+            phase_ = worthwhile_mode_recent_ ? Phase::WorthwhileMenu : Phase::WorthwhileSearch;
+            rebuild_browse();
+            return;
+        }
+
+        phase_ = Phase::WorthwhileResults;
+        rebuild_browse();
+        pending_announce_ = "Found " + std::to_string(worthwhile_results_.size()) + " results. 1. " +
+                            worthwhile_results_.front().title;
+    }
+
+    void announce_worthwhile_result(UiContext &ctx)
+    {
+        const WorthwhileResult &result = worthwhile_results_[browse_.focus_index()];
+        announce_browse_item(ctx, result.title);
     }
 
     void handle_reading(keyboard::ControlKey key, UiContext &ctx)
@@ -475,11 +843,15 @@ private:
         const std::string body = braillatron::connect::json_get_array_body(response, "results");
         for (const auto &obj : braillatron::connect::json_split_objects("[" + body + "]")) {
             SearchResult result;
-            const std::string id = braillatron::connect::json_get_string(obj, "id");
-            result.gutenberg_id = id.empty() ? 0 : std::stoi(id);
+            result.id = braillatron::connect::json_get_string(obj, "id");
+            result.source = braillatron::connect::json_get_string(obj, "source");
             result.title = braillatron::connect::json_get_string(obj, "title");
             result.author = braillatron::connect::json_get_string(obj, "author");
-            if (result.gutenberg_id > 0 && !result.title.empty()) {
+            result.detail = braillatron::connect::json_get_string(obj, "detail");
+            if (result.source.empty()) {
+                result.source = active_source_;
+            }
+            if (!result.id.empty() && !result.title.empty()) {
                 search_results_.push_back(std::move(result));
             }
         }
@@ -589,7 +961,13 @@ private:
     std::string breadcrumb_;
     std::vector<documents::LibraryBook> local_books_;
     std::vector<SearchResult> search_results_;
+    std::vector<WorthwhileResult> worthwhile_results_;
     std::string query_buffer_;
+    std::string worthwhile_query_;
+    std::string worthwhile_kind_;
+    bool worthwhile_mode_recent_ = false;
+    std::string active_source_;
+    std::string active_source_label_;
     std::string pending_announce_;
     bool pending_refresh_local_ = false;
     const documents::LibraryBook *current_book_ = nullptr;

@@ -41,12 +41,15 @@ int main()
         braillatron::connect::resolve_config_path(base, "radio.conf"));
     const auto library_config = braillatron::connect::load_library_config(
         braillatron::connect::resolve_config_path(base, "library.conf"));
+    const auto worthwhile_config = braillatron::connect::load_worthwhile_config(
+        braillatron::connect::resolve_config_path(base, "worthwhile.conf"));
     const auto gmail_config = braillatron::connect::load_gmail_config(
         braillatron::connect::resolve_config_path(base, "gmail.conf"));
 
     braillatron::connect::ConnectService service(connect_config, youtube_config, messages_config,
                                                  music_config, weather_config, podcasts_config,
-                                                 radio_config, library_config, gmail_config);
+                                                 radio_config, library_config, worthwhile_config,
+                                                 gmail_config);
     service.start();
 
     while (g_running) {

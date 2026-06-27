@@ -347,6 +347,18 @@ LibraryConfig load_library_config(const std::string &path)
                                 cfg.enabled = parse_bool(value);
                             } else if (key == "gutendex_url") {
                                 cfg.gutendex_url = value;
+                            } else if (key == "openlibrary_url") {
+                                cfg.openlibrary_url = value;
+                            } else if (key == "archive_search_url") {
+                                cfg.archive_search_url = value;
+                            } else if (key == "archive_metadata_url") {
+                                cfg.archive_metadata_url = value;
+                            } else if (key == "archive_download_url") {
+                                cfg.archive_download_url = value;
+                            } else if (key == "archive_contact_email") {
+                                cfg.archive_contact_email = value;
+                            } else if (key == "librivox_collection") {
+                                cfg.librivox_collection = value;
                             } else if (key == "download_dir") {
                                 cfg.download_dir = value;
                             } else if (key == "catalog_path") {
@@ -359,6 +371,27 @@ LibraryConfig load_library_config(const std::string &path)
                                 cfg.preferred_format = value;
                             } else if (key == "books_dir") {
                                 cfg.download_dir = value;
+                            }
+                        },
+                        config);
+    return config;
+}
+
+WorthwhileConfig load_worthwhile_config(const std::string &path)
+{
+    WorthwhileConfig config;
+    load_key_value_file(path,
+                        [](const std::string &key, const std::string &value, WorthwhileConfig &cfg) {
+                            if (key == "enabled") {
+                                cfg.enabled = parse_bool(value);
+                            } else if (key == "download_dir") {
+                                cfg.download_dir = value;
+                            } else if (key == "credentials_path") {
+                                cfg.credentials_path = value;
+                            } else if (key == "cookie_jar_path") {
+                                cfg.cookie_jar_path = value;
+                            } else if (key == "search_limit") {
+                                cfg.search_limit = static_cast<uint32_t>(std::stoul(value));
                             }
                         },
                         config);

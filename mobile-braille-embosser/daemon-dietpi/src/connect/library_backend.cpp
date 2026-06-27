@@ -84,14 +84,60 @@ std::string extract_array_body(const std::string &json, const std::string &key)
         return {};
     }
     const size_t start = pos + needle.size();
-    const size_t end = json.find(']', start);
+    int depth = 1;
+    bool in_string = false;
+    bool escape = false;
+    for (size_t i = start; i < json.size(); ++i) {
+        const char ch = json[i];
+        if (in_string) {
+            if (escape) {
+                escape = false;
+            } else if (ch == '\\') {
+                escape = true;
+            } else if (ch == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (ch == '"') {
+            in_string = true;
+            continue;
+        }
+        if (ch == '[') {
+            ++depth;
+        } else if (ch == ']') {
+            --depth;
+            if (depth == 0) {
+                return json.substr(start, i - start);
+            }
+        }
+    }
+    return {};
+}
+
+std::string extract_string_array_first(const std::string &json, const std::string &key)
+{
+    const std::string body = extract_array_body(json, key);
+    if (body.empty()) {
+        return {};
+    }
+    const auto items = json_split_objects("[" + body + "]");
+    if (!items.empty()) {
+        return json_get_string(items.front(), "name");
+    }
+    size_t start = body.find('"');
+    if (start == std::string::npos) {
+        return {};
+    }
+    ++start;
+    const size_t end = body.find('"', start);
     if (end == std::string::npos) {
         return {};
     }
-    return json.substr(start, end - start);
+    return body.substr(start, end - start);
 }
 
-std::string author_from_result(const std::string &result)
+std::string author_from_gutendex(const std::string &result)
 {
     const std::string authors_body = extract_array_body(result, "authors");
     if (authors_body.empty()) {
@@ -112,8 +158,7 @@ std::string pick_download_url(const std::string &result, const std::string &pref
         return {};
     }
     if (preferred_format == "epub") {
-        const std::string epub =
-            json_get_string(formats, "application/epub+zip");
+        const std::string epub = json_get_string(formats, "application/epub+zip");
         if (!epub.empty()) {
             return epub;
         }
@@ -133,6 +178,18 @@ std::string format_from_url(const std::string &url)
 {
     if (url.find(".epub") != std::string::npos) {
         return "epub";
+    }
+    if (url.find(".m4b") != std::string::npos) {
+        return "m4b";
+    }
+    if (url.find(".mp3") != std::string::npos || url.find("_mp3") != std::string::npos) {
+        return "mp3";
+    }
+    if (url.find(".zip") != std::string::npos) {
+        return "zip";
+    }
+    if (url.find(".pdf") != std::string::npos) {
+        return "pdf";
     }
     return "txt";
 }
@@ -165,6 +222,108 @@ std::string sanitize_filename(const std::string &value)
     return out;
 }
 
+std::string work_key_from_id(const std::string &result_id)
+{
+    if (result_id.find("/works/") != std::string::npos) {
+        const size_t pos = result_id.rfind('/');
+        return result_id.substr(pos + 1);
+    }
+    return result_id;
+}
+
+std::string pick_archive_file(const std::string &metadata_json, const std::string &preferred)
+{
+    const std::string files_body = extract_array_body(metadata_json, "files");
+    if (files_body.empty()) {
+        return {};
+    }
+    const auto files = json_split_objects("[" + files_body + "]");
+    std::string epub;
+    std::string pdf;
+    std::string txt;
+    std::string m4b;
+    std::string mp3_zip;
+    std::string zip;
+    for (const std::string &file : files) {
+        const std::string name = json_get_string(file, "name");
+        if (name.empty()) {
+            continue;
+        }
+        const std::string lower = name;
+        if (name.find(".epub") != std::string::npos) {
+            epub = name;
+        } else if (name.find(".pdf") != std::string::npos && pdf.empty()) {
+            pdf = name;
+        } else if (name.find(".txt") != std::string::npos && txt.empty()) {
+            txt = name;
+        } else if (name.find(".m4b") != std::string::npos) {
+            m4b = name;
+        } else if (name.find("_64kb_mp3.zip") != std::string::npos ||
+                   name.find("_mp3.zip") != std::string::npos) {
+            mp3_zip = name;
+        } else if (name.find(".zip") != std::string::npos && zip.empty()) {
+            zip = name;
+        }
+        (void)lower;
+    }
+    if (preferred == "audio") {
+        if (!m4b.empty()) {
+            return m4b;
+        }
+        if (!mp3_zip.empty()) {
+            return mp3_zip;
+        }
+        if (!zip.empty()) {
+            return zip;
+        }
+    }
+    if (!epub.empty()) {
+        return epub;
+    }
+    if (!pdf.empty()) {
+        return pdf;
+    }
+    if (!txt.empty()) {
+        return txt;
+    }
+    if (!m4b.empty()) {
+        return m4b;
+    }
+    if (!mp3_zip.empty()) {
+        return mp3_zip;
+    }
+    return zip;
+}
+
+std::vector<std::string> archive_docs_from_response(const std::string &response, uint32_t limit)
+{
+    std::string docs_body = extract_array_body(response, "docs");
+    if (docs_body.empty()) {
+        const std::string response_obj = find_json_object(response, "response");
+        if (!response_obj.empty()) {
+            docs_body = extract_array_body(response_obj, "docs");
+        }
+    }
+    if (docs_body.empty()) {
+        return {};
+    }
+    auto docs = json_split_objects("[" + docs_body + "]");
+    if (docs.size() > limit) {
+        docs.resize(limit);
+    }
+    return docs;
+}
+
+std::string creator_from_archive_doc(const std::string &doc)
+{
+    const std::string direct = json_get_string(doc, "creator");
+    if (!direct.empty() && direct.front() != '[') {
+        return direct;
+    }
+    const std::string creator = extract_string_array_first(doc, "creator");
+    return creator.empty() ? "Unknown" : creator;
+}
+
 } // namespace
 
 LibraryBackend::LibraryBackend(LibraryConfig config)
@@ -172,10 +331,13 @@ LibraryBackend::LibraryBackend(LibraryConfig config)
 {
 }
 
-std::string LibraryBackend::curl_fetch(const std::string &url) const
+std::string LibraryBackend::curl_fetch(const std::string &url, bool archive_api) const
 {
-    const std::string cmd = "curl -fsSL --max-time 30 -A " + std::string(kUserAgent) + " " +
-                            "'" + url + "' 2>/dev/null";
+    std::string cmd = "curl -fsSL --max-time 30 -A '" + std::string(kUserAgent) + "'";
+    if (archive_api && !config_.archive_contact_email.empty()) {
+        cmd += " -H 'Authorization: LOW " + config_.archive_contact_email + ":request'";
+    }
+    cmd += " '" + url + "' 2>/dev/null";
     return run_command(cmd);
 }
 
@@ -183,8 +345,12 @@ std::string LibraryBackend::download_file(const std::string &url, const std::str
 {
     ensure_directory(fs::path(dest).parent_path().string());
     const std::string part = dest + ".part";
-    const std::string cmd = "curl -fsSL --max-time 120 -A " + std::string(kUserAgent) + " -o " +
-                            "'" + part + "' '" + url + "' 2>/dev/null";
+    std::string cmd = "curl -fsSL --max-time 300 -A '" + std::string(kUserAgent) + "'";
+    if (url.find("archive.org") != std::string::npos &&
+        !config_.archive_contact_email.empty()) {
+        cmd += " -H 'Authorization: LOW " + config_.archive_contact_email + ":request'";
+    }
+    cmd += " -o '" + part + "' '" + url + "' 2>/dev/null";
     if (run_command_status(cmd) != 0) {
         return "{\"ok\":false,\"error\":\"download failed\"}";
     }
@@ -194,10 +360,12 @@ std::string LibraryBackend::download_file(const std::string &url, const std::str
     return "{\"ok\":true,\"path\":\"" + json_escape(dest) + "\"}";
 }
 
-bool LibraryBackend::register_downloaded_book(int gutenberg_id, const std::string &title,
+bool LibraryBackend::register_downloaded_book(const std::string &source,
+                                              const std::string &external_id,
+                                              const std::string &title,
                                               const std::string &author,
                                               const std::string &local_path,
-                                              const std::string &format)
+                                              const std::string &format, int gutenberg_id)
 {
     ensure_directory(fs::path(config_.catalog_path).parent_path().string());
 
@@ -208,14 +376,23 @@ bool LibraryBackend::register_downloaded_book(int gutenberg_id, const std::strin
         buffer << in.rdbuf();
         const std::string json = buffer.str();
         for (const auto &obj : json_split_objects("[" + extract_array_body(json, "books") + "]")) {
-            entries.push_back(obj);
-            if (json_get_int_value(obj, "gutenberg_id", 0) == gutenberg_id) {
+            const std::string existing_source = json_get_string(obj, "source");
+            const std::string existing_id = json_get_string(obj, "external_id");
+            if (existing_source == source && existing_id == external_id) {
                 return true;
             }
+            if (gutenberg_id > 0 &&
+                json_get_int_value(obj, "gutenberg_id", 0) == gutenberg_id) {
+                return true;
+            }
+            entries.push_back(obj);
         }
     }
 
-    std::string next_id = "lib-" + std::to_string(gutenberg_id);
+    std::string next_id = source + "-" + sanitize_filename(external_id);
+    if (next_id.size() > 48) {
+        next_id.resize(48);
+    }
     std::ostringstream book;
     book << "{\n"
          << "      \"id\":\"" << json_escape(next_id) << "\",\n"
@@ -223,9 +400,12 @@ bool LibraryBackend::register_downloaded_book(int gutenberg_id, const std::strin
          << "      \"author\":\"" << json_escape(author) << "\",\n"
          << "      \"format\":\"" << json_escape(format) << "\",\n"
          << "      \"local_path\":\"" << json_escape(local_path) << "\",\n"
-         << "      \"source\":\"gutendex\",\n"
-         << "      \"gutenberg_id\":" << gutenberg_id << "\n"
-         << "    }";
+         << "      \"source\":\"" << json_escape(source) << "\",\n"
+         << "      \"external_id\":\"" << json_escape(external_id) << "\"";
+    if (gutenberg_id > 0) {
+        book << ",\n      \"gutenberg_id\":" << gutenberg_id;
+    }
+    book << "\n    }";
     entries.push_back(book.str());
 
     const std::string temp_path = config_.catalog_path + ".tmp";
@@ -248,7 +428,7 @@ bool LibraryBackend::register_downloaded_book(int gutenberg_id, const std::strin
     return rename(temp_path.c_str(), config_.catalog_path.c_str()) == 0;
 }
 
-std::string LibraryBackend::search(const std::string &query)
+std::string LibraryBackend::search(const std::string &query, const std::string &source)
 {
     if (!config_.enabled) {
         return "{\"ok\":false,\"error\":\"library disabled\"}";
@@ -257,6 +437,49 @@ std::string LibraryBackend::search(const std::string &query)
         return "{\"ok\":false,\"error\":\"empty query\"}";
     }
 
+    const std::string normalized = source.empty() ? "gutendex" : source;
+    if (normalized == "gutendex" || normalized == "gutenberg") {
+        return search_gutendex(query);
+    }
+    if (normalized == "openlibrary") {
+        return search_openlibrary(query);
+    }
+    if (normalized == "archive" || normalized == "internet_archive") {
+        return search_archive(query);
+    }
+    if (normalized == "librivox") {
+        return search_librivox(query);
+    }
+    return "{\"ok\":false,\"error\":\"unknown source\"}";
+}
+
+std::string LibraryBackend::download(const std::string &source, const std::string &result_id)
+{
+    if (!config_.enabled) {
+        return "{\"ok\":false,\"error\":\"library disabled\"}";
+    }
+    if (trim(result_id).empty()) {
+        return "{\"ok\":false,\"error\":\"invalid id\"}";
+    }
+
+    const std::string normalized = source.empty() ? "gutendex" : source;
+    if (normalized == "gutendex" || normalized == "gutenberg") {
+        return download_gutendex(result_id);
+    }
+    if (normalized == "openlibrary") {
+        return download_openlibrary(result_id);
+    }
+    if (normalized == "archive" || normalized == "internet_archive") {
+        return download_archive(result_id);
+    }
+    if (normalized == "librivox") {
+        return download_librivox(result_id);
+    }
+    return "{\"ok\":false,\"error\":\"unknown source\"}";
+}
+
+std::string LibraryBackend::search_gutendex(const std::string &query)
+{
     const std::string url = config_.gutendex_url + "/?search=" + url_encode(query);
     const std::string response = curl_fetch(url);
     if (response.empty()) {
@@ -265,12 +488,12 @@ std::string LibraryBackend::search(const std::string &query)
 
     const std::string results_body = extract_array_body(response, "results");
     if (results_body.empty()) {
-        return "{\"ok\":true,\"results\":[]}";
+        return "{\"ok\":true,\"source\":\"gutendex\",\"results\":[]}";
     }
 
     const auto objects = json_split_objects("[" + results_body + "]");
     std::ostringstream out;
-    out << "{\"ok\":true,\"results\":[";
+    out << "{\"ok\":true,\"source\":\"gutendex\",\"results\":[";
     uint32_t count = 0;
     for (const std::string &result : objects) {
         if (count >= config_.search_limit) {
@@ -284,19 +507,135 @@ std::string LibraryBackend::search(const std::string &query)
         if (count > 0) {
             out << ',';
         }
-        out << "{\"id\":" << id << ",\"title\":\"" << json_escape(title) << "\",\"author\":\""
-            << json_escape(author_from_result(result)) << "\"}";
+        out << "{\"id\":\"" << id << "\",\"title\":\"" << json_escape(title) << "\",\"author\":\""
+            << json_escape(author_from_gutendex(result)) << "\",\"source\":\"gutendex\"}";
         ++count;
     }
     out << "]}";
     return out.str();
 }
 
-std::string LibraryBackend::download(int gutenberg_id)
+std::string LibraryBackend::search_openlibrary(const std::string &query)
 {
-    if (!config_.enabled) {
-        return "{\"ok\":false,\"error\":\"library disabled\"}";
+    const std::string url = config_.openlibrary_url + "/search.json?q=" + url_encode(query) +
+                            "&limit=" + std::to_string(config_.search_limit) +
+                            "&fields=key,title,author_name,ia";
+    const std::string response = curl_fetch(url);
+    if (response.empty()) {
+        return "{\"ok\":false,\"error\":\"search failed\"}";
     }
+
+    const std::string results_body = extract_array_body(response, "docs");
+    if (results_body.empty()) {
+        return "{\"ok\":true,\"source\":\"openlibrary\",\"results\":[]}";
+    }
+
+    const auto objects = json_split_objects("[" + results_body + "]");
+    std::ostringstream out;
+    out << "{\"ok\":true,\"source\":\"openlibrary\",\"results\":[";
+    uint32_t count = 0;
+    for (const std::string &result : objects) {
+        if (count >= config_.search_limit) {
+            break;
+        }
+        const std::string key = json_get_string(result, "key");
+        const std::string title = json_get_string(result, "title");
+        if (key.empty() || title.empty()) {
+            continue;
+        }
+        const std::string author = extract_string_array_first(result, "author_name");
+        const std::string ia = extract_string_array_first(result, "ia");
+        if (count > 0) {
+            out << ',';
+        }
+        out << "{\"id\":\"" << json_escape(key) << "\",\"title\":\"" << json_escape(title)
+            << "\",\"author\":\"" << json_escape(author.empty() ? "Unknown" : author)
+            << "\",\"source\":\"openlibrary\"";
+        if (!ia.empty()) {
+            out << ",\"ia\":\"" << json_escape(ia) << "\"";
+        }
+        out << '}';
+        ++count;
+    }
+    out << "]}";
+    return out.str();
+}
+
+std::string LibraryBackend::search_archive(const std::string &query)
+{
+    const std::string q = url_encode(query) + "%20AND%20mediatype:texts";
+    const std::string url = config_.archive_search_url + "?q=" + q +
+                            "&fl[]=identifier,title,creator&rows=" +
+                            std::to_string(config_.search_limit) + "&page=1&output=json";
+    const std::string response = curl_fetch(url, true);
+    if (response.empty()) {
+        return "{\"ok\":false,\"error\":\"search failed\"}";
+    }
+
+    const auto docs = archive_docs_from_response(response, config_.search_limit);
+    std::ostringstream out;
+    out << "{\"ok\":true,\"source\":\"archive\",\"results\":[";
+    uint32_t count = 0;
+    for (const std::string &doc : docs) {
+        const std::string identifier = json_get_string(doc, "identifier");
+        const std::string title = json_get_string(doc, "title");
+        if (identifier.empty() || title.empty()) {
+            continue;
+        }
+        if (count > 0) {
+            out << ',';
+        }
+        out << "{\"id\":\"" << json_escape(identifier) << "\",\"title\":\"" << json_escape(title)
+            << "\",\"author\":\"" << json_escape(creator_from_archive_doc(doc))
+            << "\",\"source\":\"archive\"}";
+        ++count;
+    }
+    out << "]}";
+    return out.str();
+}
+
+std::string LibraryBackend::search_librivox(const std::string &query)
+{
+    const std::string q = "collection:" + config_.librivox_collection + "%20AND%20(" +
+                          url_encode(query) + ")";
+    const std::string url = config_.archive_search_url + "?q=" + q +
+                            "&fl[]=identifier,title,creator,runtime&rows=" +
+                            std::to_string(config_.search_limit) + "&page=1&output=json";
+    const std::string response = curl_fetch(url, true);
+    if (response.empty()) {
+        return "{\"ok\":false,\"error\":\"search failed\"}";
+    }
+
+    const auto docs = archive_docs_from_response(response, config_.search_limit);
+    std::ostringstream out;
+    out << "{\"ok\":true,\"source\":\"librivox\",\"results\":[";
+    uint32_t count = 0;
+    for (const std::string &doc : docs) {
+        const std::string identifier = json_get_string(doc, "identifier");
+        const std::string title = json_get_string(doc, "title");
+        if (identifier.empty() || title.empty()) {
+            continue;
+        }
+        const std::string runtime = json_get_string(doc, "runtime");
+        if (count > 0) {
+            out << ',';
+        }
+        out << "{\"id\":\"" << json_escape(identifier) << "\",\"title\":\"" << json_escape(title)
+            << "\",\"author\":\"" << json_escape(creator_from_archive_doc(doc))
+            << "\",\"source\":\"librivox\"";
+        if (!runtime.empty()) {
+            out << ",\"detail\":\"" << json_escape(runtime) << "\"";
+        }
+        out << '}';
+        ++count;
+    }
+    out << "]}";
+    return out.str();
+}
+
+std::string LibraryBackend::download_gutendex(const std::string &result_id)
+{
+    const int gutenberg_id = std::atoi(result_id.c_str());
     if (gutenberg_id <= 0) {
         return "{\"ok\":false,\"error\":\"invalid id\"}";
     }
@@ -308,7 +647,7 @@ std::string LibraryBackend::download(int gutenberg_id)
     }
 
     const std::string title = json_get_string(response, "title");
-    const std::string author = author_from_result(response);
+    const std::string author = author_from_gutendex(response);
     const std::string download_url = pick_download_url(response, config_.preferred_format);
     if (download_url.empty()) {
         return "{\"ok\":false,\"error\":\"no downloadable format\"}";
@@ -325,11 +664,153 @@ std::string LibraryBackend::download(int gutenberg_id)
         return download_result;
     }
 
-    register_downloaded_book(gutenberg_id, title, author, dest, format);
+    register_downloaded_book("gutendex", result_id, title, author, dest, format, gutenberg_id);
     return "{\"ok\":true,\"title\":\"" + json_escape(title) + "\",\"author\":\"" +
            json_escape(author) + "\",\"format\":\"" + json_escape(format) +
-           "\",\"path\":\"" + json_escape(dest) + "\",\"gutenberg_id\":" +
+           "\",\"path\":\"" + json_escape(dest) + "\",\"source\":\"gutendex\",\"gutenberg_id\":" +
            std::to_string(gutenberg_id) + "}";
+}
+
+std::string LibraryBackend::download_openlibrary(const std::string &result_id)
+{
+    const std::string work_key = work_key_from_id(result_id);
+    const std::string work_url = config_.openlibrary_url + "/works/" + work_key + ".json";
+    const std::string work_json = curl_fetch(work_url);
+    std::string title = json_get_string(work_json, "title");
+    if (title.empty()) {
+        title = work_key;
+    }
+
+    std::string ia_id = extract_string_array_first(work_json, "ia");
+    if (ia_id.empty()) {
+        const std::string editions_url =
+            config_.openlibrary_url + "/works/" + work_key + "/editions.json?limit=5";
+        const std::string editions_json = curl_fetch(editions_url);
+        const std::string entries_body = extract_array_body(editions_json, "entries");
+        for (const std::string &edition : json_split_objects("[" + entries_body + "]")) {
+            ia_id = extract_string_array_first(edition, "ia");
+            if (!ia_id.empty()) {
+                break;
+            }
+        }
+    }
+    if (ia_id.empty()) {
+        return "{\"ok\":false,\"error\":\"no archive edition found\"}";
+    }
+
+    const std::string metadata_url = config_.archive_metadata_url + "/" + ia_id;
+    const std::string metadata = curl_fetch(metadata_url, true);
+    if (metadata.empty()) {
+        return "{\"ok\":false,\"error\":\"metadata lookup failed\"}";
+    }
+
+    const std::string author = creator_from_archive_doc(metadata);
+    const std::string filename = pick_archive_file(metadata, "text");
+    if (filename.empty()) {
+        return "{\"ok\":false,\"error\":\"no downloadable format\"}";
+    }
+
+    const std::string format = format_from_url(filename);
+    const std::string ext = filename.find('.') != std::string::npos
+                                ? filename.substr(filename.find_last_of('.'))
+                                : ".epub";
+    ensure_directory(config_.download_dir);
+    const std::string dest =
+        config_.download_dir + "/" + sanitize_filename(title) + "-" + ia_id + ext;
+    const std::string download_url =
+        config_.archive_download_url + "/" + ia_id + "/" + url_encode(filename);
+
+    const std::string download_result = download_file(download_url, dest);
+    if (!json_get_bool(download_result, "ok", false)) {
+        return download_result;
+    }
+
+    register_downloaded_book("openlibrary", result_id, title, author, dest, format);
+    return "{\"ok\":true,\"title\":\"" + json_escape(title) + "\",\"author\":\"" +
+           json_escape(author) + "\",\"format\":\"" + json_escape(format) +
+           "\",\"path\":\"" + json_escape(dest) + "\",\"source\":\"openlibrary\"}";
+}
+
+std::string LibraryBackend::download_archive(const std::string &result_id)
+{
+    const std::string metadata_url = config_.archive_metadata_url + "/" + result_id;
+    const std::string metadata = curl_fetch(metadata_url, true);
+    if (metadata.empty()) {
+        return "{\"ok\":false,\"error\":\"metadata lookup failed\"}";
+    }
+
+    const std::string metadata_obj = find_json_object(metadata, "metadata");
+    std::string title = json_get_string(metadata_obj.empty() ? metadata : metadata_obj, "title");
+    if (title.empty()) {
+        title = result_id;
+    }
+    const std::string author = creator_from_archive_doc(
+        metadata_obj.empty() ? metadata : metadata_obj);
+    const std::string filename = pick_archive_file(metadata, "text");
+    if (filename.empty()) {
+        return "{\"ok\":false,\"error\":\"no downloadable format\"}";
+    }
+
+    const std::string format = format_from_url(filename);
+    const std::string ext = filename.find('.') != std::string::npos
+                                ? filename.substr(filename.find_last_of('.'))
+                                : ".epub";
+    ensure_directory(config_.download_dir);
+    const std::string dest =
+        config_.download_dir + "/" + sanitize_filename(title) + "-" + result_id + ext;
+    const std::string download_url = config_.archive_download_url + "/" + result_id + "/" +
+                                     url_encode(filename);
+
+    const std::string download_result = download_file(download_url, dest);
+    if (!json_get_bool(download_result, "ok", false)) {
+        return download_result;
+    }
+
+    register_downloaded_book("archive", result_id, title, author, dest, format);
+    return "{\"ok\":true,\"title\":\"" + json_escape(title) + "\",\"author\":\"" +
+           json_escape(author) + "\",\"format\":\"" + json_escape(format) +
+           "\",\"path\":\"" + json_escape(dest) + "\",\"source\":\"archive\"}";
+}
+
+std::string LibraryBackend::download_librivox(const std::string &result_id)
+{
+    const std::string metadata_url = config_.archive_metadata_url + "/" + result_id;
+    const std::string metadata = curl_fetch(metadata_url, true);
+    if (metadata.empty()) {
+        return "{\"ok\":false,\"error\":\"metadata lookup failed\"}";
+    }
+
+    const std::string metadata_obj = find_json_object(metadata, "metadata");
+    std::string title = json_get_string(metadata_obj.empty() ? metadata : metadata_obj, "title");
+    if (title.empty()) {
+        title = result_id;
+    }
+    const std::string author = creator_from_archive_doc(
+        metadata_obj.empty() ? metadata : metadata_obj);
+    const std::string filename = pick_archive_file(metadata, "audio");
+    if (filename.empty()) {
+        return "{\"ok\":false,\"error\":\"no audio download found\"}";
+    }
+
+    const std::string format = format_from_url(filename);
+    const std::string ext = filename.find('.') != std::string::npos
+                                ? filename.substr(filename.find_last_of('.'))
+                                : ".zip";
+    ensure_directory(config_.download_dir);
+    const std::string dest =
+        config_.download_dir + "/" + sanitize_filename(title) + "-" + result_id + ext;
+    const std::string download_url = config_.archive_download_url + "/" + result_id + "/" +
+                                     url_encode(filename);
+
+    const std::string download_result = download_file(download_url, dest);
+    if (!json_get_bool(download_result, "ok", false)) {
+        return download_result;
+    }
+
+    register_downloaded_book("librivox", result_id, title, author, dest, format);
+    return "{\"ok\":true,\"title\":\"" + json_escape(title) + "\",\"author\":\"" +
+           json_escape(author) + "\",\"format\":\"" + json_escape(format) +
+           "\",\"path\":\"" + json_escape(dest) + "\",\"source\":\"librivox\"}";
 }
 
 std::string LibraryBackend::list_local() const
@@ -358,7 +839,8 @@ std::string LibraryBackend::status() const
         count = static_cast<int>(json_split_objects("[" + body + "]").size());
     }
     return "{\"ok\":true,\"enabled\":" + std::string(config_.enabled ? "true" : "false") +
-           ",\"local_count\":" + std::to_string(count) + "}";
+           ",\"local_count\":" + std::to_string(count) +
+           ",\"sources\":[\"gutendex\",\"openlibrary\",\"archive\",\"librivox\"]}";
 }
 
 } // namespace braillatron::connect

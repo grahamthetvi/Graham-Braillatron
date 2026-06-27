@@ -12,6 +12,7 @@
 #include "signal_backend.h"
 #include "socket_server.h"
 #include "weather_backend.h"
+#include "worthwhile_backend.h"
 #include "youtube_backend.h"
 
 #include <atomic>
@@ -25,7 +26,7 @@ public:
                    MessagesConfig messages_config, MusicConfig music_config,
                    WeatherConfig weather_config, PodcastsConfig podcasts_config,
                    RadioConfig radio_config, LibraryConfig library_config,
-                   GmailConfig gmail_config);
+                   WorthwhileConfig worthwhile_config, GmailConfig gmail_config);
 
     void start();
     void stop();
@@ -47,6 +48,7 @@ private:
     RssBackend podcasts_;
     RadioBackend radio_;
     LibraryBackend library_;
+    WorthwhileBackend worthwhile_;
     GmailBackend gmail_;
     SignalBackend signal_;
     SocketServer server_;

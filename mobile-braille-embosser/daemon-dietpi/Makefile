@@ -167,6 +167,7 @@ CONNECT_COMMON_OBJS := \
 	src/connect/rss_backend.o \
 	src/connect/radio_backend.o \
 	src/connect/library_backend.o \
+	src/connect/worthwhile_backend.o \
 	src/connect/gmail_backend.o \
 	src/connect/signal_backend.o \
 	src/connect/connect_client.o
@@ -390,6 +391,13 @@ LIBRARY_BACKEND_TEST_OBJS := \
 	src/connect/library_backend.o \
 	src/connect/library_self_test.o
 
+WORTHWHILE_TEST_OBJS := \
+	src/connect/connect_config.o \
+	src/connect/json_utils.o \
+	src/connect/subprocess.o \
+	src/connect/worthwhile_backend.o \
+	src/connect/worthwhile_self_test.o
+
 GMAIL_TEST_OBJS := \
 	src/connect/connect_config.o \
 	src/connect/json_utils.o \
@@ -460,13 +468,15 @@ podcasts-test: braillatron-podcasts-test
 
 radio-test: braillatron-radio-test
 
-library-test: braillatron-library-test braillatron-library-backend-test
+library-test: braillatron-library-test braillatron-library-backend-test braillatron-worthwhile-test
+
+worthwhile-test: braillatron-worthwhile-test
 
 gmail-test: braillatron-gmail-test
 
 calculator-test: braillatron-calculator-test
 
-check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-gmail-test braillatron-calculator-test
+check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-worthwhile-test braillatron-gmail-test braillatron-calculator-test
 	./braillatron-motion-test
 	./braillatron-motion-gate-sync-test
 	./braillatron-host-chord-test
@@ -486,6 +496,7 @@ check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelli
 	./braillatron-radio-test
 	./braillatron-library-test
 	./braillatron-library-backend-test
+	./braillatron-worthwhile-test
 	./braillatron-gmail-test
 	./braillatron-calculator-test
 
@@ -537,6 +548,9 @@ braillatron-library-test: $(LIBRARY_TEST_OBJS)
 
 braillatron-library-backend-test: $(LIBRARY_BACKEND_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(LIBRARY_BACKEND_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-worthwhile-test: $(WORTHWHILE_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(WORTHWHILE_TEST_OBJS) $(LDFLAGS) -o $@
 
 braillatron-gmail-test: $(GMAIL_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(GMAIL_TEST_OBJS) $(LDFLAGS) -o $@
@@ -632,7 +646,7 @@ src/connect/%.o: src/connect/%.cpp
 src/display/%.o: src/display/%.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(REMOTE_DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS) $(DISPLAYD_OBJS))
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(REMOTE_DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(WORTHWHILE_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS) $(DISPLAYD_OBJS))
 
 clean:
 	rm -f $(ALL_OBJS) $(ALL_OBJS:.o=.d) \

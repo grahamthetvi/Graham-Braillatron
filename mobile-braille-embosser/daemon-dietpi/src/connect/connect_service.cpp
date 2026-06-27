@@ -32,7 +32,7 @@ ConnectService::ConnectService(ConnectConfig connect_config, YoutubeConfig youtu
                                MessagesConfig messages_config, MusicConfig music_config,
                                WeatherConfig weather_config, PodcastsConfig podcasts_config,
                                RadioConfig radio_config, LibraryConfig library_config,
-                               GmailConfig gmail_config)
+                               WorthwhileConfig worthwhile_config, GmailConfig gmail_config)
     : connect_config_(std::move(connect_config))
     , events_(connect_config_.event_path)
     , mpv_(MpvService::Options {
@@ -47,6 +47,7 @@ ConnectService::ConnectService(ConnectConfig connect_config, YoutubeConfig youtu
     , podcasts_(std::move(podcasts_config), connect_config_, &mpv_, &events_)
     , radio_(std::move(radio_config), &mpv_, &events_)
     , library_(std::move(library_config))
+    , worthwhile_(std::move(worthwhile_config))
     , gmail_(std::move(gmail_config), &events_)
     , signal_(std::move(messages_config), &events_)
     , server_(connect_config_.socket_path)
@@ -214,7 +215,16 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     if (cmd == "weather.set_city") {
         const std::string slot = json_get_string(request, "slot");
         return weather_.set_city(slot.empty() ? 0 : static_cast<size_t>(std::stoul(slot)),
-                                 json_get_string(request, "city_name"));
+                                 json_get_string(request, "city_name"),
+                                 json_get_string(request, "region"),
+                                 json_get_string(request, "country"));
+    }
+    if (cmd == "weather.ip_location") {
+        return weather_.detect_ip_location();
+    }
+    if (cmd == "weather.set_city_from_ip") {
+        const std::string slot = json_get_string(request, "slot");
+        return weather_.set_city_from_ip(slot.empty() ? 0 : static_cast<size_t>(std::stoul(slot)));
     }
     if (cmd == "weather.status") {
         return weather_.status();
@@ -277,17 +287,35 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
         return radio_.favorites_list();
     }
     if (cmd == "library.search") {
-        return library_.search(json_get_string(request, "query"));
+        return library_.search(json_get_string(request, "query"),
+                               json_get_string(request, "source"));
     }
     if (cmd == "library.download") {
-        const std::string id = json_get_string(request, "gutenberg_id");
-        return library_.download(id.empty() ? 0 : std::stoi(id));
+        const std::string source = json_get_string(request, "source");
+        std::string id = json_get_string(request, "id");
+        if (id.empty()) {
+            id = json_get_string(request, "gutenberg_id");
+        }
+        return library_.download(source, id);
     }
     if (cmd == "library.list_local") {
         return library_.list_local();
     }
     if (cmd == "library.status") {
         return library_.status();
+    }
+    if (cmd == "worthwhile.search") {
+        return worthwhile_.search(json_get_string(request, "query"),
+                                json_get_string(request, "kind"));
+    }
+    if (cmd == "worthwhile.recent") {
+        return worthwhile_.recent(json_get_string(request, "kind"));
+    }
+    if (cmd == "worthwhile.download") {
+        return worthwhile_.download(json_get_string(request, "item_id"));
+    }
+    if (cmd == "worthwhile.status") {
+        return worthwhile_.status();
     }
     if (cmd == "signal.start_link") {
         return signal_.run_link_workflow();
@@ -363,11 +391,12 @@ std::string ConnectService::handle_request(const std::string &request)
     RssBackend *podcasts_ptr = &podcasts_;
     RadioBackend *radio_ptr = &radio_;
     LibraryBackend *library_ptr = &library_;
+    WorthwhileBackend *worthwhile_ptr = &worthwhile_;
     GmailBackend *gmail_ptr = &gmail_;
     jobs_.submit(ConnectJob {
         request_id,
         [this, cmd, request, request_id, signal_ptr, youtube_ptr, music_ptr, weather_ptr,
-         podcasts_ptr, radio_ptr, library_ptr, gmail_ptr](EventWriter *events) {
+         podcasts_ptr, radio_ptr, library_ptr, worthwhile_ptr, gmail_ptr](EventWriter *events) {
             std::string result;
             if (cmd == "signal.start_link") {
                 result = signal_ptr->run_link_workflow();
@@ -391,7 +420,15 @@ std::string ConnectService::handle_request(const std::string &request)
             } else if (cmd == "weather.set_city") {
                 const std::string slot = json_get_string(request, "slot");
                 result = weather_ptr->set_city(slot.empty() ? 0 : static_cast<size_t>(std::stoul(slot)),
-                                               json_get_string(request, "city_name"));
+                                               json_get_string(request, "city_name"),
+                                               json_get_string(request, "region"),
+                                               json_get_string(request, "country"));
+            } else if (cmd == "weather.ip_location") {
+                result = weather_ptr->detect_ip_location();
+            } else if (cmd == "weather.set_city_from_ip") {
+                const std::string slot = json_get_string(request, "slot");
+                result = weather_ptr->set_city_from_ip(
+                    slot.empty() ? 0 : static_cast<size_t>(std::stoul(slot)));
             } else if (cmd == "weather.set_temperature_unit") {
                 result = weather_ptr->set_temperature_unit(
                     json_get_string(request, "temperature_unit"));
@@ -402,10 +439,22 @@ std::string ConnectService::handle_request(const std::string &request)
             } else if (cmd == "radio.search") {
                 result = radio_ptr->search(json_get_string(request, "query"));
             } else if (cmd == "library.search") {
-                result = library_ptr->search(json_get_string(request, "query"));
+                result = library_ptr->search(json_get_string(request, "query"),
+                                             json_get_string(request, "source"));
             } else if (cmd == "library.download") {
-                const std::string id = json_get_string(request, "gutenberg_id");
-                result = library_ptr->download(id.empty() ? 0 : std::stoi(id));
+                const std::string source = json_get_string(request, "source");
+                std::string id = json_get_string(request, "id");
+                if (id.empty()) {
+                    id = json_get_string(request, "gutenberg_id");
+                }
+                result = library_ptr->download(source, id);
+            } else if (cmd == "worthwhile.search") {
+                result = worthwhile_ptr->search(json_get_string(request, "query"),
+                                                json_get_string(request, "kind"));
+            } else if (cmd == "worthwhile.recent") {
+                result = worthwhile_ptr->recent(json_get_string(request, "kind"));
+            } else if (cmd == "worthwhile.download") {
+                result = worthwhile_ptr->download(json_get_string(request, "item_id"));
             } else if (cmd == "gmail.start_link") {
                 result = gmail_ptr->run_link_workflow();
             } else if (cmd == "gmail.list_inbox") {

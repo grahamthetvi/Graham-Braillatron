@@ -24,8 +24,8 @@ constexpr size_t kMaxRecentContacts = 3;
 enum class Phase {
     MainMenu,
     RecentList,
+    AddressBook,
     Search,
-    PickMatch,
     Detail,
     Actions,
     AddName,
@@ -103,7 +103,7 @@ public:
 
     bool browse_list_active() const override
     {
-        return phase_ == Phase::MainMenu || phase_ == Phase::RecentList || phase_ == Phase::PickMatch ||
+        return phase_ == Phase::MainMenu || phase_ == Phase::RecentList || phase_ == Phase::AddressBook ||
                phase_ == Phase::Actions;
     }
 
@@ -117,7 +117,7 @@ public:
         switch (phase_) {
         case Phase::RecentList:
             return "Recently Viewed";
-        case Phase::PickMatch:
+        case Phase::AddressBook:
             return "Address Book";
         case Phase::Actions:
             return "Actions";
@@ -204,11 +204,11 @@ public:
         case Phase::RecentList:
             handle_recent_list_control(key, ctx);
             break;
+        case Phase::AddressBook:
+            handle_address_book_control(key, ctx);
+            break;
         case Phase::Search:
             handle_search_control(key, ctx);
-            break;
-        case Phase::PickMatch:
-            handle_pick_control(key, ctx);
             break;
         case Phase::Detail:
             handle_detail_control(key, ctx);
@@ -230,8 +230,7 @@ private:
     {
         phase_ = Phase::MainMenu;
         query_buffer_.clear();
-        matches_.clear();
-        match_index_ = 0;
+        address_book_contacts_.clear();
         action_index_ = 0;
         selected_contact_ = nullptr;
         add_name_buffer_.clear();
@@ -315,23 +314,79 @@ private:
         announce(ctx, "Recently viewed.");
     }
 
-    void enter_address_book(UiContext &ctx)
+    static std::string format_contact_label(const documents::Contact &contact)
     {
-        phase_ = Phase::Search;
-        query_buffer_.clear();
-        browse_.clear();
-        sync_composer(ctx);
-        announce(ctx, "Address book. Type a name and press Enter.");
+        std::string label = contact.name;
+        if (!contact.organization.empty()) {
+            label += " - " + contact.organization;
+        } else if (!contact.phones.empty()) {
+            label += " - " + contact.phones.front();
+        }
+        return label;
     }
 
-    void rebuild_pick_match_labels()
+    void refresh_address_book_contacts()
+    {
+        address_book_contacts_ = query_buffer_.empty() ? store_.contacts() : store_.search(query_buffer_);
+        std::sort(address_book_contacts_.begin(), address_book_contacts_.end(),
+                  [](const documents::Contact &a, const documents::Contact &b) { return a.name < b.name; });
+    }
+
+    size_t default_address_book_focus() const
+    {
+        return address_book_contacts_.empty() ? 0 : 1;
+    }
+
+    void rebuild_address_book_labels(size_t focus_index = 0)
     {
         std::vector<std::string> labels;
-        labels.reserve(matches_.size());
-        for (const auto &match : matches_) {
-            labels.push_back(match.name);
+        labels.reserve(1 + address_book_contacts_.size());
+        labels.push_back("Search");
+        for (const auto &contact : address_book_contacts_) {
+            labels.push_back(format_contact_label(contact));
         }
-        browse_.set_items(std::move(labels), match_index_);
+        browse_.set_items(std::move(labels), focus_index);
+    }
+
+    void enter_address_book(UiContext &ctx)
+    {
+        phase_ = Phase::AddressBook;
+        query_buffer_.clear();
+        store_.refresh();
+        refresh_address_book_contacts();
+        rebuild_address_book_labels(default_address_book_focus());
+        announce_browse_focus(ctx, false);
+        if (address_book_contacts_.empty()) {
+            announce(ctx, "Address book. No contacts yet. Select Search or add a contact from the main menu.");
+            return;
+        }
+        announce(ctx, "Address book. " + std::to_string(address_book_contacts_.size()) + " contacts.");
+    }
+
+    void enter_search_from_address_book(UiContext &ctx)
+    {
+        phase_ = Phase::Search;
+        browse_.clear();
+        sync_composer(ctx);
+        announce(ctx, "Search contacts. Type a name and press Enter.");
+    }
+
+    void apply_search_and_show_address_book(UiContext &ctx)
+    {
+        store_.refresh();
+        refresh_address_book_contacts();
+        phase_ = Phase::AddressBook;
+        rebuild_address_book_labels(default_address_book_focus());
+        sync_composer(ctx);
+        if (address_book_contacts_.empty()) {
+            announce(ctx, query_buffer_.empty() ? "No contacts yet."
+                                                : "No matches for " + query_buffer_);
+            return;
+        }
+        announce_browse_focus(ctx, false);
+        if (!query_buffer_.empty()) {
+            announce(ctx, std::to_string(address_book_contacts_.size()) + " matches.");
+        }
     }
 
     void rebuild_action_labels()
@@ -371,6 +426,36 @@ private:
             start_add_contact(ctx);
             break;
         }
+    }
+
+    void handle_address_book_control(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            return_to_main_menu(ctx);
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadUp) {
+            announce_browse_focus(ctx, !browse_.move_up());
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadDown) {
+            announce_browse_focus(ctx, !browse_.move_down());
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter) {
+            return;
+        }
+
+        const size_t index = browse_.focus_index();
+        if (index == 0) {
+            enter_search_from_address_book(ctx);
+            return;
+        }
+        const size_t contact_index = index - 1;
+        if (contact_index >= address_book_contacts_.size()) {
+            return;
+        }
+        open_contact(ctx, address_book_contacts_[contact_index]);
     }
 
     void handle_recent_list_control(keyboard::ControlKey key, UiContext &ctx)
@@ -474,7 +559,7 @@ private:
                 sync_composer(ctx);
                 return;
             }
-            return_to_main_menu(ctx);
+            apply_search_and_show_address_book(ctx);
             return;
         }
         if (key != keyboard::ControlKey::Enter) {
@@ -482,56 +567,12 @@ private:
         }
 
         store_.refresh();
-        matches_ = store_.search(query_buffer_);
-        if (matches_.empty()) {
-            announce(ctx, query_buffer_.empty() ? "No contacts yet."
-                                                : "No matches for " + query_buffer_);
+        refresh_address_book_contacts();
+        if (address_book_contacts_.size() == 1) {
+            open_contact(ctx, address_book_contacts_.front());
             return;
         }
-        if (matches_.size() == 1) {
-            open_contact(ctx, matches_.front());
-            return;
-        }
-
-        match_index_ = 0;
-        phase_ = Phase::PickMatch;
-        rebuild_pick_match_labels();
-        announce_browse_focus(ctx, false);
-        announce_match(ctx);
-    }
-
-    void handle_pick_control(keyboard::ControlKey key, UiContext &ctx)
-    {
-        if (key == keyboard::ControlKey::Backspace) {
-            phase_ = Phase::Search;
-            matches_.clear();
-            match_index_ = 0;
-            browse_.clear();
-            sync_composer(ctx);
-            announce(ctx, "Address book. " + query_buffer_);
-            return;
-        }
-        if (key == keyboard::ControlKey::DpadUp) {
-            const bool moved = browse_.move_up();
-            if (moved) {
-                match_index_ = browse_.focus_index();
-            }
-            announce_browse_focus(ctx, !moved);
-            return;
-        }
-        if (key == keyboard::ControlKey::DpadDown) {
-            const bool moved = browse_.move_down();
-            if (moved) {
-                match_index_ = browse_.focus_index();
-            }
-            announce_browse_focus(ctx, !moved);
-            return;
-        }
-        if (key != keyboard::ControlKey::Enter || matches_.empty()) {
-            return;
-        }
-        match_index_ = browse_.focus_index();
-        open_contact(ctx, matches_[match_index_]);
+        apply_search_and_show_address_book(ctx);
     }
 
     void handle_detail_control(keyboard::ControlKey key, UiContext &ctx)
@@ -541,9 +582,7 @@ private:
             if (detail_from_recent_) {
                 enter_recent_list(ctx);
             } else {
-                phase_ = Phase::Search;
-                sync_composer(ctx);
-                announce(ctx, "Address book. " + query_buffer_);
+                apply_search_and_show_address_book(ctx);
             }
             selected_contact_ = nullptr;
             return;
@@ -612,12 +651,6 @@ private:
         browse_.clear();
         sync_composer(ctx);
         announce_contact(ctx);
-    }
-
-    void announce_match(UiContext &ctx)
-    {
-        announce(ctx, "Match " + std::to_string(match_index_ + 1) + " of " +
-                           std::to_string(matches_.size()) + ". " + matches_[match_index_].name);
     }
 
     void announce_contact(UiContext &ctx)
@@ -696,9 +729,8 @@ private:
     std::string query_buffer_;
     std::string add_name_buffer_;
     std::string add_phone_buffer_;
-    std::vector<documents::Contact> matches_;
+    std::vector<documents::Contact> address_book_contacts_;
     std::vector<documents::Contact> recent_contacts_;
-    size_t match_index_ = 0;
     const documents::Contact *selected_contact_ = nullptr;
     size_t action_index_ = 0;
     bool detail_from_recent_ = false;

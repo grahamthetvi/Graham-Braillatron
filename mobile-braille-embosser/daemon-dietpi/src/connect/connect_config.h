@@ -98,11 +98,25 @@ struct RadioConfig {
 struct LibraryConfig {
     bool enabled = true;
     std::string gutendex_url = "https://gutendex.com/books";
+    std::string openlibrary_url = "https://openlibrary.org";
+    std::string archive_search_url = "https://archive.org/advancedsearch.php";
+    std::string archive_metadata_url = "https://archive.org/metadata";
+    std::string archive_download_url = "https://archive.org/download";
+    std::string archive_contact_email = "grahamthetvi@icloud.com";
+    std::string librivox_collection = "librivoxaudio";
     std::string download_dir = "/data/braillatron/library/books";
     std::string catalog_path = "/data/braillatron/library/catalog.json";
     uint32_t search_limit = 10;
     std::string user_agent = "Braillatron/1.0 (accessibility device)";
     std::string preferred_format = "epub";
+};
+
+struct WorthwhileConfig {
+    bool enabled = true;
+    std::string download_dir = "/data/braillatron/music/worthwhile";
+    std::string credentials_path = "/data/braillatron/credentials/worthwhile.ini";
+    std::string cookie_jar_path = "/data/braillatron/credentials/worthwhile.cookies";
+    uint32_t search_limit = 20;
 };
 
 struct GmailConfig {
@@ -129,6 +143,7 @@ void save_weather_config(const std::string &path, const WeatherConfig &config);
 PodcastsConfig load_podcasts_config(const std::string &path);
 RadioConfig load_radio_config(const std::string &path);
 LibraryConfig load_library_config(const std::string &path);
+WorthwhileConfig load_worthwhile_config(const std::string &path);
 GmailConfig load_gmail_config(const std::string &path);
 
 std::string config_dir_from_env();

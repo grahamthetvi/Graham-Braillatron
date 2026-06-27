@@ -21,7 +21,10 @@ public:
     std::string list_cities() const;
     std::string select_city(size_t slot);
     std::string set_location(const std::string &city_name);
-    std::string set_city(size_t slot, const std::string &city_name);
+    std::string set_city(size_t slot, const std::string &city_name,
+                         const std::string &region = {}, const std::string &country = {});
+    std::string detect_ip_location() const;
+    std::string set_city_from_ip(size_t slot);
     std::string set_temperature_unit(const std::string &unit);
     std::string alerts() const;
     void poll_refresh(uint64_t now_sec);

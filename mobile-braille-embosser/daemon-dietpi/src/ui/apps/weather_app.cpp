@@ -7,6 +7,7 @@
 #include "app_util.h"
 #include "ui_context.h"
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <string>
@@ -46,7 +47,19 @@ enum class Layer {
     Forecast,
     ReplaceSlot,
     EnterCity,
+    PostAddOptions,
     Loading,
+};
+
+enum class EnterStep {
+    City,
+    Region,
+    Country,
+};
+
+enum class PostAddOption {
+    AddFromIp,
+    Continue,
 };
 
 enum class ForecastKind {
@@ -72,7 +85,8 @@ public:
 
     bool browse_list_active() const override
     {
-        return layer_ == Layer::Cities || layer_ == Layer::Forecast || layer_ == Layer::ReplaceSlot;
+        return layer_ == Layer::Cities || layer_ == Layer::Forecast ||
+               layer_ == Layer::ReplaceSlot || layer_ == Layer::PostAddOptions;
     }
 
     const LayeredBrowseList *browse_list() const override { return &browse_; }
@@ -85,7 +99,10 @@ public:
         case Layer::ReplaceSlot:
             return "Weather > Add city";
         case Layer::EnterCity:
-            return "Weather > Add city > " + slot_label(pending_slot_);
+            return "Weather > Add city > " + slot_label(pending_slot_) + " > " +
+                   enter_step_label(enter_step_);
+        case Layer::PostAddOptions:
+            return "Weather > Add city";
         default:
             return {};
         }
@@ -161,6 +178,9 @@ public:
         case Layer::EnterCity:
             handle_enter_city(key, ctx);
             break;
+        case Layer::PostAddOptions:
+            handle_post_add_options(key, ctx);
+            break;
         default:
             break;
         }
@@ -193,6 +213,30 @@ private:
         return slot < kMaxCities ? kLabels[slot] : "City";
     }
 
+    static std::string enter_step_label(EnterStep step)
+    {
+        switch (step) {
+        case EnterStep::Region:
+            return "State or region";
+        case EnterStep::Country:
+            return "Country";
+        default:
+            return "City";
+        }
+    }
+
+    static std::string enter_step_prompt(EnterStep step)
+    {
+        switch (step) {
+        case EnterStep::Region:
+            return "Enter state, province, or region. Press Enter to skip.";
+        case EnterStep::Country:
+            return "Enter country. Press Enter to skip.";
+        default:
+            return "Enter city name.";
+        }
+    }
+
     void reset_session()
     {
         layer_ = Layer::Loading;
@@ -208,6 +252,12 @@ private:
         browse_.clear();
         temperature_unit_ = "celsius";
         city_buffer_.clear();
+        pending_city_.clear();
+        pending_region_.clear();
+        pending_country_.clear();
+        enter_step_ = EnterStep::City;
+        ip_target_slot_ = kMaxCities;
+        post_add_options_.clear();
         pending_announce_.clear();
         background_fetch_pending_ = false;
         announce_forecast_after_ready_ = false;
@@ -396,15 +446,251 @@ private:
         }
 
         pending_slot_ = browse_.focus_index();
-        begin_enter_city(ctx, "Replace " + slot_label(pending_slot_) + ". Enter city name.");
+        begin_enter_city(ctx, "Replace " + slot_label(pending_slot_) + ".");
     }
 
     void begin_enter_city(UiContext &ctx, const std::string &message)
     {
         layer_ = Layer::EnterCity;
+        enter_step_ = EnterStep::City;
+        pending_city_.clear();
+        pending_region_.clear();
+        pending_country_.clear();
         city_buffer_.clear();
         sync_chrome();
-        announce(ctx, message);
+        announce(ctx, message + " " + enter_step_prompt(enter_step_));
+    }
+
+    void advance_enter_step(UiContext &ctx)
+    {
+        switch (enter_step_) {
+        case EnterStep::City:
+            if (city_buffer_.empty()) {
+                announce(ctx, "Enter a city name first");
+                return;
+            }
+            pending_city_ = city_buffer_;
+            city_buffer_.clear();
+            enter_step_ = EnterStep::Region;
+            sync_chrome();
+            announce(ctx, enter_step_prompt(enter_step_));
+            return;
+        case EnterStep::Region:
+            pending_region_ = city_buffer_;
+            city_buffer_.clear();
+            enter_step_ = EnterStep::Country;
+            sync_chrome();
+            announce(ctx, enter_step_prompt(enter_step_));
+            return;
+        case EnterStep::Country:
+            pending_country_ = city_buffer_;
+            submit_city_entry(ctx);
+            return;
+        }
+    }
+
+    void retreat_enter_step(UiContext &ctx)
+    {
+        switch (enter_step_) {
+        case EnterStep::City:
+            cancel_enter_city(ctx);
+            return;
+        case EnterStep::Region:
+            enter_step_ = EnterStep::City;
+            city_buffer_ = pending_city_;
+            pending_city_.clear();
+            sync_chrome();
+            announce(ctx, enter_step_prompt(enter_step_));
+            return;
+        case EnterStep::Country:
+            enter_step_ = EnterStep::Region;
+            city_buffer_ = pending_region_;
+            pending_region_.clear();
+            sync_chrome();
+            announce(ctx, enter_step_prompt(enter_step_));
+            return;
+        }
+    }
+
+    void cancel_enter_city(UiContext &ctx)
+    {
+        layer_ = Layer::Cities;
+        enter_step_ = EnterStep::City;
+        pending_city_.clear();
+        pending_region_.clear();
+        pending_country_.clear();
+        city_buffer_.clear();
+        rebuild_city_list();
+        sync_chrome();
+        browse_.announce_focus(ctx.output, false);
+    }
+
+    void submit_city_entry(UiContext &ctx)
+    {
+        if (pending_city_.empty()) {
+            announce(ctx, "Enter a city name first");
+            enter_step_ = EnterStep::City;
+            city_buffer_.clear();
+            sync_chrome();
+            return;
+        }
+
+        layer_ = Layer::Loading;
+        selected_slot_ = pending_slot_;
+        std::string summary = pending_city_;
+        if (!pending_region_.empty()) {
+            summary += ", " + pending_region_;
+        }
+        if (!pending_country_.empty()) {
+            summary += ", " + pending_country_;
+        }
+        announce(ctx, "Looking up " + summary);
+        std::string fields = "\"slot\":\"" + std::to_string(pending_slot_) + "\",\"city_name\":\"" +
+                             braillatron::connect::json_escape(pending_city_) + "\"";
+        if (!pending_region_.empty()) {
+            fields += ",\"region\":\"" + braillatron::connect::json_escape(pending_region_) + "\"";
+        }
+        if (!pending_country_.empty()) {
+            fields += ",\"country\":\"" + braillatron::connect::json_escape(pending_country_) +
+                      "\"";
+        }
+        ctx.connect->request_async("weather.set_city", fields, [this](const std::string &response) {
+            if (!braillatron::connect::json_get_bool(response, "ok", false)) {
+                const std::string error = braillatron::connect::json_get_string(response, "error");
+                pending_announce_ = error == "city not found"
+                                        ? "Location not found. Check city, state, and country."
+                                        : "City update failed";
+                layer_ = Layer::EnterCity;
+                enter_step_ = EnterStep::City;
+                city_buffer_ = pending_city_;
+                pending_region_.clear();
+                pending_country_.clear();
+                sync_chrome();
+                return;
+            }
+            parse_cache_response(response, false);
+            offer_post_add_options();
+        });
+    }
+
+    size_t next_empty_slot(size_t skip_slot) const
+    {
+        std::array<bool, kMaxCities> configured {};
+        for (const CitySlotInfo &city : cities_) {
+            if (city.slot < kMaxCities) {
+                configured[city.slot] = city.configured;
+            }
+        }
+        if (skip_slot < kMaxCities) {
+            configured[skip_slot] = true;
+        }
+        for (size_t slot = 0; slot < kMaxCities; ++slot) {
+            if (!configured[slot]) {
+                return slot;
+            }
+        }
+        return kMaxCities;
+    }
+
+    void offer_post_add_options()
+    {
+        ip_target_slot_ = next_empty_slot(pending_slot_);
+        post_add_options_.clear();
+        if (ip_target_slot_ < kMaxCities) {
+            post_add_options_.push_back(PostAddOption::AddFromIp);
+        }
+        post_add_options_.push_back(PostAddOption::Continue);
+        layer_ = Layer::PostAddOptions;
+        rebuild_post_add_list();
+        pending_announce_ = ip_target_slot_ < kMaxCities
+                                ? "City saved. Add your current location from IP, or continue."
+                                : "City saved. Continue to forecast.";
+        sync_chrome();
+    }
+
+    void rebuild_post_add_list()
+    {
+        std::vector<BrowseListItem> items;
+        for (const PostAddOption option : post_add_options_) {
+            BrowseListItem item;
+            if (option == PostAddOption::AddFromIp) {
+                item.label = "Add city from IP location";
+            } else {
+                item.label = "Continue to forecast";
+            }
+            items.push_back(std::move(item));
+        }
+        browse_.set_container_name("Add city options");
+        browse_.set_items(std::move(items));
+        browse_.reset_focus();
+    }
+
+    void handle_post_add_options(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::DpadUp || key == keyboard::ControlKey::DpadDown) {
+            browse_.handle_control(key, ctx.output);
+            return;
+        }
+
+        if (key == keyboard::ControlKey::Backspace) {
+            finish_city_add(ctx);
+            return;
+        }
+
+        if (key != keyboard::ControlKey::Enter) {
+            return;
+        }
+
+        const size_t index = browse_.focus_index();
+        if (index >= post_add_options_.size()) {
+            return;
+        }
+
+        if (post_add_options_[index] == PostAddOption::AddFromIp) {
+            begin_ip_city_add(ctx);
+            return;
+        }
+
+        finish_city_add(ctx);
+    }
+
+    void begin_ip_city_add(UiContext &ctx)
+    {
+        if (ip_target_slot_ >= kMaxCities) {
+            announce(ctx, "No empty city slots");
+            finish_city_add(ctx);
+            return;
+        }
+
+        layer_ = Layer::Loading;
+        announce(ctx, "Detecting location from IP");
+        const std::string fields = "\"slot\":\"" + std::to_string(ip_target_slot_) + "\"";
+        ctx.connect->request_async("weather.set_city_from_ip", fields,
+                                   [this](const std::string &response) {
+                                       if (!braillatron::connect::json_get_bool(response, "ok",
+                                                                                false)) {
+                                           pending_announce_ = "Could not add location from IP";
+                                           layer_ = Layer::PostAddOptions;
+                                           rebuild_post_add_list();
+                                           sync_chrome();
+                                           return;
+                                       }
+                                       pending_announce_ =
+                                           slot_label(ip_target_slot_) + " set to your IP location";
+                                       if (ctx_ != nullptr) {
+                                           finish_city_add(*ctx_);
+                                       }
+                                   });
+    }
+
+    void finish_city_add(UiContext &ctx)
+    {
+        (void)ctx;
+        layer_ = Layer::Forecast;
+        rebuild_forecast_list();
+        pending_announce_ = "Weather for " + location_ + ". Use up and down to browse.";
+        announce_forecast_after_ready_ = true;
+        sync_chrome();
     }
 
     void handle_enter_city(keyboard::ControlKey key, UiContext &ctx)
@@ -415,10 +701,7 @@ private:
                 sync_chrome();
                 return;
             }
-            layer_ = Layer::Cities;
-            rebuild_city_list();
-            sync_chrome();
-            browse_.announce_focus(ctx.output, false);
+            retreat_enter_step(ctx);
             return;
         }
 
@@ -426,29 +709,7 @@ private:
             return;
         }
 
-        if (city_buffer_.empty()) {
-            announce(ctx, "Type a city name first");
-            return;
-        }
-
-        layer_ = Layer::Loading;
-        selected_slot_ = pending_slot_;
-        announce(ctx, "Updating " + slot_label(pending_slot_) + " to " + city_buffer_);
-        const std::string fields = "\"slot\":\"" + std::to_string(pending_slot_) +
-                                   "\",\"city_name\":\"" +
-                                   braillatron::connect::json_escape(city_buffer_) + "\"";
-        ctx.connect->request_async("weather.set_city", fields, [this](const std::string &response) {
-            if (!braillatron::connect::json_get_bool(response, "ok", false)) {
-                pending_announce_ = "City update failed";
-                layer_ = Layer::Cities;
-                return;
-            }
-            parse_cache_response(response, false);
-            layer_ = Layer::Forecast;
-            rebuild_forecast_list();
-            pending_announce_ = "Weather for " + location_ + ". Use up and down to browse.";
-            announce_forecast_after_ready_ = true;
-        });
+        advance_enter_step(ctx);
     }
 
     void open_city_forecast(UiContext &ctx, size_t slot)
@@ -827,6 +1088,12 @@ private:
     std::string current_summary_;
     std::string temperature_unit_;
     std::string city_buffer_;
+    std::string pending_city_;
+    std::string pending_region_;
+    std::string pending_country_;
+    EnterStep enter_step_ = EnterStep::City;
+    size_t ip_target_slot_ = kMaxCities;
+    std::vector<PostAddOption> post_add_options_;
     std::vector<HourlyItem> hourly_;
     std::vector<DailyItem> daily_;
     std::vector<ForecastNavItem> forecast_nav_;
