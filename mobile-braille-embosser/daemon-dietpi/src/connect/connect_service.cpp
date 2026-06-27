@@ -436,6 +436,10 @@ std::string ConnectService::handle_request(const std::string &request)
                 result = podcasts_ptr->refresh();
             } else if (cmd == "podcasts.download") {
                 result = podcasts_ptr->download(json_get_string(request, "episode_id"));
+            } else if (cmd == "radio.list_stations") {
+                result = radio_ptr->list_stations();
+            } else if (cmd == "radio.play") {
+                result = radio_ptr->play(json_get_string(request, "station_id"));
             } else if (cmd == "radio.search") {
                 result = radio_ptr->search(json_get_string(request, "query"));
             } else if (cmd == "library.search") {

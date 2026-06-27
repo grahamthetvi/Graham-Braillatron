@@ -83,6 +83,7 @@ public:
     void open_shutdown_confirm();
     void open_restart_confirm();
     void push_power_confirm(MenuOverlay &mo);
+    void open_frozen_app_confirm(AppRegistry *registry);
 
     void sync_chrome(bool at_boundary);
     void tick_display_scroll(uint64_t now_ms);

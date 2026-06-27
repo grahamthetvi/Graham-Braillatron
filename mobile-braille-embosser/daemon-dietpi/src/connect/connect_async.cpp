@@ -41,7 +41,8 @@ bool is_async_command(const std::string &cmd)
            cmd == "music.scan" || cmd == "weather.fetch" || cmd == "weather.set_location" ||
            cmd == "weather.set_city" || cmd == "weather.set_city_from_ip" ||
            cmd == "weather.ip_location" || cmd == "weather.set_temperature_unit" || cmd == "podcasts.refresh" ||
-           cmd == "podcasts.download" || cmd == "radio.search" || cmd == "library.search" ||
+           cmd == "podcasts.download" || cmd == "radio.list_stations" || cmd == "radio.play" ||
+           cmd == "radio.search" || cmd == "library.search" ||
            cmd == "library.download" || cmd == "worthwhile.search" || cmd == "worthwhile.recent" ||
            cmd == "worthwhile.download" || cmd == "gmail.start_link" || cmd == "gmail.list_inbox" ||
            cmd == "gmail.read_message" || cmd == "gmail.send" || cmd == "gmail.reply" ||

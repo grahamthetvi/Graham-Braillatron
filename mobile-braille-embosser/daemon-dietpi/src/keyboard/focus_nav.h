@@ -19,6 +19,7 @@ public:
     void on_backspace();
     void on_enter();
     void on_text(const std::string &text);
+    void jump_to_letter(char letter);
     void clear_input_buffer();
 
     size_t focus_index() const;

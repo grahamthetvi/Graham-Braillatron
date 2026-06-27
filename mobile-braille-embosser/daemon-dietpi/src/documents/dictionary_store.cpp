@@ -73,8 +73,10 @@ bool DictionaryStore::open()
         return false;
     }
     sqlite3 *db = nullptr;
-    if (sqlite3_open_v2(config_.db_path.c_str(), &db,
-                        SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nullptr) != SQLITE_OK) {
+    const std::string uri = "file:" + config_.db_path + "?immutable=1";
+    if (sqlite3_open_v2(uri.c_str(), &db,
+                        SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_FULLMUTEX,
+                        nullptr) != SQLITE_OK) {
         if (db != nullptr) {
             sqlite3_close(db);
         }

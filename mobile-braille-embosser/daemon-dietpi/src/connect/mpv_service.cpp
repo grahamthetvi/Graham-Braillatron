@@ -3,7 +3,9 @@
 #include "subprocess.h"
 
 #include <chrono>
+#include <signal.h>
 #include <thread>
+#include <unistd.h>
 
 namespace braillatron::connect {
 
@@ -13,25 +15,46 @@ MpvService::MpvService(Options options)
 {
 }
 
+bool MpvService::process_alive() const
+{
+    if (mpv_proc_.pid <= 0) {
+        return false;
+    }
+    return kill(mpv_proc_.pid, 0) == 0;
+}
+
 bool MpvService::wait_for_socket(int attempts, int delay_ms) const
 {
     for (int i = 0; i < attempts; ++i) {
-        if (file_exists(options_.socket_path)) {
+        if (mpv_.can_connect()) {
             return true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
     }
-    return file_exists(options_.socket_path);
+    return mpv_.can_connect();
 }
 
 bool MpvService::ensure_started()
 {
+    if (process_alive() && mpv_.can_connect()) {
+        return true;
+    }
+    if (mpv_proc_.pid > 0 && !process_alive()) {
+        mpv_proc_.pid = -1;
+    }
+    if (mpv_.can_connect()) {
+        return true;
+    }
+    if (file_exists(options_.socket_path) && !mpv_.can_connect()) {
+        unlink(options_.socket_path.c_str());
+    }
     if (mpv_proc_.pid > 0) {
-        return wait_for_socket(5, 20);
+        mpv_proc_.stop();
     }
     const std::string cmd = options_.mpv_path + " --idle=yes --no-video --ao=" + options_.mpv_ao +
-                            " --input-ipc-server=" + options_.socket_path + options_.extra_args +
-                            " >/dev/null 2>&1";
+                            " --input-ipc-server=" + options_.socket_path +
+                            " --user-agent=\"Braillatron/1.0 (accessibility device)\"" +
+                            options_.extra_args + " >/dev/null 2>&1";
     mpv_proc_ = spawn_background(cmd);
     if (mpv_proc_.pid <= 0) {
         return false;

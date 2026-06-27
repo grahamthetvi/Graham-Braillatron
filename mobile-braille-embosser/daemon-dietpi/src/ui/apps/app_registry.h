@@ -28,7 +28,14 @@ public:
     void exit_inline();
     void exit();
     bool switch_app(const std::string &id);
-    void poll();
+    void poll(uint64_t now_ms);
+    void mark_busy(uint64_t now_ms);
+    void clear_busy();
+    void tick_watchdog(uint64_t now_ms);
+    void on_global_menu(bool open);
+    void dismiss_frozen_prompt();
+    bool frozen_prompt_open() const { return frozen_prompt_open_; }
+
     void on_chord(uint8_t dot_mask);
     void on_text(const std::string &text);
     void on_control(keyboard::ControlKey key, bool pressed);
@@ -41,11 +48,11 @@ public:
 
     bool defers_chord_text() const;
     std::string chord_preview() const;
+    void clear_word_buffer();
 
 private:
     AppSession *focused_app() const;
     bool word_buffer_active() const;
-    void clear_word_buffer();
     void deliver_text(AppSession *app, const std::string &text);
 
     UiContext ctx_;
@@ -53,6 +60,12 @@ private:
     AppSession *active_ = nullptr;
     AppSession *active_inline_ = nullptr;
     WordBufferInput word_buffer_;
+    uint64_t busy_since_ms_ = 0;
+    bool frozen_prompt_open_ = false;
+
+    static constexpr uint64_t kFrozenTimeoutMs = 45000;
+
+    void open_frozen_prompt();
 };
 
 } // namespace braillatron::ui

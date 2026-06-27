@@ -150,13 +150,15 @@ public:
 
     void on_chord(uint8_t, UiContext &) override {}
 
-    void on_text(const std::string &text, UiContext &) override
+    void on_text(const std::string &text, UiContext &ctx) override
     {
         if (layer_ != Layer::EnterCity || text.empty()) {
             return;
         }
         city_buffer_ += text;
-        sync_chrome();
+        if (ctx.output != nullptr) {
+            ctx.output->sync_chrome(false);
+        }
     }
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
@@ -451,6 +453,9 @@ private:
 
     void begin_enter_city(UiContext &ctx, const std::string &message)
     {
+        if (ctx.registry != nullptr) {
+            ctx.registry->clear_word_buffer();
+        }
         layer_ = Layer::EnterCity;
         enter_step_ = EnterStep::City;
         pending_city_.clear();

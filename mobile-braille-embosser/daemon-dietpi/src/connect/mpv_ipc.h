@@ -8,6 +8,7 @@ class MpvIpc {
 public:
     explicit MpvIpc(std::string socket_path);
 
+    bool can_connect() const;
     bool send_command(const std::string &command_json);
     bool load_url(const std::string &url);
     bool seek_seconds(double seconds);

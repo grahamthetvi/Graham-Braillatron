@@ -26,6 +26,7 @@ INSERT INTO entries VALUES
   ('hello','interjection','Used as a greeting or to begin a phone conversation.'),
   ('hello','noun','An utterance of hello; a greeting.'),
   ('world','noun','The earth, together with all of its countries and peoples.'),
+  ('cent','noun','A monetary unit equal to one hundredth of a dollar or euro.'),
   ('braillatron','noun','A mobile smart braille notetaker and embosser.');
 SQL
 }

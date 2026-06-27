@@ -1,4 +1,5 @@
 #include "../../documents/dictionary_store.h"
+#include "../layered_browse_list.h"
 #include "../output_hub.h"
 #include "app_session.h"
 #include "app_util.h"
@@ -26,6 +27,33 @@ public:
     std::string label() const override { return "Dictionary"; }
     AppKind kind() const override { return AppKind::Standalone; }
 
+    bool browse_list_active() const override
+    {
+        return phase_ == Phase::PickMatch || phase_ == Phase::ReadDefinition;
+    }
+
+    const LayeredBrowseList *browse_list() const override
+    {
+        return browse_list_active() ? &browse_ : nullptr;
+    }
+
+    std::string composer_line() const override
+    {
+        return phase_ == Phase::Search ? query_buffer_ : std::string {};
+    }
+
+    std::string browse_breadcrumb() const override
+    {
+        switch (phase_) {
+        case Phase::PickMatch:
+            return "Matches";
+        case Phase::ReadDefinition:
+            return "Definitions";
+        default:
+            return {};
+        }
+    }
+
     void on_enter(UiContext &ctx) override
     {
         reset_session();
@@ -33,6 +61,7 @@ public:
             announce(ctx, "Dictionary database not available.");
             return;
         }
+        sync_chrome(ctx);
         announce(ctx, "Dictionary ready. Type a word and press Enter.");
     }
 
@@ -48,12 +77,13 @@ public:
 
     bool buffers_braille_words() const override { return phase_ == Phase::Search; }
 
-    void on_text(const std::string &text, UiContext &) override
+    void on_text(const std::string &text, UiContext &ctx) override
     {
         if (phase_ != Phase::Search || text.empty()) {
             return;
         }
         query_buffer_ += text;
+        sync_chrome(ctx);
     }
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
@@ -84,6 +114,34 @@ private:
         match_index_ = 0;
         entries_.clear();
         entry_index_ = 0;
+        browse_.clear();
+    }
+
+    void sync_browse_list()
+    {
+        if (phase_ == Phase::PickMatch) {
+            browse_.set_items(matches_, match_index_);
+            browse_.set_container_name("Matches");
+            return;
+        }
+        if (phase_ == Phase::ReadDefinition) {
+            std::vector<std::string> labels;
+            labels.reserve(entries_.size());
+            for (const auto &entry : entries_) {
+                std::string label = entry.word;
+                if (!entry.part_of_speech.empty()) {
+                    label += ", " + entry.part_of_speech;
+                }
+                labels.push_back(std::move(label));
+            }
+            browse_.set_items(std::move(labels), entry_index_);
+            browse_.set_container_name("Definitions");
+        }
+    }
+
+    void announce_browse_focus(UiContext &ctx, bool at_boundary)
+    {
+        browse_.announce_focus(ctx.output, at_boundary);
     }
 
     void handle_search_control(keyboard::ControlKey key, UiContext &ctx)
@@ -91,6 +149,7 @@ private:
         if (key == keyboard::ControlKey::Backspace) {
             if (!query_buffer_.empty()) {
                 query_buffer_.pop_back();
+                sync_chrome(ctx);
             }
             return;
         }
@@ -106,6 +165,8 @@ private:
         if (!entries_.empty()) {
             entry_index_ = 0;
             phase_ = Phase::ReadDefinition;
+            sync_browse_list();
+            sync_chrome(ctx);
             announce_entry(ctx);
             return;
         }
@@ -120,12 +181,16 @@ private:
             entries_ = store_.lookup(query_buffer_);
             entry_index_ = 0;
             phase_ = Phase::ReadDefinition;
+            sync_browse_list();
+            sync_chrome(ctx);
             announce_entry(ctx);
             return;
         }
 
         match_index_ = 0;
         phase_ = Phase::PickMatch;
+        sync_browse_list();
+        sync_chrome(ctx);
         announce_match(ctx);
     }
 
@@ -135,16 +200,22 @@ private:
             phase_ = Phase::Search;
             matches_.clear();
             match_index_ = 0;
+            browse_.clear();
+            sync_chrome(ctx);
             announce(ctx, "Search. " + query_buffer_);
             return;
         }
         if (key == keyboard::ControlKey::DpadUp && match_index_ > 0) {
             --match_index_;
+            browse_.set_focus(match_index_);
+            sync_chrome(ctx);
             announce_match(ctx);
             return;
         }
         if (key == keyboard::ControlKey::DpadDown && match_index_ + 1 < matches_.size()) {
             ++match_index_;
+            browse_.set_focus(match_index_);
+            sync_chrome(ctx);
             announce_match(ctx);
             return;
         }
@@ -156,6 +227,8 @@ private:
         entries_ = store_.lookup(query_buffer_);
         entry_index_ = 0;
         phase_ = Phase::ReadDefinition;
+        sync_browse_list();
+        sync_chrome(ctx);
         announce_entry(ctx);
     }
 
@@ -165,16 +238,22 @@ private:
             phase_ = Phase::Search;
             entries_.clear();
             entry_index_ = 0;
+            browse_.clear();
+            sync_chrome(ctx);
             announce(ctx, "Search. " + query_buffer_);
             return;
         }
         if (key == keyboard::ControlKey::DpadUp && entry_index_ > 0) {
             --entry_index_;
+            browse_.set_focus(entry_index_);
+            sync_chrome(ctx);
             announce_entry(ctx);
             return;
         }
         if (key == keyboard::ControlKey::DpadDown && entry_index_ + 1 < entries_.size()) {
             ++entry_index_;
+            browse_.set_focus(entry_index_);
+            sync_chrome(ctx);
             announce_entry(ctx);
             return;
         }
@@ -214,6 +293,7 @@ private:
     documents::DictionaryConfig config_ =
         documents::load_dictionary_config("/etc/braillatron/dictionary.conf");
     documents::DictionaryStore store_ {config_};
+    LayeredBrowseList browse_;
     Phase phase_ = Phase::Search;
     std::string query_buffer_;
     std::vector<std::string> matches_;

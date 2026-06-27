@@ -141,14 +141,71 @@ bool AppRegistry::switch_app(const std::string &id)
     return enter(id);
 }
 
-void AppRegistry::poll()
+void AppRegistry::poll(uint64_t now_ms)
 {
+    tick_watchdog(now_ms);
     if (active_inline_ != nullptr) {
         active_inline_->on_poll(ctx_);
     }
     if (active_ != nullptr) {
         active_->on_poll(ctx_);
     }
+}
+
+void AppRegistry::mark_busy(uint64_t now_ms)
+{
+    if (busy_since_ms_ == 0) {
+        busy_since_ms_ = now_ms;
+    }
+}
+
+void AppRegistry::clear_busy()
+{
+    busy_since_ms_ = 0;
+}
+
+void AppRegistry::tick_watchdog(uint64_t now_ms)
+{
+    if (frozen_prompt_open_) {
+        return;
+    }
+    if (active_ == nullptr) {
+        clear_busy();
+        return;
+    }
+    if (busy_since_ms_ == 0) {
+        return;
+    }
+    if (now_ms - busy_since_ms_ < kFrozenTimeoutMs) {
+        return;
+    }
+    open_frozen_prompt();
+}
+
+void AppRegistry::open_frozen_prompt()
+{
+    if (frozen_prompt_open_ || ctx_.output == nullptr) {
+        return;
+    }
+    frozen_prompt_open_ = true;
+    ctx_.output->open_frozen_app_confirm(this);
+}
+
+void AppRegistry::dismiss_frozen_prompt()
+{
+    frozen_prompt_open_ = false;
+    clear_busy();
+}
+
+void AppRegistry::on_global_menu(bool open)
+{
+    if (!open && frozen_prompt_open_) {
+        dismiss_frozen_prompt();
+    }
+    if (ctx_.output == nullptr) {
+        return;
+    }
+    ctx_.output->on_menu_overlay(open);
 }
 
 void AppRegistry::on_chord(uint8_t dot_mask)
@@ -319,6 +376,24 @@ std::vector<MenuItem> AppRegistry::build_inline_menu()
                 enter_inline(app_id);
             },
         });
+    }
+
+    if (active_ != nullptr) {
+        items.insert(items.begin(),
+                     MenuItem {
+                         "Print",
+                         {},
+                         [this](MenuOverlay &mo) {
+                             (void)mo;
+                             if (active_ != nullptr) {
+                                 active_->on_menu_action("print", ctx_);
+                             }
+                             if (ctx_.output != nullptr) {
+                                 ctx_.output->menu_overlay().close();
+                                 ctx_.output->sync_chrome(false);
+                             }
+                         },
+                     });
     }
 
     if (active_ != nullptr && active_->id() == "contacts") {

@@ -302,6 +302,148 @@ std::string normalize_country(const std::string &country)
     return trimmed;
 }
 
+std::string normalize_country_code(const std::string &country)
+{
+    const std::string trimmed = trim_copy(country);
+    if (trimmed.empty()) {
+        return {};
+    }
+
+    if (trimmed.size() == 2 &&
+        std::isalpha(static_cast<unsigned char>(trimmed[0])) &&
+        std::isalpha(static_cast<unsigned char>(trimmed[1]))) {
+        return std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(trimmed[0])))) +
+               std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(trimmed[1]))));
+    }
+
+    static const std::vector<std::pair<const char *, const char *>> kCountryCodes = {
+        {"us", "US"},          {"usa", "US"},           {"u.s.", "US"},
+        {"u.s.a.", "US"},      {"america", "US"},       {"united states", "US"},
+        {"united states of america", "US"}, {"ca", "CA"}, {"can", "CA"},
+        {"canada", "CA"},      {"uk", "GB"},            {"u.k.", "GB"},
+        {"gb", "GB"},          {"great britain", "GB"}, {"england", "GB"},
+        {"united kingdom", "GB"}, {"au", "AU"},         {"aus", "AU"},
+        {"australia", "AU"},   {"nz", "NZ"},            {"new zealand", "NZ"},
+        {"de", "DE"},          {"germany", "DE"},       {"fr", "FR"},
+        {"france", "FR"},      {"es", "ES"},            {"spain", "ES"},
+        {"it", "IT"},          {"italy", "IT"},         {"mx", "MX"},
+        {"mexico", "MX"},      {"br", "BR"},            {"brazil", "BR"},
+        {"in", "IN"},          {"india", "IN"},         {"jp", "JP"},
+        {"japan", "JP"},
+    };
+
+    const std::string matched = lookup_alias(trimmed, kCountryCodes);
+    if (!matched.empty()) {
+        return matched;
+    }
+
+    const std::string folded = fold_key(normalize_country(trimmed));
+    if (folded == "unitedstates") {
+        return "US";
+    }
+    if (folded == "canada") {
+        return "CA";
+    }
+    if (folded == "unitedkingdom") {
+        return "GB";
+    }
+    if (folded == "australia") {
+        return "AU";
+    }
+    if (folded == "newzealand") {
+        return "NZ";
+    }
+    if (folded == "germany") {
+        return "DE";
+    }
+    if (folded == "france") {
+        return "FR";
+    }
+    if (folded == "spain") {
+        return "ES";
+    }
+    if (folded == "italy") {
+        return "IT";
+    }
+    if (folded == "mexico") {
+        return "MX";
+    }
+    if (folded == "brazil") {
+        return "BR";
+    }
+    if (folded == "india") {
+        return "IN";
+    }
+    if (folded == "japan") {
+        return "JP";
+    }
+    return {};
+}
+
+struct GeocodeHints {
+    std::string city;
+    std::string region;
+    std::string country;
+    std::string country_code;
+};
+
+std::string extract_json_array_body(const std::string &json, const std::string &key)
+{
+    const std::string needle = "\"" + key + "\":";
+    const size_t pos = json.find(needle);
+    if (pos == std::string::npos) {
+        return {};
+    }
+    size_t start = pos + needle.size();
+    while (start < json.size() && std::isspace(static_cast<unsigned char>(json[start]))) {
+        ++start;
+    }
+    if (start >= json.size() || json[start] != '[') {
+        return {};
+    }
+
+    int depth = 0;
+    bool in_string = false;
+    bool escape = false;
+    const size_t body_start = start + 1;
+    for (size_t i = start; i < json.size(); ++i) {
+        const char ch = json[i];
+        if (in_string) {
+            if (escape) {
+                escape = false;
+            } else if (ch == '\\') {
+                escape = true;
+            } else if (ch == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (ch == '"') {
+            in_string = true;
+            continue;
+        }
+        if (ch == '[') {
+            ++depth;
+        } else if (ch == ']') {
+            --depth;
+            if (depth == 0) {
+                return json.substr(body_start, i - body_start);
+            }
+        }
+    }
+    return {};
+}
+
+std::string extract_city_search_name(const std::string &value)
+{
+    const std::string trimmed = trim_copy(value);
+    const size_t comma = trimmed.find(',');
+    if (comma == std::string::npos) {
+        return trimmed;
+    }
+    return trim_copy(trimmed.substr(0, comma));
+}
+
 bool country_hint_is_us_or_ca(const std::string &country)
 {
     const std::string normalized = normalize_country(country);
@@ -406,24 +548,126 @@ std::string normalize_region(const std::string &region, const std::string &count
     return trimmed;
 }
 
+bool region_matches_hint(const std::string &admin1, const std::string &region_hint,
+                         const std::string &country_hint)
+{
+    if (admin1.empty() || region_hint.empty()) {
+        return false;
+    }
+
+    const std::string folded_admin = fold_key(admin1);
+    const std::string folded_hint = fold_key(region_hint);
+    if (folded_admin == folded_hint) {
+        return true;
+    }
+
+    const std::string normalized_hint = normalize_region(region_hint, country_hint);
+    if (!normalized_hint.empty() && folded_admin == fold_key(normalized_hint)) {
+        return true;
+    }
+
+    const std::string normalized_admin = normalize_region(admin1, country_hint);
+    return !normalized_admin.empty() && fold_key(normalized_admin) == folded_hint;
+}
+
+struct GeocodeCandidate {
+    std::string name;
+    std::string admin1;
+    std::string country;
+    std::string country_code;
+    double latitude = 0.0;
+    double longitude = 0.0;
+    int population = 0;
+};
+
+int score_geocode_candidate(const GeocodeCandidate &candidate, const GeocodeHints &hints)
+{
+    int score = 0;
+    if (!hints.city.empty() && fold_key(candidate.name) == fold_key(hints.city)) {
+        score += 10;
+    }
+    if (!hints.country_code.empty() &&
+        fold_key(candidate.country_code) == fold_key(hints.country_code)) {
+        score += 100;
+    }
+    if (!hints.country.empty() && fold_key(candidate.country) == fold_key(hints.country)) {
+        score += 50;
+    }
+    if (!hints.region.empty() &&
+        region_matches_hint(candidate.admin1, hints.region, hints.country)) {
+        score += 200;
+    }
+    return score;
+}
+
+bool pick_geocode_candidate(const std::vector<GeocodeCandidate> &candidates,
+                            const GeocodeHints &hints, GeocodeCandidate &selected)
+{
+    if (candidates.empty()) {
+        return false;
+    }
+
+    if (hints.region.empty() && hints.country.empty() && hints.country_code.empty()) {
+        selected = candidates.front();
+        return true;
+    }
+
+    int best_score = -1;
+    int best_population = -1;
+    size_t best_index = 0;
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        const int score = score_geocode_candidate(candidates[i], hints);
+        if (score > best_score ||
+            (score == best_score && candidates[i].population > best_population)) {
+            best_score = score;
+            best_population = candidates[i].population;
+            best_index = i;
+        }
+    }
+
+    if (best_score <= 0) {
+        return false;
+    }
+
+    selected = candidates[best_index];
+    return true;
+}
+
+std::string format_resolved_location_name(const GeocodeCandidate &candidate)
+{
+    if (candidate.admin1.empty()) {
+        return candidate.name;
+    }
+    return candidate.name + ", " + candidate.admin1;
+}
+
+GeocodeHints build_geocode_hints(const std::string &city, const std::string &region,
+                                 const std::string &country)
+{
+    GeocodeHints hints;
+    hints.city = trim_copy(city);
+    hints.country = normalize_country(country);
+    hints.country_code = normalize_country_code(country);
+    hints.region =
+        normalize_region(region, hints.country.empty() ? country : hints.country);
+    return hints;
+}
+
 std::string build_geocode_query(const std::string &city, const std::string &region,
                                 const std::string &country)
 {
-    const std::string city_part = trim_copy(city);
-    if (city_part.empty()) {
+    const GeocodeHints hints = build_geocode_hints(city, region, country);
+    if (hints.city.empty()) {
         return {};
     }
 
-    const std::string country_part = normalize_country(country);
-    const std::string region_part = normalize_region(region, country_part.empty() ? country : country_part);
-
     std::ostringstream out;
-    out << city_part;
-    if (!region_part.empty()) {
-        out << ", " << region_part;
+    out << hints.city;
+    if (!hints.region.empty()) {
+        out << ", " << hints.region;
     }
-    if (!country_part.empty()) {
-        out << ", " << country_part;
+    if (!hints.country.empty()) {
+        out << ", " << hints.country;
     }
     return out.str();
 }
@@ -535,7 +779,9 @@ std::string WeatherBackend::build_forecast_url(double latitude, double longitude
 }
 
 bool WeatherBackend::resolve_coordinates(WeatherCitySlot &city, std::string &location_name,
-                                         std::string &country_code)
+                                         std::string &country_code,
+                                         const std::string &region_hint,
+                                         const std::string &country_hint)
 {
     double latitude = city.latitude;
     double longitude = city.longitude;
@@ -548,34 +794,76 @@ bool WeatherBackend::resolve_coordinates(WeatherCitySlot &city, std::string &loc
         return true;
     }
 
-    if (city.city_name.empty()) {
+    const std::string search_city = extract_city_search_name(city.city_name);
+    if (search_city.empty()) {
         return false;
     }
 
-    const std::string url = config_.geocoding_url + "?name=" + url_encode(city.city_name) +
-                            "&count=1&language=en&format=json";
-    const std::string response = curl_fetch(url);
+    GeocodeHints hints = build_geocode_hints(search_city, region_hint, country_hint);
+    if (!country_code.empty() && hints.country_code.empty()) {
+        hints.country_code = normalize_country_code(country_code);
+    }
+
+    std::ostringstream url;
+    url << config_.geocoding_url << "?name=" << url_encode(search_city)
+        << "&count=10&language=en&format=json";
+    if (!hints.country_code.empty()) {
+        url << "&countryCode=" << url_encode(hints.country_code);
+    }
+
+    const std::string response = curl_fetch(url.str());
     if (response.empty() || response.find("\"results\"") == std::string::npos) {
         return false;
     }
 
-    const size_t results_pos = response.find("\"results\":[");
-    if (results_pos == std::string::npos) {
+    const std::string results_array = extract_json_array_body(response, "results");
+    if (results_array.empty()) {
         return false;
     }
-    const std::string slice = response.substr(results_pos);
-    const std::string result_lat = json_get_string(slice, "latitude");
-    const std::string result_lon = json_get_string(slice, "longitude");
-    if (result_lat.empty() || result_lon.empty()) {
+
+    std::vector<GeocodeCandidate> candidates;
+    for (const std::string &object : json_split_objects("[" + results_array + "]")) {
+        const std::string result_lat = json_get_string(object, "latitude");
+        const std::string result_lon = json_get_string(object, "longitude");
+        if (result_lat.empty() || result_lon.empty()) {
+            continue;
+        }
+
+        GeocodeCandidate candidate;
+        candidate.name = json_get_string(object, "name");
+        candidate.admin1 = json_get_string(object, "admin1");
+        candidate.country = json_get_string(object, "country");
+        candidate.country_code = json_get_string(object, "country_code");
+        try {
+            candidate.latitude = std::stod(result_lat);
+            candidate.longitude = std::stod(result_lon);
+        } catch (...) {
+            continue;
+        }
+        const std::string population = json_get_string(object, "population");
+        if (!population.empty()) {
+            try {
+                candidate.population = std::stoi(population);
+            } catch (...) {
+                candidate.population = 0;
+            }
+        }
+        candidates.push_back(std::move(candidate));
+    }
+
+    if (candidates.empty()) {
         return false;
     }
-    latitude = std::stod(result_lat);
-    longitude = std::stod(result_lon);
-    location_name = json_get_string(slice, "name");
-    if (location_name.empty()) {
-        location_name = city.city_name;
+
+    GeocodeCandidate selected;
+    if (!pick_geocode_candidate(candidates, hints, selected)) {
+        return false;
     }
-    country_code = json_get_string(slice, "country_code");
+
+    latitude = selected.latitude;
+    longitude = selected.longitude;
+    location_name = format_resolved_location_name(selected);
+    country_code = selected.country_code;
     city.latitude = latitude;
     city.longitude = longitude;
     return true;
@@ -904,23 +1192,23 @@ std::string WeatherBackend::set_city(size_t slot, const std::string &city_name,
         return "{\"ok\":false,\"error\":\"city_name required\"}";
     }
 
-    const std::string geocode_query = build_geocode_query(city_name, region, country);
-    if (geocode_query.empty()) {
+    const GeocodeHints hints = build_geocode_hints(city_name, region, country);
+    if (hints.city.empty()) {
         return "{\"ok\":false,\"error\":\"city_name required\"}";
     }
 
     WeatherCitySlot previous = config_.cities[slot];
     std::string previous_country = resolved_country_codes_[slot];
 
-    config_.cities[slot].city_name = geocode_query;
+    config_.cities[slot].city_name = hints.city;
     config_.cities[slot].latitude = 0.0;
     config_.cities[slot].longitude = 0.0;
     resolved_country_codes_[slot].clear();
 
     WeatherCitySlot &city = config_.cities[slot];
-    std::string location_name = geocode_query;
+    std::string location_name = build_geocode_query(city_name, region, country);
     std::string country_code;
-    if (!resolve_coordinates(city, location_name, country_code)) {
+    if (!resolve_coordinates(city, location_name, country_code, hints.region, country)) {
         config_.cities[slot] = previous;
         resolved_country_codes_[slot] = previous_country;
         return "{\"ok\":false,\"error\":\"city not found\"}";

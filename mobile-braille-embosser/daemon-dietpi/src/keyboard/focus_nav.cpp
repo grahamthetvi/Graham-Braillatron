@@ -1,5 +1,6 @@
 #include "focus_nav.h"
 
+#include <cctype>
 #include <utility>
 
 namespace braillatron::keyboard {
@@ -48,8 +49,41 @@ void FocusNavigator::on_enter()
     }
 }
 
+void FocusNavigator::jump_to_letter(char letter)
+{
+    const unsigned char target =
+        static_cast<unsigned char>(std::tolower(static_cast<unsigned char>(letter)));
+    if (target < 'a' || target > 'z') {
+        return;
+    }
+
+    for (size_t i = 0; i < entries_.size(); ++i) {
+        if (entries_[i].empty()) {
+            continue;
+        }
+        const unsigned char first =
+            static_cast<unsigned char>(std::tolower(static_cast<unsigned char>(entries_[i][0])));
+        if (first == target) {
+            focus_index_ = i;
+            notify_focus(false);
+            return;
+        }
+    }
+
+    notify_focus(true);
+}
+
 void FocusNavigator::on_text(const std::string &text)
 {
+    if (!text.empty()) {
+        const unsigned char ch = static_cast<unsigned char>(text[0]);
+        if (std::isalpha(ch)) {
+            input_buffer_.clear();
+            jump_to_letter(static_cast<char>(ch));
+            return;
+        }
+    }
+
     input_buffer_ += text;
     notify_input_changed();
 }

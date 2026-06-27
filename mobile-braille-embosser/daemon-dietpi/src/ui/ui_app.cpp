@@ -150,7 +150,7 @@ void UiApp::poll()
         app_registry_.on_connect_event(event);
     });
     timer_service_.tick(now);
-    app_registry_.poll();
+    app_registry_.poll(now);
     output_hub_.tick_display_scroll(now);
     refresh_status(false);
     telemetry::sync_motion_gate_from_telemetry();

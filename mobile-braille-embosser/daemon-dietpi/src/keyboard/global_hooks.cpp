@@ -43,6 +43,10 @@ bool menu_overlay_open()
 
 void on_menu_overlay(bool open)
 {
+    if (g_app_registry != nullptr) {
+        g_app_registry->on_global_menu(open);
+        return;
+    }
     if (g_output_hub != nullptr) {
         g_output_hub->on_menu_overlay(open);
     }

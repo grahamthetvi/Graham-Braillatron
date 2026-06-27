@@ -29,6 +29,7 @@ public:
     bool is_paused() const { return paused_; }
 
 private:
+    bool process_alive() const;
     bool wait_for_socket(int attempts, int delay_ms) const;
 
     Options options_;

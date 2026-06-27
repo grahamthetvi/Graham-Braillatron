@@ -369,7 +369,11 @@ std::string RadioBackend::play(const std::string &station_id)
     last_metadata_.clear();
     paused_ = false;
     mpv_->mark_playing();
-    if (!mpv_->ipc().load_url(station->url)) {
+    bool loaded = mpv_->ipc().load_url(station->url);
+    if (!loaded) {
+        loaded = mpv_->ensure_started() && mpv_->ipc().load_url(station->url);
+    }
+    if (!loaded) {
         return "{\"ok\":false,\"error\":\"mpv load failed\"}";
     }
 

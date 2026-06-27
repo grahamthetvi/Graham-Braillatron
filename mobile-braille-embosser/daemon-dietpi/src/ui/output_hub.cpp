@@ -1029,6 +1029,42 @@ void OutputHub::push_power_confirm(MenuOverlay &mo)
     mo.push_level(build_power_confirm_items([](MenuOverlay &mo) { mo.pop_level(); }), "Power");
 }
 
+void OutputHub::open_frozen_app_confirm(AppRegistry *registry)
+{
+    menu_overlay_.set_root_items(
+        {
+            MenuItem {
+                "No",
+                {},
+                [registry](MenuOverlay &mo) {
+                    if (registry != nullptr) {
+                        registry->dismiss_frozen_prompt();
+                    }
+                    mo.close();
+                },
+            },
+            MenuItem {
+                "Yes",
+                {},
+                [this, registry](MenuOverlay &mo) {
+                    (void)mo;
+                    if (registry != nullptr) {
+                        registry->exit();
+                        registry->dismiss_frozen_prompt();
+                    }
+                    menu_overlay_.close();
+                    announce_message("Returned to app list");
+                    sync_chrome(false);
+                },
+            },
+        },
+        "App not responding");
+    menu_overlay_.open();
+    announce_message("App not responding. Close app and return to launcher?");
+    announce_focus(menu_overlay_.focused_label(), false);
+    sync_chrome(false);
+}
+
 MenuOverlay &OutputHub::menu_overlay()
 {
     return menu_overlay_;

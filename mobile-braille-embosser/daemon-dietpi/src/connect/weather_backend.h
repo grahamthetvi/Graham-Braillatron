@@ -35,7 +35,8 @@ public:
 
 private:
     bool resolve_coordinates(WeatherCitySlot &city, std::string &location_name,
-                             std::string &country_code);
+                             std::string &country_code, const std::string &region_hint = {},
+                             const std::string &country_hint = {});
     std::string effective_temperature_unit_for(const std::string &country_code, double latitude,
                                                double longitude) const;
     std::string build_forecast_url(double latitude, double longitude,

@@ -29,6 +29,10 @@ void test_async_command_detection()
     expect_true(braillatron::connect::is_async_command("podcasts.refresh"), "podcasts.refresh is async");
     expect_true(braillatron::connect::is_async_command("podcasts.download"), "podcasts.download is async");
     expect_true(braillatron::connect::is_async_command("radio.search"), "radio.search is async");
+    expect_true(braillatron::connect::is_async_command("radio.list_stations"),
+                "radio.list_stations is async");
+    expect_true(braillatron::connect::is_async_command("radio.play"), "radio.play is async");
+    expect_true(!braillatron::connect::is_async_command("radio.stop"), "radio.stop is sync");
     expect_true(!braillatron::connect::is_async_command("ping"), "ping is sync");
     expect_true(!braillatron::connect::is_async_command("signal.link_status"),
                 "signal.link_status is sync");

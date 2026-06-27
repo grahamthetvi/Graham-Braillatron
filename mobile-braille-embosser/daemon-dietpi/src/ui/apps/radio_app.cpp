@@ -1,17 +1,27 @@
 #include "../../connect/connect_client.h"
 #include "../../connect/json_utils.h"
+#include "app_registry.h"
 #include "app_session.h"
 #include "app_util.h"
 #include "ui_context.h"
 
 #include "../output_hub.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace braillatron::ui {
 namespace {
+
+uint64_t steady_now_ms()
+{
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+}
 
 struct StationItem {
     std::string id;
@@ -23,6 +33,7 @@ struct StationItem {
 enum class Phase {
     Loading,
     Stations,
+    Starting,
     Playing,
     Searching,
 };
@@ -47,6 +58,9 @@ public:
 
     void on_exit(UiContext &ctx) override
     {
+        if (ctx.registry != nullptr) {
+            ctx.registry->clear_busy();
+        }
         if (ctx.connect != nullptr) {
             ctx.connect->request("radio.stop");
         }
@@ -89,7 +103,7 @@ public:
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
     {
-        if (!pressed || phase_ == Phase::Loading) {
+        if (!pressed || phase_ == Phase::Loading || phase_ == Phase::Starting) {
             return;
         }
 
@@ -159,8 +173,16 @@ private:
         if (ctx.connect == nullptr) {
             return;
         }
-        const std::string response = ctx.connect->request("radio.list_stations");
-        parse_stations_response(response);
+        AppRegistry *registry = ctx.registry;
+        if (registry != nullptr) {
+            registry->mark_busy(steady_now_ms());
+        }
+        ctx.connect->request_async("radio.list_stations", "", [this, registry](const std::string &response) {
+            parse_stations_response(response);
+            if (registry != nullptr) {
+                registry->clear_busy();
+            }
+        });
     }
 
     void handle_stations(keyboard::ControlKey key, UiContext &ctx)
@@ -210,18 +232,27 @@ private:
             announce(ctx, "Connectivity unavailable");
             return;
         }
-        const std::string response = ctx.connect->request(
-            "radio.play",
-            "\"station_id\":\"" + braillatron::connect::json_escape(station.id) + "\"");
-        if (braillatron::connect::json_get_bool(response, "ok", false)) {
-            phase_ = Phase::Playing;
-            if (ctx.output != nullptr) {
-                ctx.output->set_media_playing(true);
-            }
-            announce(ctx, "Playing " + station.name);
-        } else {
-            announce(ctx, "Playback failed");
+        phase_ = Phase::Starting;
+        announce(ctx, "Starting " + station.name);
+        AppRegistry *registry = ctx.registry;
+        if (registry != nullptr) {
+            registry->mark_busy(steady_now_ms());
         }
+        ctx.connect->request_async(
+            "radio.play",
+            "\"station_id\":\"" + braillatron::connect::json_escape(station.id) + "\"",
+            [this, registry, station_name = station.name](const std::string &response) {
+                if (braillatron::connect::json_get_bool(response, "ok", false)) {
+                    phase_ = Phase::Playing;
+                    pending_announce_ = "Playing " + station_name;
+                } else {
+                    phase_ = Phase::Stations;
+                    pending_announce_ = "Playback failed";
+                }
+                if (registry != nullptr) {
+                    registry->clear_busy();
+                }
+            });
     }
 
     Phase phase_ = Phase::Loading;
