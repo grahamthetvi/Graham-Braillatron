@@ -79,6 +79,8 @@ public:
         }
     }
 
+    bool buffers_braille_words() const override { return state_ == MessagesState::Compose; }
+
     void on_text(const std::string &text, UiContext &) override
     {
         if (state_ == MessagesState::Compose) {

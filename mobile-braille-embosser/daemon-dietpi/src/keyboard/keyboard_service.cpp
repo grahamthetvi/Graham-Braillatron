@@ -313,10 +313,17 @@ void KeyboardService::handle_chord(uint8_t dot_mask)
     if (hooks::standalone_app_active() || hooks::inline_app_active()) {
         hooks::on_app_chord(dot_mask);
 
+        const std::string app_id = hooks::active_standalone_app_id();
         const bool calculator_chord =
-            hooks::active_standalone_app_id() == "calculator" &&
+            app_id == "calculator" &&
             braillatron::ui::calculator_char_from_dot_mask(dot_mask).has_value();
         if (calculator_chord) {
+            return;
+        }
+        if (hooks::app_defers_chord_text()) {
+            if (dot_mask == 0 && text.has_value()) {
+                hooks::on_app_text(*text);
+            }
             return;
         }
 

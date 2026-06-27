@@ -89,6 +89,11 @@ public:
         }
     }
 
+    bool buffers_braille_words() const override
+    {
+        return state_ == YoutubeState::Search || state_ == YoutubeState::Playing;
+    }
+
     void on_text(const std::string &text, UiContext &) override
     {
         if (state_ == YoutubeState::Search) {

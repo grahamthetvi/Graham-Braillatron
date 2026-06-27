@@ -95,6 +95,8 @@ public:
     void on_poll(UiContext &) override {}
     void on_chord(uint8_t, UiContext &) override {}
 
+    bool buffers_braille_words() const override { return true; }
+
     void on_text(const std::string &text, UiContext &ctx) override
     {
         if (text.empty()) {

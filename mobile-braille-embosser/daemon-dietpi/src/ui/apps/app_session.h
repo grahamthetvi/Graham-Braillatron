@@ -31,6 +31,7 @@ public:
     virtual void on_poll(UiContext &ctx) = 0;
     virtual void on_chord(uint8_t dot_mask, UiContext &ctx) = 0;
     virtual void on_text(const std::string &text, UiContext &ctx) = 0;
+    virtual bool buffers_braille_words() const { return false; }
     virtual void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) = 0;
     virtual void on_menu_action(const std::string &action, UiContext &ctx)
     {

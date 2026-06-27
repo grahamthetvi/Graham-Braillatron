@@ -23,14 +23,20 @@ LOUIS_CXXFLAGS += -DBRAILLATRON_LIBLOUIS
 LOUIS_LIBS += -llouis
 endif
 
+# Use a dedicated liblouis object for linked targets so stub builds cannot reuse it.
+ifeq ($(strip $(LOUIS_LIBS)),)
+LIBLOUIS_BRIDGE_OBJ := src/documents/liblouis_bridge.o
+else
+LIBLOUIS_BRIDGE_OBJ := src/documents/liblouis_bridge_louis.o
+endif
+
 BACKEND_CXXFLAGS := $(LOUIS_CXXFLAGS) $(A11Y_CXXFLAGS)
 BACKEND_LIBS := $(LOUIS_LIBS) $(A11Y_LIBS) -lsqlite3
 
-DISPLAY_LIBS :=
+DISPLAY_LIBS := -lncurses
 DISPLAY_CXXFLAGS :=
 ifeq ($(BRAILLATRON_DISPLAY),1)
 DISPLAY_CXXFLAGS += -DBRAILLATRON_DISPLAY
-DISPLAY_LIBS += -lncurses
 endif
 ifeq ($(shell pkg-config --exists libgpiod 2>/dev/null && echo yes),yes)
 DISPLAY_CXXFLAGS += -DBRAILLATRON_GPIOD
@@ -107,7 +113,7 @@ DOCUMENT_OBJS := \
 	src/documents/contacts_store.o \
 	src/documents/library_store.o \
 	src/documents/edit_session.o \
-	src/documents/liblouis_bridge.o \
+	$(LIBLOUIS_BRIDGE_OBJ) \
 	src/documents/paper_separator.o
 
 MOTION_OBJS := \
@@ -118,6 +124,7 @@ HAPTICS_OBJS := \
 
 APP_OBJS := \
 	src/ui/apps/app_registry.o \
+	src/ui/apps/word_buffer_input.o \
 	src/ui/apps/brailler_app.o \
 	src/ui/apps/calculator_app.o \
 	src/ui/apps/transcriber_app.o \
@@ -535,9 +542,9 @@ braillatron-gmail-test: $(GMAIL_TEST_OBJS)
 braillatron-calculator-test: $(CALCULATOR_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(CALCULATOR_TEST_OBJS) -o $@
 
-# Dedicated object so check-liblouis never reuses liblouis_bridge.o from a stub build.
+# Dedicated object so liblouis-enabled targets never reuse stub liblouis_bridge.o.
 src/documents/liblouis_bridge_louis.o: src/documents/liblouis_bridge.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -DBRAILLATRON_LIBLOUIS -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LOUIS_CXXFLAGS) $(A11Y_CXXFLAGS) -c $< -o $@
 
 braillatron-motion-test: $(MOTION_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(MOTION_TEST_OBJS) -o $@

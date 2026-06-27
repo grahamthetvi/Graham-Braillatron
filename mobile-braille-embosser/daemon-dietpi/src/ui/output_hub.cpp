@@ -822,6 +822,10 @@ void OutputHub::sync_chrome(bool at_boundary)
         chrome_model_.surface = ChromeSurface::InApp;
         chrome_model_.header = app_registry_->active()->label();
         chrome_model_.composer_line = app_registry_->active()->composer_line();
+        const std::string preview = app_registry_->chord_preview();
+        if (!preview.empty()) {
+            chrome_model_.composer_line += preview;
+        }
         chrome_model_.result_line = app_registry_->active()->result_line();
         chrome_model_.items.clear();
         chrome_model_.focus_index = 0;

@@ -51,6 +51,7 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     ui_context_.edit = &edit_session_;
     ui_context_.paper_sep = &paper_separator_;
     ui_context_.braille = &braille_service_;
+    ui_context_.braille_input = &braille_input_service_;
     ui_context_.registry = &app_registry_;
     ui_context_.connect = &connect_client_;
     ui_context_.timer = &timer_service_;

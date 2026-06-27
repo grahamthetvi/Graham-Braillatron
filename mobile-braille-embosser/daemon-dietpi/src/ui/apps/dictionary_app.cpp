@@ -46,6 +46,8 @@ public:
     void on_poll(UiContext &) override {}
     void on_chord(uint8_t, UiContext &) override {}
 
+    bool buffers_braille_words() const override { return phase_ == Phase::Search; }
+
     void on_text(const std::string &text, UiContext &) override
     {
         if (phase_ != Phase::Search || text.empty()) {

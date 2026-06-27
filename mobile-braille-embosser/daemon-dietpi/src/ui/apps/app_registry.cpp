@@ -79,6 +79,7 @@ bool AppRegistry::enter(const std::string &id)
             if (active_ != nullptr) {
                 active_->on_exit(ctx_);
             }
+            clear_word_buffer();
             active_ = app.get();
             active_->on_enter(ctx_);
             if (ctx_.output != nullptr) {
@@ -125,6 +126,7 @@ void AppRegistry::exit()
     if (active_ != nullptr) {
         active_->on_exit(ctx_);
         active_ = nullptr;
+        clear_word_buffer();
         if (ctx_.output != nullptr) {
             ctx_.output->sync_chrome(false);
         }
@@ -151,6 +153,16 @@ void AppRegistry::poll()
 
 void AppRegistry::on_chord(uint8_t dot_mask)
 {
+    if (word_buffer_active()) {
+        if (dot_mask != 0) {
+            word_buffer_.push_chord(dot_mask, ctx_.braille_input);
+            if (ctx_.output != nullptr) {
+                ctx_.output->sync_chrome(false);
+            }
+        }
+        return;
+    }
+
     if (active_inline_ != nullptr) {
         active_inline_->on_chord(dot_mask, ctx_);
         return;
@@ -162,6 +174,28 @@ void AppRegistry::on_chord(uint8_t dot_mask)
 
 void AppRegistry::on_text(const std::string &text)
 {
+    if (word_buffer_active()) {
+        for (char ch : text) {
+            if (ch == ' ') {
+                const std::string word = word_buffer_.commit_word(ctx_.braille_input);
+                if (!word.empty()) {
+                    deliver_text(focused_app(), word);
+                }
+                deliver_text(focused_app(), " ");
+            } else {
+                const std::string word = word_buffer_.commit_word(ctx_.braille_input);
+                if (!word.empty()) {
+                    deliver_text(focused_app(), word);
+                }
+                deliver_text(focused_app(), std::string(1, ch));
+            }
+        }
+        if (ctx_.output != nullptr) {
+            ctx_.output->sync_chrome(false);
+        }
+        return;
+    }
+
     if (active_inline_ != nullptr) {
         active_inline_->on_text(text, ctx_);
         return;
@@ -173,6 +207,14 @@ void AppRegistry::on_text(const std::string &text)
 
 void AppRegistry::on_control(keyboard::ControlKey key, bool pressed)
 {
+    if (pressed && key == keyboard::ControlKey::Backspace && word_buffer_active()
+        && word_buffer_.pop_chord(ctx_.braille_input)) {
+        if (ctx_.output != nullptr) {
+            ctx_.output->sync_chrome(false);
+        }
+        return;
+    }
+
     if (active_inline_ != nullptr) {
         active_inline_->on_control(key, pressed, ctx_);
         return;
@@ -317,6 +359,53 @@ std::vector<MenuItem> AppRegistry::build_inline_menu()
     });
 
     return items;
+}
+
+AppSession *AppRegistry::focused_app() const
+{
+    if (active_inline_ != nullptr) {
+        return active_inline_;
+    }
+    return active_;
+}
+
+bool AppRegistry::word_buffer_active() const
+{
+    AppSession *app = focused_app();
+    return app != nullptr && app->buffers_braille_words();
+}
+
+void AppRegistry::clear_word_buffer()
+{
+    word_buffer_.clear();
+}
+
+void AppRegistry::deliver_text(AppSession *app, const std::string &text)
+{
+    if (app == nullptr || text.empty()) {
+        return;
+    }
+    app->on_text(text, ctx_);
+}
+
+bool AppRegistry::defers_chord_text() const
+{
+    AppSession *app = focused_app();
+    if (app == nullptr) {
+        return false;
+    }
+    if (app->id() == "brailler") {
+        return true;
+    }
+    return app->buffers_braille_words();
+}
+
+std::string AppRegistry::chord_preview() const
+{
+    if (!word_buffer_active() || !word_buffer_.has_pending()) {
+        return {};
+    }
+    return word_buffer_.preview();
 }
 
 } // namespace braillatron::ui

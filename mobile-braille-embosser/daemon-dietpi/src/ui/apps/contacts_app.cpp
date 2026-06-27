@@ -55,6 +55,11 @@ public:
     void on_poll(UiContext &) override {}
     void on_chord(uint8_t, UiContext &) override {}
 
+    bool buffers_braille_words() const override
+    {
+        return phase_ == Phase::Search || phase_ == Phase::AddName || phase_ == Phase::AddPhone;
+    }
+
     std::string composer_line() const override
     {
         if (phase_ == Phase::AddName) {
@@ -374,8 +379,8 @@ private:
             return;
         }
         const std::string card = store_.format_card(*selected_contact_);
-        for (const std::string &line : split_lines(card)) {
-            ctx.brf->append_line(line);
+        for (char ch : card) {
+            ctx.brf->append_char(ch);
         }
         ctx.brf->save();
         announce(ctx, "Copied contact to document");
@@ -394,24 +399,6 @@ private:
         ctx.motion->emboss_text(store_.format_card(*selected_contact_), *ctx.braille);
         announce(ctx, "Embossing contact card");
         phase_ = Phase::Detail;
-    }
-
-    static std::vector<std::string> split_lines(const std::string &text)
-    {
-        std::vector<std::string> lines;
-        std::string current;
-        for (char ch : text) {
-            if (ch == '\n') {
-                lines.push_back(current);
-                current.clear();
-                continue;
-            }
-            current.push_back(ch);
-        }
-        if (!current.empty()) {
-            lines.push_back(current);
-        }
-        return lines;
     }
 
     documents::ContactsConfig config_ =

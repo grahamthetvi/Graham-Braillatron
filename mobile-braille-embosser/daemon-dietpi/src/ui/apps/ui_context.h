@@ -27,6 +27,7 @@ struct UiContext {
     documents::EditSession *edit = nullptr;
     documents::PaperSeparator *paper_sep = nullptr;
     documents::BrailleTranslationService *braille = nullptr;
+    documents::BrailleTranslationService *braille_input = nullptr;
     AppRegistry *registry = nullptr;
     connect::ConnectClient *connect = nullptr;
     TimerService *timer = nullptr;

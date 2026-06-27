@@ -5,6 +5,7 @@
 #include "../output_hub.h"
 
 #include "../../documents/edit_session.h"
+#include "../../documents/liblouis_bridge.h"
 #include "../../motion/motion_service.h"
 
 #include <cctype>
@@ -12,6 +13,7 @@
 #include <memory>
 #include <regex>
 #include <string>
+#include <vector>
 
 namespace braillatron::ui {
 namespace {
@@ -27,6 +29,7 @@ public:
         brf_ = ctx.brf;
         edit_ = ctx.edit;
         output_ = ctx.output;
+        braille_input_ = ctx.braille_input;
 
         if (ctx.brf != nullptr) {
             ctx.brf->load();
@@ -47,6 +50,7 @@ public:
             }
         }
 
+        clear_pending_chords();
         dictation_queue_.clear();
         dictation_paused_announced_ = false;
         register_dictation_handler();
@@ -63,11 +67,13 @@ public:
         if (output_ != nullptr) {
             output_->set_stt_transcript_handler(nullptr);
         }
+        clear_pending_chords();
         dictation_queue_.clear();
         dictation_paused_announced_ = false;
         brf_ = nullptr;
         edit_ = nullptr;
         output_ = nullptr;
+        braille_input_ = nullptr;
 
         if (ctx.brf != nullptr) {
             ctx.brf->save();
@@ -87,8 +93,21 @@ public:
     void on_chord(uint8_t dot_mask, UiContext &ctx) override
     {
         if (ctx.edit != nullptr) {
-            ctx.edit->on_full_cell(dot_mask);
+            const documents::EditState state = ctx.edit->state();
+            if (state == documents::EditState::LineReview ||
+                state == documents::EditState::AwaitFullCell) {
+                ctx.edit->on_full_cell(dot_mask);
+                return;
+            }
         }
+
+        if (dot_mask == 0 || !can_buffer_chords()) {
+            return;
+        }
+
+        pending_chords_.push_back(dot_mask);
+        rebuild_pending_preview();
+        sync_display(ctx);
     }
 
     void on_text(const std::string &text, UiContext &ctx) override
@@ -96,30 +115,77 @@ public:
         if (ctx.brf == nullptr) {
             return;
         }
+
+        if (ctx.edit != nullptr && ctx.edit->state() == documents::EditState::ReplacementLine) {
+            for (char ch : text) {
+                if (ch != ' ') {
+                    continue;
+                }
+                const std::string word = commit_pending_word();
+                if (!word.empty()) {
+                    ctx.edit->on_replacement_chord(0, word);
+                    sync_display(ctx);
+                }
+            }
+            return;
+        }
+
         for (char ch : text) {
-            ctx.brf->append_char(ch);
+            if (ch == ' ') {
+                append_committed_word(ctx);
+                ctx.brf->append_char(' ');
+            } else {
+                append_committed_word(ctx);
+                ctx.brf->append_char(ch);
+            }
         }
         ctx.brf->save();
+        sync_display(ctx);
 
         static const std::regex worksheet_pattern(R"((Name|Date)\s*:)",
                                                   std::regex::icase);
         if (std::regex_search(ctx.brf->full_text(), worksheet_pattern)) {
             announce(ctx, "Worksheet session recording");
         }
-
-        if (ctx.edit != nullptr && ctx.edit->state() == documents::EditState::ReplacementLine) {
-            ctx.edit->on_replacement_chord(0, text);
-        }
     }
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
     {
-        if (!pressed || key != keyboard::ControlKey::Enter) {
+        if (!pressed) {
+            return;
+        }
+
+        if (key == keyboard::ControlKey::Backspace) {
+            if (!pending_chords_.empty()) {
+                pending_chords_.pop_back();
+                rebuild_pending_preview();
+                sync_display(ctx);
+                return;
+            }
+            if (ctx.brf != nullptr) {
+                ctx.brf->backspace();
+                ctx.brf->save();
+                sync_display(ctx);
+            }
+            return;
+        }
+
+        if (key != keyboard::ControlKey::Enter) {
             return;
         }
         if (ctx.edit != nullptr && ctx.brf != nullptr) {
             ctx.edit->begin_line_review(ctx.brf->line_count() > 0 ? ctx.brf->line_count() - 1 : 0);
         }
+    }
+
+    std::string composer_line() const override
+    {
+        std::string line;
+        if (brf_ != nullptr && !brf_->lines().empty()) {
+            line = brf_->lines().back();
+        }
+        line += pending_preview_;
+        return line;
     }
 
 private:
@@ -138,6 +204,77 @@ private:
         return state != documents::EditState::ReplacementLine
                && state != documents::EditState::LineReview
                && state != documents::EditState::AwaitFullCell;
+    }
+
+    bool can_buffer_chords() const
+    {
+        if (edit_ == nullptr) {
+            return true;
+        }
+        const documents::EditState state = edit_->state();
+        return state == documents::EditState::EmbossMode
+               || state == documents::EditState::ReplacementLine;
+    }
+
+    void clear_pending_chords()
+    {
+        pending_chords_.clear();
+        pending_preview_.clear();
+    }
+
+    void rebuild_pending_preview()
+    {
+        pending_preview_.clear();
+        if (braille_input_ == nullptr) {
+            return;
+        }
+
+        for (uint8_t dot_mask : pending_chords_) {
+            const auto cell = braille_input_->translate_backward_dot_uncontracted(dot_mask);
+            if (!cell.has_value() || cell->empty()) {
+                pending_preview_.push_back('?');
+                continue;
+            }
+            pending_preview_ += *cell;
+        }
+    }
+
+    std::string commit_pending_word()
+    {
+        if (pending_chords_.empty()) {
+            return {};
+        }
+
+        std::string word;
+        if (braille_input_ != nullptr) {
+            if (const auto translated = braille_input_->translate_backward_cells(pending_chords_)) {
+                word = *translated;
+            }
+        }
+        if (word.empty()) {
+            word = pending_preview_;
+        }
+
+        clear_pending_chords();
+        return word;
+    }
+
+    void append_committed_word(UiContext &ctx)
+    {
+        if (ctx.brf == nullptr) {
+            return;
+        }
+        const std::string word = commit_pending_word();
+        for (char ch : word) {
+            ctx.brf->append_char(ch);
+        }
+    }
+
+    void sync_display(UiContext &ctx)
+    {
+        if (ctx.output != nullptr) {
+            ctx.output->sync_chrome(false);
+        }
     }
 
     void register_dictation_handler()
@@ -206,7 +343,10 @@ private:
 
     documents::BrfStore *brf_ = nullptr;
     documents::EditSession *edit_ = nullptr;
+    documents::BrailleTranslationService *braille_input_ = nullptr;
     OutputHub *output_ = nullptr;
+    std::vector<uint8_t> pending_chords_;
+    std::string pending_preview_;
     std::deque<std::string> dictation_queue_;
     bool dictation_paused_announced_ = false;
     static constexpr size_t queue_limit_ = 8;

@@ -339,7 +339,61 @@ std::string BrailleTranslationService::translate_forward(const std::string &plai
     return plain;
 }
 
+namespace {
+
+#ifdef BRAILLATRON_HAS_LIBLOUIS
+std::optional<std::string> back_translate_braille_cells(const char *table_list,
+                                                        const std::vector<uint8_t> &dot_masks)
+{
+    if (dot_masks.empty()) {
+        return std::string {};
+    }
+
+    ensure_liblouis_initialized();
+
+    std::vector<widechar> inbuf;
+    inbuf.reserve(dot_masks.size() + 1);
+    for (uint8_t dot_mask : dot_masks) {
+        if (dot_mask == 0) {
+            continue;
+        }
+        inbuf.push_back(static_cast<widechar>(0x2800 | dot_mask));
+    }
+    if (inbuf.empty()) {
+        return std::string {};
+    }
+    inbuf.push_back(0);
+
+    widechar outbuf[256] = {0};
+    int inlen = static_cast<int>(inbuf.size() - 1);
+    int outlen = static_cast<int>(sizeof(outbuf) / sizeof(outbuf[0]) - 1);
+
+    if (!lou_backTranslateString(table_list, inbuf.data(), &inlen, outbuf, &outlen, nullptr,
+                                 nullptr, 0)) {
+        return std::nullopt;
+    }
+
+    std::string result;
+    for (int i = 0; i < outlen; ++i) {
+        result.push_back(static_cast<char>(outbuf[i]));
+    }
+    return result;
+}
+#endif
+
+} // namespace
+
 std::optional<std::string> BrailleTranslationService::translate_backward_dots(
+    uint8_t dot_mask) const
+{
+    if (dot_mask == 0) {
+        return std::string(" ");
+    }
+
+    return translate_backward_cells(std::vector<uint8_t> {dot_mask});
+}
+
+std::optional<std::string> BrailleTranslationService::translate_backward_dot_uncontracted(
     uint8_t dot_mask) const
 {
     if (dot_mask == 0) {
@@ -353,24 +407,30 @@ std::optional<std::string> BrailleTranslationService::translate_backward_dots(
         return std::nullopt;
     }
 
-    ensure_liblouis_initialized();
-
-    widechar inbuf[2] = {static_cast<widechar>(0x2800 | dot_mask), 0};
-    int inlen = 1;
-    widechar outbuf[16] = {0};
-    int outlen = 15;
-
-    if (lou_backTranslateString(table_list(), inbuf, &inlen, outbuf, &outlen, nullptr, nullptr,
-                                0)) {
-        std::string result;
-        for (int i = 0; i < outlen; ++i) {
-            result.push_back(static_cast<char>(outbuf[i]));
-        }
-        return result;
-    }
-    return std::nullopt;
+    return back_translate_braille_cells("en-ueb-g1.ctb", std::vector<uint8_t> {dot_mask});
 #else
     (void)dot_mask;
+    return std::nullopt;
+#endif
+}
+
+std::optional<std::string> BrailleTranslationService::translate_backward_cells(
+    const std::vector<uint8_t> &dot_masks) const
+{
+    if (dot_masks.empty()) {
+        return std::string {};
+    }
+
+    const_cast<BrailleTranslationService *>(this)->ensure_tables_ready();
+
+#ifdef BRAILLATRON_HAS_LIBLOUIS
+    if (!available_) {
+        return std::nullopt;
+    }
+
+    return back_translate_braille_cells(table_list(), dot_masks);
+#else
+    (void)dot_masks;
     return std::nullopt;
 #endif
 }

@@ -2,6 +2,7 @@
 
 #include "app_session.h"
 #include "ui_context.h"
+#include "word_buffer_input.h"
 
 #include "../menu_overlay.h"
 
@@ -38,11 +39,20 @@ public:
     std::vector<std::string> launcher_labels() const;
     std::string launcher_id_for_label(const std::string &label) const;
 
+    bool defers_chord_text() const;
+    std::string chord_preview() const;
+
 private:
+    AppSession *focused_app() const;
+    bool word_buffer_active() const;
+    void clear_word_buffer();
+    void deliver_text(AppSession *app, const std::string &text);
+
     UiContext ctx_;
     std::vector<std::unique_ptr<AppSession>> apps_;
     AppSession *active_ = nullptr;
     AppSession *active_inline_ = nullptr;
+    WordBufferInput word_buffer_;
 };
 
 } // namespace braillatron::ui

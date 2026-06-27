@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -94,6 +95,40 @@ int main()
     service.set_grade_preset(braille_grade_for_input_preset(BrailleInputPreset::Nemeth));
     if (!expect_back_translation(service, BrailleGradePreset::UebG2Nemeth, 0x01, "a")) {
         return 1;
+    }
+
+    service.set_grade_preset(BrailleGradePreset::UebG2Math);
+    if (!expect_back_translation(service, BrailleGradePreset::UebG2Math, 0x35, "as")) {
+        return 1;
+    }
+    {
+        const auto preview = service.translate_backward_dot_uncontracted(0x35);
+        if (!preview.has_value() || *preview != "z") {
+            std::cerr << "liblouis self-test: uncontracted z expected 'z' got '"
+                      << (preview ? *preview : std::string("(null)")) << "'\n";
+            return 1;
+        }
+    }
+    {
+        const std::vector<uint8_t> triple_z = {0x35, 0x35, 0x35};
+        const auto word = service.translate_backward_cells(triple_z);
+        if (!word.has_value() || *word != "zzz") {
+            std::cerr << "liblouis self-test: triple-z word expected 'zzz' got '"
+                      << (word ? *word : std::string("(null)")) << "'\n";
+            return 1;
+        }
+    }
+    {
+        const std::vector<uint8_t> addison_cells = {0x01, 0x19, 0x19, 0x0A, 0x0E, 0x15, 0x1D};
+        const auto per_keystroke_as = service.translate_backward_dots(0x35);
+        if (per_keystroke_as.has_value() && *per_keystroke_as == "as") {
+            const auto word = service.translate_backward_cells(addison_cells);
+            if (!word.has_value() || *word != "addison") {
+                std::cerr << "liblouis self-test: addison word expected 'addison' got '"
+                          << (word ? *word : std::string("(null)")) << "'\n";
+                return 1;
+            }
+        }
     }
 
     std::cout << "liblouis self-test ok\n";

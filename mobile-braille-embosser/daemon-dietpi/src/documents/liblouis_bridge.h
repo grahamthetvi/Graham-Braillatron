@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace braillatron::documents {
 
@@ -54,6 +55,9 @@ public:
 
     std::string translate_forward(const std::string &plain) const;
     std::optional<std::string> translate_backward_dots(uint8_t dot_mask) const;
+    std::optional<std::string> translate_backward_dot_uncontracted(uint8_t dot_mask) const;
+    std::optional<std::string> translate_backward_cells(
+        const std::vector<uint8_t> &dot_masks) const;
 
 private:
     const char *table_list() const;

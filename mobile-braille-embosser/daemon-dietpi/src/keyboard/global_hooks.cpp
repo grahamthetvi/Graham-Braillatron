@@ -94,6 +94,11 @@ std::string active_standalone_app_id()
     return g_app_registry->active()->id();
 }
 
+bool app_defers_chord_text()
+{
+    return g_app_registry != nullptr && g_app_registry->defers_chord_text();
+}
+
 void on_app_chord(uint8_t dot_mask)
 {
     if (g_app_registry != nullptr) {
