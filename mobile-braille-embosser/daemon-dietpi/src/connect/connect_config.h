@@ -21,6 +21,10 @@ struct YoutubeConfig {
     std::string cookies_path = "/data/braillatron/credentials/youtube-cookies.txt";
     std::string mpv_ao = "pulse";
     uint32_t search_limit = 10;
+    uint32_t feed_limit = 15;
+    std::string recommended_url = "https://www.youtube.com/feed/recommended";
+    std::string recommended_fallback_url = "ytsearch15:popular";
+    std::string shorts_url = "https://www.youtube.com/hashtag/shorts";
     std::string ytdlp_path = "yt-dlp";
     std::string mpv_path = "mpv";
 };

@@ -25,6 +25,9 @@ void test_async_command_detection()
     expect_true(braillatron::connect::is_async_command("signal.start_link"),
                 "signal.start_link is async");
     expect_true(braillatron::connect::is_async_command("youtube.search"), "youtube.search is async");
+    expect_true(braillatron::connect::is_async_command("youtube.recommended"),
+                "youtube.recommended is async");
+    expect_true(braillatron::connect::is_async_command("youtube.shorts"), "youtube.shorts is async");
     expect_true(braillatron::connect::is_async_command("music.scan"), "music.scan is async");
     expect_true(braillatron::connect::is_async_command("podcasts.refresh"), "podcasts.refresh is async");
     expect_true(braillatron::connect::is_async_command("podcasts.download"), "podcasts.download is async");

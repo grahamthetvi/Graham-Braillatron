@@ -12,7 +12,22 @@ fi
 
 install -d "$(dirname "${DB_PATH}")"
 
+existing_entry_count() {
+  if [[ ! -f "${DB_PATH}" ]]; then
+    echo 0
+    return
+  fi
+  sqlite3 "${DB_PATH}" "SELECT COUNT(*) FROM entries;" 2>/dev/null || echo 0
+}
+
 build_seed_db() {
+  local existing
+  existing="$(existing_entry_count)"
+  if [[ "${FORCE:-0}" != "1" && "${existing}" -gt 100 ]]; then
+    echo "Dictionary already populated (${existing} rows); skipping seed install."
+    return 0
+  fi
+
   sqlite3 "${DB_PATH}" <<'SQL'
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS entries (
@@ -71,12 +86,15 @@ with open(source, "r", encoding="utf-8") as handle:
         word = row.get("word") or row.get("title")
         if not word:
             continue
+        entry_pos = row.get("pos") or ""
         for sense in row.get("senses", []):
             glosses = sense.get("glosses") or []
             if not glosses:
                 continue
-            pos = sense.get("raw_glosses") or sense.get("tags")
-            pos_text = pos[0] if isinstance(pos, list) and pos else (pos if isinstance(pos, str) else "")
+            pos_text = entry_pos
+            if not pos_text:
+                tags = sense.get("tags")
+                pos_text = tags[0] if isinstance(tags, list) and tags else ""
             definition = "; ".join(str(g) for g in glosses[:3])
             conn.execute(
                 "INSERT INTO entries(word,pos,definition) VALUES (?,?,?)",

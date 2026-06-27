@@ -39,7 +39,7 @@ ConnectService::ConnectService(ConnectConfig connect_config, YoutubeConfig youtu
           youtube_config.mpv_path,
           youtube_config.mpv_ao,
           connect_config_.mpv_socket_path,
-          std::string {},
+          YoutubeBackend::mpv_extra_args(youtube_config),
       })
     , youtube_(std::move(youtube_config), connect_config_, &mpv_, &events_)
     , music_(std::move(music_config), connect_config_, &mpv_, &events_)
@@ -159,6 +159,12 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     }
     if (cmd == "youtube.search") {
         return youtube_.search(json_get_string(request, "query"));
+    }
+    if (cmd == "youtube.recommended") {
+        return youtube_.recommended();
+    }
+    if (cmd == "youtube.shorts") {
+        return youtube_.shorts();
     }
     if (cmd == "youtube.play") {
         return youtube_.play(json_get_string(request, "url"));
@@ -411,6 +417,10 @@ std::string ConnectService::handle_request(const std::string &request)
                                                   json_get_string(request, "text"));
             } else if (cmd == "youtube.search") {
                 result = youtube_ptr->search(json_get_string(request, "query"));
+            } else if (cmd == "youtube.recommended") {
+                result = youtube_ptr->recommended();
+            } else if (cmd == "youtube.shorts") {
+                result = youtube_ptr->shorts();
             } else if (cmd == "music.scan") {
                 result = music_ptr->scan();
             } else if (cmd == "weather.fetch") {

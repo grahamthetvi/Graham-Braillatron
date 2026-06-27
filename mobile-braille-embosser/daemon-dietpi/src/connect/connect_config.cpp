@@ -105,6 +105,14 @@ YoutubeConfig load_youtube_config(const std::string &path)
                                 cfg.mpv_ao = value;
                             } else if (key == "search_limit") {
                                 cfg.search_limit = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "feed_limit") {
+                                cfg.feed_limit = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "recommended_url") {
+                                cfg.recommended_url = value;
+                            } else if (key == "recommended_fallback_url") {
+                                cfg.recommended_fallback_url = value;
+                            } else if (key == "shorts_url") {
+                                cfg.shorts_url = value;
                             } else if (key == "ytdlp_path") {
                                 cfg.ytdlp_path = value;
                             } else if (key == "mpv_path") {

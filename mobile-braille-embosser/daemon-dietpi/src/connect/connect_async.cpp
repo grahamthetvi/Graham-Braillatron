@@ -38,7 +38,7 @@ bool is_async_command(const std::string &cmd)
 {
     return cmd == "signal.start_link" || cmd == "signal.finish_link" || cmd == "signal.list_chats" ||
            cmd == "signal.list_messages" || cmd == "signal.send" || cmd == "youtube.search" ||
-           cmd == "music.scan" || cmd == "weather.fetch" || cmd == "weather.set_location" ||
+           cmd == "youtube.recommended" || cmd == "youtube.shorts" || cmd == "music.scan" || cmd == "weather.fetch" || cmd == "weather.set_location" ||
            cmd == "weather.set_city" || cmd == "weather.set_city_from_ip" ||
            cmd == "weather.ip_location" || cmd == "weather.set_temperature_unit" || cmd == "podcasts.refresh" ||
            cmd == "podcasts.download" || cmd == "radio.list_stations" || cmd == "radio.play" ||
