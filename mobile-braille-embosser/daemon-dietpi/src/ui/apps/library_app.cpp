@@ -54,9 +54,9 @@ public:
         store_.refresh();
         phase_ = Phase::Menu;
         rebuild_browse();
-        announce(ctx, "Library. Local books or search public domain.");
-        announce_menu(ctx);
         sync_chrome(ctx);
+        announce_browse_focus(ctx, false);
+        announce(ctx, "Library. Local books or search public domain.");
     }
 
     void on_exit(UiContext &ctx) override
@@ -101,6 +101,17 @@ public:
 
     bool buffers_braille_words() const override { return phase_ == Phase::SearchQuery; }
 
+    bool browse_list_active() const override
+    {
+        return phase_ == Phase::Menu || phase_ == Phase::LocalList || phase_ == Phase::SearchResults ||
+               phase_ == Phase::Reading;
+    }
+
+    const LayeredBrowseList *browse_list() const override
+    {
+        return browse_list_active() ? &browse_ : nullptr;
+    }
+
     std::string composer_line() const override
     {
         if (phase_ == Phase::SearchQuery) {
@@ -114,6 +125,12 @@ public:
     size_t browse_focus_index() const override { return browse_.focus_index(); }
 
     std::string browse_breadcrumb() const override { return breadcrumb_; }
+
+    void announce_browse_focus(UiContext &ctx, bool at_boundary)
+    {
+        browse_.set_container_name(label());
+        browse_.announce_focus(ctx.output, at_boundary);
+    }
 
     void on_text(const std::string &text, UiContext &ctx) override
     {
@@ -242,35 +259,25 @@ private:
 
     void announce_menu(UiContext &ctx)
     {
-        if (browse_.empty()) {
-            announce(ctx, "Library menu.");
-            return;
-        }
-        announce(ctx, browse_.focused_label() + ". " + browse_.position_label() +
-                           ". Press Enter to select.");
+        announce_browse_focus(ctx, false);
     }
 
     void announce_browse_item(UiContext &ctx, const std::string &detail)
     {
-        if (browse_.empty()) {
+        announce_browse_focus(ctx, false);
+        if (!detail.empty()) {
             announce(ctx, detail);
-            return;
         }
-        announce(ctx, detail + ". " + browse_.position_label());
     }
 
     void handle_menu(keyboard::ControlKey key, UiContext &ctx)
     {
         if (key == keyboard::ControlKey::DpadUp) {
-            const bool at_boundary = !browse_.move_up();
-            sync_chrome(ctx, at_boundary);
-            announce_menu(ctx);
+            announce_browse_focus(ctx, !browse_.move_up());
             return;
         }
         if (key == keyboard::ControlKey::DpadDown) {
-            const bool at_boundary = !browse_.move_down();
-            sync_chrome(ctx, at_boundary);
-            announce_menu(ctx);
+            announce_browse_focus(ctx, !browse_.move_down());
             return;
         }
         if (key != keyboard::ControlKey::Enter) {
@@ -308,14 +315,12 @@ private:
             return;
         }
         if (key == keyboard::ControlKey::DpadUp) {
-            const bool at_boundary = !browse_.move_up();
-            sync_chrome(ctx, at_boundary);
+            announce_browse_focus(ctx, !browse_.move_up());
             announce_local_book(ctx);
             return;
         }
         if (key == keyboard::ControlKey::DpadDown) {
-            const bool at_boundary = !browse_.move_down();
-            sync_chrome(ctx, at_boundary);
+            announce_browse_focus(ctx, !browse_.move_down());
             announce_local_book(ctx);
             return;
         }
@@ -372,14 +377,12 @@ private:
             return;
         }
         if (key == keyboard::ControlKey::DpadUp) {
-            const bool at_boundary = !browse_.move_up();
-            sync_chrome(ctx, at_boundary);
+            announce_browse_focus(ctx, !browse_.move_up());
             announce_search_result(ctx);
             return;
         }
         if (key == keyboard::ControlKey::DpadDown) {
-            const bool at_boundary = !browse_.move_down();
-            sync_chrome(ctx, at_boundary);
+            announce_browse_focus(ctx, !browse_.move_down());
             announce_search_result(ctx);
             return;
         }
@@ -435,9 +438,10 @@ private:
             if (section_index_ > 0) {
                 --section_index_;
                 browse_.set_focus(static_cast<size_t>(section_index_));
-                sync_chrome(ctx);
                 announce_section(ctx);
                 save_reading_progress();
+            } else {
+                announce_browse_focus(ctx, true);
             }
             return;
         }
@@ -445,9 +449,12 @@ private:
             section_index_ + 1 < static_cast<int>(sections.size())) {
             ++section_index_;
             browse_.set_focus(static_cast<size_t>(section_index_));
-            sync_chrome(ctx);
             announce_section(ctx);
             save_reading_progress();
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadDown) {
+            announce_browse_focus(ctx, true);
             return;
         }
         if (key == keyboard::ControlKey::Enter) {
