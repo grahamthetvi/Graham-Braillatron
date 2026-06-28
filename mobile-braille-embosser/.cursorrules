@@ -79,3 +79,53 @@
 2. **Deterministic ISR Hygiene**: Keep all code inside `firmware-arduino/` lean. Never use the standard C++ `String` object or any mechanism that relies on dynamic allocation to ensure memory safety on the ATmega32U4.
 3. **Transactional RO Write Hygiene**: Code writing down to storage must follow transactional atomic write patterns (`write -> flush -> sync`) to handle accidental power losses gracefully without impacting the integrity of the read-only filesystem.
 4. **Environment Isolation**: No hardware specific paths, local configurations, or serial interface assignments should be hard-coded inside execution daemons. Keep all execution settings separated inside system parameters in `daemon-dietpi/config/`.
+
+## 5. Pi Testing & Agent Handoff
+
+### 5.1 Device Access
+- **Pi**: `192.168.0.239` — SSH `dietpi` / `meowmeow` (not `pi`)
+- **Remote display**: `http://192.168.0.239:8080`, pairing `123456` — use Browser MCP after pairing
+- **Browser input**: click the display to refocus if keys stop working; F/D/S/J/K/L = braille dots, arrows = D-pad, **backtick (`)** = app menu
+
+### 5.2 Testing Workflow
+- Test **one app at a time** comprehensively; fix and redeploy on the Pi when something breaks (do not only report)
+- Use **Browser MCP** for UI verification and **SSH** for build/deploy
+- **Do not commit** unless the user explicitly asks
+- Build on the Pi (**aarch64** only — never copy x86 binaries):
+
+```bash
+cd ~/mobile-braille-embosser/daemon-dietpi
+make clean braillatron-ui braillatron-connectd \
+  BRAILLATRON_LIBLOUIS=1 BRAILLATRON_A11Y=1 BRAILLATRON_DISPLAY=1
+sudo cp braillatron-ui braillatron-connectd /usr/local/bin/
+sudo systemctl restart braillatron-ui braillatron-connectd braillatron-displayd
+```
+
+- Without `BRAILLATRON_LIBLOUIS=1`, braille input shows `?` / `?????`
+- **Motors may be unwired** on the test unit — verify TTS, display, and emboss *logic*; do not fail solely on missing hardware
+
+### 5.3 UI Patterns
+- **LayeredBrowseList** (`daemon-dietpi/src/ui/layered_browse_list.{h,cpp}`): default for all browse UI — full launcher-style visual list, Up/Down focus, Enter select, Backspace back; apps expose via `AppSession::browse_list()` / `browse_list_active()`
+- **WordBufferInput** (`daemon-dietpi/src/ui/apps/word_buffer_input.{h,cpp}`): buffer braille chords until **space**; G1 uncontracted preview while typing, G2 commit on space; **Enter** flushes buffer before app handlers; apps use `buffers_braille_words()` (exceptions: Document has its own buffer; Calculator and Morse Learning stay immediate)
+- **Settings**: device toggles in `/etc/braillatron/ui.conf`; per-app config in `/etc/braillatron/*.conf` via connectd — expose under **Settings → App Settings** (`OutputHub::build_settings_menu()`)
+- **Network** and **Bluetooth** live under Settings, not the launcher (`show_in_launcher() = false` on those apps)
+- **Launcher**: alphabetized list; type a letter to jump to the first app whose name starts with that letter (first char of G2 translation)
+- **App menu (backtick)**: **Print** at top when an app is open → `on_menu_action("print", ctx)` in `app_registry.cpp` (extensible per app; Wikipedia embosses full article)
+
+### 5.4 Reliability
+- **Never** call sync `connect->request()` from the UI thread — use `request_async()` + `mark_busy()` / `clear_busy()` so the poll loop stays responsive
+- **Frozen-app watchdog**: `AppRegistry::tick_watchdog()` — 45s (`kFrozenTimeoutMs`) while busy → prompt to exit to launcher; menu must remain reachable via backtick during frozen/busy states
+- **Audio playback** (Radio, YouTube, Music): mpv socket **connect test** (not just file exists), retry load; use `/usr/local/bin/yt-dlp` (apt yt-dlp is too old for YouTube); ALSA **dmix** (`deploy/os/audio/asound.aux.conf`) so TTS and mpv share output
+- **Weather geocoding**: Open-Meteo expects **city + countryCode** (and region hints), not comma-joined `"City, State, Country"` strings; disambiguate US cities when state is given (`weather_backend.cpp`)
+
+### 5.5 Apps Status & Next Targets
+**Tested / patterns applied:** Contacts (address book + Search row), Document input (word buffer), Weather (multi-city wizard, °F/°C auto), Library (public sources + Worthwhile Secret), Dictionary (Kaikki SQLite on Pi), Wikipedia (visual lists + Print), YouTube (Recommended / Search / Shorts), Radio (async play + mpv fixes)
+
+**App-specific notes:**
+- Contacts `butobut` — junk from manual testing; safe to delete
+- Dictionary — build ~49 MB SQLite locally (`install-dictionary-data.sh`); use `immutable=1` SQLite URI on Pi
+- Worthwhile Secret — obfuscated library source; credentials in `/data/braillatron/credentials/worthwhile.ini`; never use the real site name in UI/strings
+- YouTube Recommended needs cookies for personalization (else popular fallback); Search/Shorts work without cookies
+- Internet Archive API identification: `grahamthetvi@icloud.com`
+
+**Untested — good next targets (one at a time):** Calculator, Transcriber, Morse Learning, Messages, Gmail, Music, Podcasts, Spelling, LocalSend (placeholder), Document (dictation, worksheet detection, paper advance), Network and Bluetooth (now under Settings)
