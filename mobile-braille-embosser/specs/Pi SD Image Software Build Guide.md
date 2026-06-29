@@ -606,7 +606,7 @@ sync
 sudo braillatron-remount-ro
 ```
 
-You do **not** need to re-run full bootstrap for routine code changes — only when `deploy/packages.txt`, vosk install scripts, or OS bootstrap steps change.
+You do **not** need to re-run full bootstrap for routine code changes — only when `deploy/packages.txt`, vosk install scripts, or OS bootstrap steps change. **`deploy/install.sh` now installs libvosk and downloads the Vosk STT model on aarch64** (same steps as bootstrap); use `braillatron-install-vosk-lib` / `braillatron-install-vosk-model` to retry either step alone.
 
 ## Step 7 (optional): Read-only root
 

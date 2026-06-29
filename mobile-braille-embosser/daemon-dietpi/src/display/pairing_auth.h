@@ -21,6 +21,7 @@ public:
     const std::string &active_pairing_code() const { return active_pairing_code_; }
 
     std::optional<std::string> verify_pairing(const std::string &code);
+    const std::string &last_verify_error() const { return last_verify_error_; }
     std::optional<std::string> validate_session(const std::string &token);
     void revoke_session(const std::string &token);
     void clear_sessions();
@@ -41,6 +42,7 @@ private:
     std::chrono::steady_clock::time_point pairing_expires_ {};
     uint32_t session_idle_minutes_ = 30;
     int failure_count_ = 0;
+    std::string last_verify_error_;
     bool rate_limited_ = false;
     std::chrono::steady_clock::time_point rate_limit_until_ {};
     struct SessionEntry {

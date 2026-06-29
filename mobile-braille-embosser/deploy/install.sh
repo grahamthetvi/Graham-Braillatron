@@ -12,6 +12,11 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
+# libvosk is not packaged for aarch64 Debian; install prebuilt headers/libs before A11Y build.
+if [[ "$(uname -m)" == "aarch64" ]]; then
+  bash "${ROOT}/deploy/install-vosk-lib.sh"
+fi
+
 echo "Building Braillatron daemons (accessibility backends enabled)..."
 make -C "${DAEMON_DIR}" BRAILLATRON_A11Y=1 BRAILLATRON_DISPLAY=1 clean all
 
@@ -63,6 +68,7 @@ install -m 644 "${ROOT}/deploy/radio/stations.json" /usr/share/braillatron/radio
 
 install -d /var/lib/braillatron/ram
 install -d /data/braillatron/documents /data/braillatron/settings /data/braillatron/vosk-models || true
+bash "${ROOT}/deploy/install-vosk-model.sh"
 if [[ ! -f /data/braillatron/settings/remote-display.conf ]]; then
   install -m 644 "${ROOT}/deploy/config/remote-display.conf" /data/braillatron/settings/remote-display.conf
 fi
@@ -81,6 +87,9 @@ install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/crede
 install -m 755 "${ROOT}/deploy/install-dictionary-data.sh" "${PREFIX}/bin/braillatron-install-dictionary-data"
 install -m 755 "${ROOT}/deploy/install-spelling-data.sh" "${PREFIX}/bin/braillatron-install-spelling-data"
 install -m 755 "${ROOT}/deploy/install-gmail-oauth.sh" "${PREFIX}/bin/braillatron-install-gmail-oauth"
+install -m 755 "${ROOT}/deploy/install-vosk-lib.sh" "${PREFIX}/bin/braillatron-install-vosk-lib"
+install -m 755 "${ROOT}/deploy/install-vosk-model.sh" "${PREFIX}/bin/braillatron-install-vosk-model"
+install -m 755 "${ROOT}/deploy/show-pairing-code.sh" "${PREFIX}/bin/braillatron-show-pairing-code"
 install -m 755 "${ROOT}/deploy/verify-install.sh" "${PREFIX}/bin/braillatron-verify-install"
 install -m 755 "${ROOT}/deploy/verify-hdmi-bootstrap.sh" "${PREFIX}/bin/braillatron-verify-hdmi-bootstrap"
 install -m 755 "${ROOT}/deploy/verify-display-bootstrap.sh" "${PREFIX}/bin/braillatron-verify-display-bootstrap"

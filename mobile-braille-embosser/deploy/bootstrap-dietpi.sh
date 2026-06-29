@@ -46,15 +46,7 @@ bash "${ROOT}/deploy/install-yt-dlp.sh"
 bash "${ROOT}/deploy/install.sh"
 bash "${ROOT}/deploy/install-signal-cli.sh" || echo "signal-cli install skipped (optional)"
 
-MODEL_DIR="/data/braillatron/vosk-models/vosk-model-small-en-us-0.15"
-if [[ ! -d "${MODEL_DIR}" ]]; then
-  echo "Downloading Vosk model..."
-  tmp="$(mktemp -d)"
-  curl -fsSL -o "${tmp}/vosk-model.zip" \
-    https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
-  unzip -q "${tmp}/vosk-model.zip" -d /data/braillatron/vosk-models/
-  rm -rf "${tmp}"
-fi
+bash "${ROOT}/deploy/install-vosk-model.sh"
 
 # Configure speech-dispatcher to run system-wide using ALSA instead of pulse
 if [[ -f /etc/default/speech-dispatcher ]]; then

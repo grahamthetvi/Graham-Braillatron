@@ -229,7 +229,20 @@ form.addEventListener('submit', async (event) => {
     });
     
     if (!response.ok) {
-      setStatus('Pairing failed. Check code and try again.');
+      let message = 'Pairing failed. Check code and try again.';
+      try {
+        const result = await response.json();
+        if (result.error === 'rate_limited') {
+          message = 'Too many failed attempts. SSH: sudo systemctl restart braillatron-displayd, then braillatron-show-pairing-code';
+        } else if (result.error === 'expired') {
+          message = 'Pairing code expired. Generate a new code on the Pi.';
+        } else if (result.error === 'invalid_code') {
+          message = 'Invalid pairing code. Generate a fresh code and try again.';
+        }
+      } catch (err) {
+        // keep default message
+      }
+      setStatus(message);
       return;
     }
     

@@ -15,7 +15,8 @@ check() {
 }
 
 for bin in braillatron-ui braillatron-connectd braillatron-install-dictionary-data \
-           braillatron-install-spelling-data braillatron-install-gmail-oauth; do
+           braillatron-install-spelling-data braillatron-install-gmail-oauth \
+           braillatron-install-vosk-lib braillatron-install-vosk-model; do
   [[ -x "${PREFIX}/bin/${bin}" ]] && check ok "binary ${bin}" || check fail "binary ${bin}"
 done
 
@@ -33,6 +34,13 @@ done
 
 [[ -f /usr/share/braillatron/radio/stations.json ]] && check ok "radio stations bundle" \
   || check fail "radio stations bundle"
+
+if [[ "$(uname -m)" == "aarch64" ]]; then
+  [[ -f "${PREFIX}/lib/libvosk.so" || -f /usr/lib/aarch64-linux-gnu/libvosk.so ]] && check ok "libvosk" \
+    || check fail "libvosk (run braillatron-install-vosk-lib)"
+  [[ -d /data/braillatron/vosk-models/vosk-model-small-en-us-0.15 ]] && check ok "vosk STT model" \
+    || check fail "vosk STT model (run braillatron-install-vosk-model)"
+fi
 
 if command -v systemctl >/dev/null 2>&1; then
   systemctl is-enabled braillatron.target >/dev/null 2>&1 && check ok "braillatron.target enabled" \

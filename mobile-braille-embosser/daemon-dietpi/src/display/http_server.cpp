@@ -389,7 +389,12 @@ bool HttpServer::handle_http_request(int fd, const std::string &request)
         const std::string code = braillatron::connect::json_get_string(body, "code");
         const auto token = auth_->verify_pairing(code);
         if (!token.has_value()) {
-            send_http_response(fd, 403, "application/json", "{\"ok\":false}");
+            const std::string error = auth_->last_verify_error();
+            const std::string body = error.empty()
+                                         ? "{\"ok\":false,\"error\":\"invalid_code\"}"
+                                         : "{\"ok\":false,\"error\":\"" +
+                                               braillatron::connect::json_escape(error) + "\"}";
+            send_http_response(fd, 403, "application/json", body);
             return false;
         }
         const std::string cookie =

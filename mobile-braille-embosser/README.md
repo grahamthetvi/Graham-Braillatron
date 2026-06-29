@@ -256,6 +256,23 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 
 Production paths on the Pi are under `/etc/braillatron/`. App-specific configs (`dictionary.conf`, `spelling.conf`, `music.conf`, `weather.conf`, `gmail.conf`, etc.) are installed by `deploy/install.sh`. See the [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) for deployment, **testing on the Pi** (no GUI, journal + TTS), bench keyboard setup, and rebuild/update steps.
 
+### Pi rebuild (`deploy/install.sh`)
+
+On the Orange Pi (aarch64), `sudo bash deploy/install.sh` automatically:
+
+1. Installs **libvosk** (prebuilt; not in Debian apt) via `deploy/install-vosk-lib.sh`
+2. Builds and installs daemons with STT/TTS/braille backends enabled
+3. Downloads the default **Vosk STT model** (`vosk-model-small-en-us-0.15`, ~40 MB) to `/data/braillatron/vosk-models/` if missing
+
+Manual helpers (also installed to `/usr/local/bin/`):
+
+```bash
+sudo braillatron-install-vosk-lib      # libvosk.so + vosk_api.h (aarch64 only)
+sudo braillatron-install-vosk-model    # re-download STT model to /data
+```
+
+On a read-only root, remount first: `sudo braillatron-remount-rw`. Full first-time setup still uses `sudo bash deploy/bootstrap-dietpi.sh`, which runs the same Vosk steps plus package install and appliance mode.
+
 Network apps require `braillatron-connectd` running (started by `braillatron.target` on the Pi). On-device bring-up: [Connectivity Follow-Up Checklist](specs/Connectivity%20Follow-Up%20Checklist.md).
 
 ## Wi‑Fi on the Pi
@@ -283,6 +300,9 @@ Bluetooth speaker pairing is separate (**Pair Bluetooth** app / Settings → **P
 | `EVIOCGRAB failed` | Set `evdev_grab=false`, or run on a console without a competing grab |
 | Chords do nothing | Release all dot keys to commit; run `./braillatron-host-chord-test` |
 | Chords fire but no letters | Rebuild with `BRAILLATRON_LIBLOUIS=1` and install `liblouis-devel`; run `./braillatron-liblouis-test`, or use `./deploy/os/braillatron-bench-console.sh` |
+| Build fails: `vosk_api.h: No such file` (Pi) | Run full `sudo bash deploy/install.sh` (auto-installs libvosk on aarch64) or `sudo braillatron-install-vosk-lib` |
+| STT / Transcriber unavailable (Pi) | Check model dir: `ls /data/braillatron/vosk-models/`; run `sudo braillatron-install-vosk-model`; confirm `vosk_model_path` in `ui.conf` |
+| Remote display pairing always fails | After 5 wrong codes, displayd locks for 10 min. Run `sudo systemctl restart braillatron-displayd`, then `sudo braillatron-show-pairing-code` — use that code within 5 minutes (each new code invalidates the previous one) |
 | Arduino and USB keyboard both connected | Both inputs are processed independently; expect duplicate events if you use both at once |
 | Arduino messages on startup | Expected; `allow_missing_arduino=true` keeps the daemon running |
 

@@ -135,6 +135,8 @@ std::string PairingAuth::generate_pairing_code()
 
 std::string PairingAuth::start_pairing()
 {
+    // Fresh admin pairing clears prior lockout from failed browser attempts.
+    reset_failures();
     active_pairing_code_ = generate_pairing_code();
     pairing_active_ = true;
     pairing_expires_ = std::chrono::steady_clock::now() + std::chrono::minutes(5);
@@ -149,8 +151,10 @@ void PairingAuth::stop_pairing()
 
 std::optional<std::string> PairingAuth::verify_pairing(const std::string &code)
 {
+    last_verify_error_.clear();
     if (rate_limited_) {
         if (std::chrono::steady_clock::now() < rate_limit_until_) {
+            last_verify_error_ = "rate_limited";
             return std::nullopt;
         }
         rate_limited_ = false;
@@ -166,6 +170,11 @@ std::optional<std::string> PairingAuth::verify_pairing(const std::string &code)
         !pairing_code_hash_.empty() && hash == pairing_code_hash_;
 
     if (!matches_active && !matches_stored) {
+        if (pairing_active_ && std::chrono::steady_clock::now() >= pairing_expires_) {
+            last_verify_error_ = "expired";
+        } else {
+            last_verify_error_ = "invalid_code";
+        }
         register_failure();
         return std::nullopt;
     }
