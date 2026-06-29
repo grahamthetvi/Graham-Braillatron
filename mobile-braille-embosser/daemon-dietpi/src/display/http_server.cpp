@@ -6,11 +6,14 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
 #include <poll.h>
+#include <signal.h>
 #include <sstream>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -344,6 +347,18 @@ bool HttpServer::upgrade_websocket(int fd, const std::string &request,
         send(fd, frame.data(), frame.size(), MSG_NOSIGNAL);
     } else {
         std::cerr << "[displayd] no cached frame for new client\n";
+        std::ofstream need_frame_flag("/run/braillatron/need-frame", std::ios::trunc);
+        FILE *fp = popen("pidof -s braillatron-ui 2>/dev/null", "r");
+        if (fp != nullptr) {
+            char buffer[32] = {};
+            if (std::fgets(buffer, sizeof(buffer), fp) != nullptr) {
+                const pid_t ui_pid = static_cast<pid_t>(std::strtol(buffer, nullptr, 10));
+                if (ui_pid > 0) {
+                    kill(ui_pid, SIGUSR1);
+                }
+            }
+            pclose(fp);
+        }
     }
 
     return true;

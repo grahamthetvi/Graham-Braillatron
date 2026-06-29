@@ -20,10 +20,10 @@ public:
     void set_enabled(bool enabled) { enabled_ = enabled; }
     bool enabled() const { return enabled_; }
 
-    void publish(const UiChromeModel &model);
+    bool publish(const UiChromeModel &model, bool force = false);
 
 private:
-    bool should_publish(uint32_t crc32);
+    bool should_publish(uint32_t crc32, bool force);
     bool send_packet(const std::vector<uint8_t> &packet);
 
     std::string socket_path_;

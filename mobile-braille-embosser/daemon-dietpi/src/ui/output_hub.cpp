@@ -23,6 +23,7 @@ extern "C" {
 #include <chrono>
 #include <cstdint>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -171,6 +172,7 @@ OutputHub::OutputHub(UiConfig &ui_config, telemetry::TelemetryConfig telemetry_c
     if (remote_display_enabled_) {
         braillatron::display::DisplayClient client(display_config_.remote_display_cmd_socket);
         client.request("service.start");
+        start_remote_display_thread();
     }
     menu_overlay_.set_root_items(build_root_menu());
     if (ui_config_.display_enabled && display_ != nullptr) {
@@ -248,6 +250,7 @@ std::vector<MenuItem> OutputHub::build_braille_input_setup_menu()
 
 void OutputHub::release_backends()
 {
+    stop_remote_display_thread();
     if (display_ != nullptr) {
         display_->shutdown();
     }
@@ -260,7 +263,50 @@ void OutputHub::release_backends()
     morse_.reset();
 }
 
-OutputHub::~OutputHub() = default;
+OutputHub::~OutputHub()
+{
+    stop_remote_display_thread();
+}
+
+void OutputHub::start_remote_display_thread()
+{
+    if (remote_display_thread_.joinable()) {
+        return;
+    }
+
+    remote_display_stop_ = false;
+    remote_display_thread_ = std::thread([this]() { remote_display_thread_main(); });
+}
+
+void OutputHub::stop_remote_display_thread()
+{
+    remote_display_stop_ = true;
+    if (remote_display_thread_.joinable()) {
+        remote_display_thread_.join();
+    }
+}
+
+void OutputHub::remote_display_thread_main()
+{
+    while (!remote_display_stop_.load()) {
+        const bool need_frame = std::filesystem::exists("/run/braillatron/need-frame");
+        const uint64_t sleep_ms = need_frame ? 250 : 1000;
+
+        if (remote_display_enabled_ && ui_config_.display_enabled && display_ != nullptr) {
+            if (remote_publisher_.publish(chrome_model_, true)) {
+                if (need_frame) {
+                    std::error_code ec;
+                    std::filesystem::remove("/run/braillatron/need-frame", ec);
+                }
+            }
+        }
+
+        for (uint64_t elapsed = 0; elapsed < sleep_ms && !remote_display_stop_.load();
+             elapsed += 50) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+}
 
 void OutputHub::note_toast_changed(uint64_t now_ms)
 {
@@ -308,6 +354,11 @@ void OutputHub::tick_display_scroll(uint64_t now_ms)
     if (chrome_model_.toast_scroll_offset_px != previous_offset) {
         render_chrome();
     }
+}
+
+void OutputHub::tick_remote_display(uint64_t now_ms)
+{
+    (void)now_ms;
 }
 
 void OutputHub::emit(const std::string &message, bool update_display_toast)
@@ -898,7 +949,13 @@ void OutputHub::render_chrome()
 
     display_->render(chrome_model_);
     if (remote_display_enabled_) {
-        remote_publisher_.publish(chrome_model_);
+        const bool need_frame = std::filesystem::exists("/run/braillatron/need-frame");
+        if (remote_publisher_.publish(chrome_model_, need_frame)) {
+            if (need_frame) {
+                std::error_code ec;
+                std::filesystem::remove("/run/braillatron/need-frame", ec);
+            }
+        }
     }
 }
 
@@ -934,8 +991,10 @@ void OutputHub::sync_remote_display_publisher()
     braillatron::display::DisplayClient client(display_config_.remote_display_cmd_socket);
     if (remote_display_enabled_) {
         client.request("service.start");
+        start_remote_display_thread();
     } else {
         client.request("service.stop");
+        stop_remote_display_thread();
     }
 }
 

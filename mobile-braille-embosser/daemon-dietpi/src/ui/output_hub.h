@@ -13,10 +13,12 @@
 
 #include "../telemetry/telemetry_config.h"
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace braillatron::keyboard {
@@ -91,6 +93,7 @@ public:
 
     void sync_chrome(bool at_boundary);
     void tick_display_scroll(uint64_t now_ms);
+    void tick_remote_display(uint64_t now_ms);
     void rebuild_display_backend();
     void set_pairing_code_overlay(const std::string &code);
     void clear_pairing_code_overlay();
@@ -117,6 +120,9 @@ private:
     void render_chrome();
     void sync_remote_display_publisher();
     void persist_remote_display_config();
+    void start_remote_display_thread();
+    void stop_remote_display_thread();
+    void remote_display_thread_main();
     std::vector<MenuItem> build_root_menu();
     std::vector<MenuItem> build_accounts_menu();
     std::vector<MenuItem> build_audio_output_menu();
@@ -161,6 +167,9 @@ private:
     bool remote_display_enabled_ = false;
     bool remote_allow_lan_ = false;
     std::string pairing_code_overlay_;
+    uint64_t last_remote_heartbeat_ms_ = 0;
+    std::thread remote_display_thread_;
+    std::atomic<bool> remote_display_stop_{false};
     std::string last_container_;
     std::string last_toast_message_;
 };

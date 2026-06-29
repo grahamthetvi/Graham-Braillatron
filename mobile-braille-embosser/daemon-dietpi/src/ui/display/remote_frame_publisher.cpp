@@ -17,8 +17,11 @@ RemoteFramePublisher::RemoteFramePublisher(std::string socket_path)
 {
 }
 
-bool RemoteFramePublisher::should_publish(uint32_t crc32)
+bool RemoteFramePublisher::should_publish(uint32_t crc32, bool force)
 {
+    if (force) {
+        return true;
+    }
     return should_publish_remote_frame(crc32, last_crc32_);
 }
 
@@ -43,7 +46,7 @@ bool RemoteFramePublisher::send_packet(const std::vector<uint8_t> &packet)
 
     if (::connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
         if (!connect_failed_logged_) {
-            std::cerr << "[remote-display] displayd unavailable; dropping frames\n";
+            std::cerr << "[remote-display] connect failed: " << std::strerror(errno) << "\n";
             connect_failed_logged_ = true;
         }
         close(fd);
@@ -51,22 +54,31 @@ bool RemoteFramePublisher::send_packet(const std::vector<uint8_t> &packet)
     }
 
     connect_failed_logged_ = false;
-    const ssize_t sent = send(fd, packet.data(), packet.size(), 0);
+    size_t offset = 0;
+    while (offset < packet.size()) {
+        const ssize_t sent =
+            send(fd, packet.data() + offset, packet.size() - offset, MSG_NOSIGNAL);
+        if (sent <= 0) {
+            close(fd);
+            return false;
+        }
+        offset += static_cast<size_t>(sent);
+    }
     close(fd);
-    return sent == static_cast<ssize_t>(packet.size());
+    return true;
 }
 
-void RemoteFramePublisher::publish(const UiChromeModel &model)
+bool RemoteFramePublisher::publish(const UiChromeModel &model, bool force)
 {
     if (!enabled_) {
-        return;
+        return false;
     }
 
     const ChromeFrame frame = rasterize_chrome(model, layout_, renderer_, rasterizer_);
     const uint32_t crc32 =
         braillatron::display::crc32_rgb565(frame.pixels.data(), frame.pixels.size());
-    if (!should_publish(crc32)) {
-        return;
+    if (!should_publish(crc32, force)) {
+        return true;
     }
 
     braillatron::display::FrameHeader header;
@@ -79,7 +91,11 @@ void RemoteFramePublisher::publish(const UiChromeModel &model)
         braillatron::display::encode_frame_packet(header, frame.pixels.data(), frame.pixels.size());
     if (send_packet(packet)) {
         last_crc32_ = crc32;
+        return true;
     }
+
+    last_crc32_ = 0;
+    return false;
 }
 
 } // namespace braillatron::ui
