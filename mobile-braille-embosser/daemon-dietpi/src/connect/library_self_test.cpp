@@ -45,7 +45,7 @@ bool test_status_disabled()
     braillatron::connect::LibraryConfig config;
     config.enabled = false;
     braillatron::connect::LibraryBackend backend(config);
-    const std::string response = backend.search("test");
+    const std::string response = backend.search("test", "gutendex");
     expect_true(!braillatron::connect::json_get_bool(response, "ok", true), "disabled search fails");
     return true;
 }

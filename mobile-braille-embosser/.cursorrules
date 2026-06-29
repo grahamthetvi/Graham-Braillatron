@@ -85,8 +85,9 @@
 **A code change is not complete until it is verified.** After editing runtime-affecting code, always run the appropriate clean-build, deploy, and test steps below — and fix failures before handing off. Do not stop at reporting a broken build or failed test.
 
 ### 5.1 Device Access
-- **Pi**: `192.168.0.239` — SSH `dietpi` / `meowmeow` (not `pi`)
-- **Remote display**: `http://192.168.0.239:8080`, pairing `123456` — use Browser MCP after pairing
+- Credentials: read `mobile-braille-embosser/.cursor/pi.local.env` (gitignored — never commit)
+- Expected keys: `PI_HOST`, `PI_SSH_USER`, `PI_SSH_PASS`, `REMOTE_DISPLAY_URL`, `REMOTE_DISPLAY_PAIRING`
+- If the file is missing, ask the user — do not guess or embed defaults in repo files
 - **Browser input**: click the display to refocus if keys stop working; F/D/S/J/K/L = braille dots, arrows = D-pad, **backtick (`)** = app menu
 
 ### 5.2 Change Verification Workflow

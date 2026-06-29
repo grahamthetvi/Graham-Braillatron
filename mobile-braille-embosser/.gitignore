@@ -3,11 +3,20 @@ __pycache__/
 *.py[cod]
 
 # Compiler outputs (Makefile -MMD)
-*.o
-daemon-dietpi/**/*.d
+shared/*.d
+shared/*.o
+daemon-dietpi/src/**/*.o
+daemon-dietpi/src/**/*.d
+daemon-dietpi/braillatron-self-test-tmp/
+daemon-dietpi/config/*.bak*
+daemon-dietpi/config/*.testrun
 
 # Built daemons (daemon-dietpi/)
 daemon-dietpi/braillatron-*
 
 # arduino-cli build output
 firmware-arduino/build/
+
+# Agent-local credentials (never commit)
+.cursor/pi.local.env
+.cursor/*.local.env

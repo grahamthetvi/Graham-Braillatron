@@ -82,6 +82,7 @@ bool test_build_cache_from_fixture()
     std::error_code ec;
 
     braillatron::connect::WeatherConfig config;
+    config.cache_dir.clear();
     config.cache_path = dir + "/cache.json";
     config.hourly_limit = 24;
     config.daily_limit = 7;
@@ -89,7 +90,7 @@ bool test_build_cache_from_fixture()
 
     braillatron::connect::WeatherBackend backend(config);
     const std::string cache_json =
-        backend.build_cache_from_api(kFixture, 51.5, -0.12, "London");
+        backend.build_cache_from_api(kFixture, 51.5, -0.12, "London", 0);
 
     expect_true(cache_json.find("London") != std::string::npos, "location cached");
     expect_true(cache_json.find("Overcast") != std::string::npos, "current description");

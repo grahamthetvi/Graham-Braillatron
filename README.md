@@ -23,6 +23,7 @@ Graham Braillatron/
 | Topic | Document |
 | --- | --- |
 | Dev setup (no hardware) | [mobile-braille-embosser/README.md](mobile-braille-embosser/README.md) |
+| Display architecture (wired vs wireless) | [mobile-braille-embosser/README.md#display-architecture](mobile-braille-embosser/README.md#display-architecture) |
 | Pi SD image and deployment | [Pi SD Image Software Build Guide](mobile-braille-embosser/specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) |
 | Wi‑Fi and network setup (Pi) | [Pi SD Image Guide — Wi‑Fi and network connectivity](mobile-braille-embosser/specs/Pi%20SD%20Image%20Software%20Build%20Guide.md#wi-fi-and-network-connectivity) |
 | connectd + app bring-up checklist | [Connectivity Follow-Up Checklist](mobile-braille-embosser/specs/Connectivity%20Follow-Up%20Checklist.md) |
@@ -32,4 +33,4 @@ Graham Braillatron/
 
 ## CI
 
-Push and pull requests run `make check` in `daemon-dietpi/` (host self-tests) and compile the Arduino firmware with `arduino-cli`. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+Push and pull requests run `make check` and `make check-liblouis` from the repository root (host self-tests) and compile the Arduino firmware with `arduino-cli`. See [.github/workflows/ci.yml](.github/workflows/ci.yml).

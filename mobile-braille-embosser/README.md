@@ -35,9 +35,12 @@ Optional, for braille-to-text translation on the host:
 
 ## Build
 
+From the repository root or `daemon-dietpi/`:
+
 ```bash
-cd mobile-braille-embosser/daemon-dietpi
-make braillatron-ui
+make braillatron-ui          # from daemon-dietpi/
+# or
+make ui                      # from repo root
 ```
 
 This produces `braillatron-ui` with stub accessibility backends. For terminal visual chrome during bench development:
@@ -49,7 +52,8 @@ make display   # BRAILLATRON_DISPLAY=1 — ncurses UI chrome when stdout is a TT
 Other useful targets:
 
 ```bash
-make check                                              # build + run 18 host self-tests
+make check                                              # build + run 22 host self-tests
+make list-tests                                         # index of all self-test binaries
 make host-chord-test && ./braillatron-host-chord-test   # evdev chord commit logic, no keyboard
 make motion-test && ./braillatron-motion-test           # kinematics math only
 make connect-test && ./braillatron-connect-test         # async IPC + connect client
@@ -60,11 +64,31 @@ make spelling-test && ./braillatron-spelling-test       # spelling list store
 
 Individual targets also exist for contacts, music, weather, podcasts, radio, library, and gmail backends — all are included in `make check`.
 
+### Self-tests
+
+Run `make check` to build and execute all host self-tests (from repo root or `daemon-dietpi/`). Run `make list-tests` for a full index of binaries, coverage areas, and optional dependencies (`libsqlite3`, `liblouis`).
+
 Optional liblouis self-test (requires `liblouis-dev` / `liblouis-devel`):
 
 ```bash
 make check-liblouis
 ```
+
+## Display architecture
+
+Braillatron has two display layers with different audiences and hardware paths.
+
+### Wired local display — `src/ui/display/` (inside `braillatron-ui`)
+
+Renders UI chrome on the physical screen attached to the Pi (fbdev/HDMI, SPI ST7789) or ncurses on a dev bench. Primary audience: sighted users or sighted helpers working alongside the braille user.
+
+Config: [`daemon-dietpi/config/display.conf`](daemon-dietpi/config/display.conf) (`backend`, `fbdev`, `hdmi_enabled`, etc.).
+
+### Wireless remote display — `src/display/` + `braillatron-displayd`
+
+`displayd` serves the browser UI at `:8080` with pairing auth; `braillatron-ui` publishes frames over a Unix socket via `remote_frame_publisher`. Primary audience: development control panel (keyboard/mouse in browser) and remote viewing over LAN.
+
+Config: `/etc/braillatron/remote-display.conf` or `/data/braillatron/settings/remote-display.conf`.
 
 ## Enable USB keyboard bench input
 
