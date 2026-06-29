@@ -2,6 +2,7 @@
 
 #include "../ui/apps/app_registry.h"
 #include "../ui/output_hub.h"
+#include "keyboard_service.h"
 
 namespace braillatron::hooks {
 
@@ -9,6 +10,7 @@ namespace {
 
 ui::OutputHub *g_output_hub = nullptr;
 ui::AppRegistry *g_app_registry = nullptr;
+keyboard::KeyboardService *g_keyboard_service = nullptr;
 
 } // namespace
 
@@ -20,6 +22,19 @@ void set_output_hub(ui::OutputHub *hub)
 void set_app_registry(ui::AppRegistry *registry)
 {
     g_app_registry = registry;
+}
+
+void set_keyboard_service(keyboard::KeyboardService *service)
+{
+    g_keyboard_service = service;
+}
+
+uint8_t held_dot_mask()
+{
+    if (g_keyboard_service == nullptr) {
+        return 0;
+    }
+    return g_keyboard_service->held_dot_mask();
 }
 
 void on_shift_tts_toggle(bool pressed)

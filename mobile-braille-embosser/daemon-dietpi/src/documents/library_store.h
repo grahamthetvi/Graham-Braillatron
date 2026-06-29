@@ -80,6 +80,13 @@ public:
     const LibraryBook *find_by_id(const std::string &id) const;
 
     bool register_book(LibraryBook book);
+    bool remove_book(const std::string &id);
+    bool rename_book(const std::string &id, const std::string &new_title);
+    bool import_file(const std::string &src_path);
+    std::vector<std::string> list_removable_mounts() const;
+    bool save_document_text(const std::string &text, const std::string &title_hint = {});
+    bool register_media_file(const std::string &path, const std::string &title,
+                             const std::string &source);
     bool process_import_dir();
 
     ReadingState load_reading_state(const std::string &book_id) const;

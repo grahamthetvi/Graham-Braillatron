@@ -12,6 +12,7 @@ public:
     bool send_command(const std::string &command_json);
     bool load_url(const std::string &url);
     bool seek_seconds(double seconds);
+    bool seek_relative(double delta_seconds);
     bool pause();
     bool resume();
     bool stop();

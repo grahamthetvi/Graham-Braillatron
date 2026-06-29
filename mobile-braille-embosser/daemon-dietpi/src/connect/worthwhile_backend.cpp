@@ -7,6 +7,7 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -67,6 +68,25 @@ std::string url_encode(const std::string &value)
     return out.str();
 }
 
+std::string url_decode(const std::string &value)
+{
+    std::string out;
+    out.reserve(value.size());
+    for (size_t i = 0; i < value.size(); ++i) {
+        const char ch = value[i];
+        if (ch == '%' && i + 2 < value.size()) {
+            const char hex[3] = {value[i + 1], value[i + 2], '\0'};
+            out.push_back(static_cast<char>(std::strtol(hex, nullptr, 16)));
+            i += 2;
+        } else if (ch == '+') {
+            out.push_back(' ');
+        } else {
+            out.push_back(ch);
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 WorthwhileBackend::WorthwhileBackend(WorthwhileConfig config)
@@ -122,9 +142,9 @@ std::string WorthwhileBackend::shell_quote(const std::string &value) const
 std::string WorthwhileBackend::curl_fetch(const std::string &url, bool follow_redirects) const
 {
     const std::string jar = shell_quote(config_.cookie_jar_path);
-    const std::string cmd = "curl -fsSL --max-time 45 -A " + shell_quote(browser_agent()) +
-                            " -c " + jar + " -b " + jar +
-                            (follow_redirects ? " -L " : " ") + shell_quote(url) + " 2>/dev/null";
+    const std::string cmd = "curl -fsS" + std::string(follow_redirects ? "L" : "") +
+                            " --max-time 45 -A " + shell_quote(browser_agent()) + " -c " + jar +
+                            " -b " + jar + " " + shell_quote(url) + " 2>/dev/null";
     return run_command(cmd);
 }
 
@@ -153,6 +173,26 @@ int WorthwhileBackend::curl_download(const std::string &url, const std::string &
         return -3;
     }
     return 0;
+}
+
+std::string WorthwhileBackend::read_xsrf_token() const
+{
+    std::ifstream file(config_.cookie_jar_path);
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        if (line.find("XSRF-TOKEN") == std::string::npos) {
+            continue;
+        }
+        const size_t tab = line.rfind('\t');
+        if (tab == std::string::npos) {
+            return {};
+        }
+        return url_decode(line.substr(tab + 1));
+    }
+    return {};
 }
 
 bool WorthwhileBackend::load_credentials(std::string &email, std::string &password) const
@@ -217,14 +257,25 @@ bool WorthwhileBackend::ensure_session()
         return false;
     }
 
+    const std::string xsrf = read_xsrf_token();
+    if (xsrf.empty()) {
+        return false;
+    }
+
     const std::string jar = shell_quote(config_.cookie_jar_path);
     const std::string body = "_token=" + url_encode(token) + "&email=" + url_encode(email) +
                              "&password=" + url_encode(password);
-    const std::string cmd = "curl -fsSL --max-time 45 -A " + shell_quote(browser_agent()) +
-                            " -c " + jar + " -b " + jar + " -X POST -d " + shell_quote(body) +
-                            " -L " + shell_quote(login_url) + " 2>/dev/null";
+    const std::string cmd = "curl -fsS --max-time 45 -A " + shell_quote(browser_agent()) +
+                            " -c " + jar + " -b " + jar + " -H " +
+                            shell_quote("Referer: " + login_url) + " -H " +
+                            shell_quote("X-XSRF-TOKEN: " + xsrf) + " -X POST -d " +
+                            shell_quote(body) + " " + shell_quote(login_url) + " 2>/dev/null";
     const std::string response = run_command(cmd);
     if (response.empty()) {
+        return false;
+    }
+    if (response.find("credentials do not match") != std::string::npos ||
+        response.find("session has expired") != std::string::npos) {
         return false;
     }
     if (response.rfind("<form method=\"POST\"", 0) == 0) {
@@ -356,7 +407,7 @@ std::string WorthwhileBackend::sanitize_filename(const std::string &value) const
 {
     std::string out;
     for (char ch : value) {
-        if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_') {
+        if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_' || ch == '.') {
             out += ch;
         } else if (ch == ' ') {
             out += '_';

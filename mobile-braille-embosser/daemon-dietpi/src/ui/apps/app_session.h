@@ -43,6 +43,9 @@ public:
         (void)action;
         (void)ctx;
     }
+    virtual bool menu_has_remove() const { return false; }
+    virtual bool menu_has_rename() const { return false; }
+    virtual bool menu_has_import_usb() const { return false; }
     virtual std::string composer_line() const { return {}; }
     virtual std::string result_line() const { return {}; }
     virtual bool browse_list_active() const { return false; }

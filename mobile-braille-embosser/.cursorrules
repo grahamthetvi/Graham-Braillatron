@@ -82,14 +82,20 @@
 
 ## 5. Pi Testing & Agent Handoff
 
+**A code change is not complete until it is verified.** After editing runtime-affecting code, always run the appropriate clean-build, deploy, and test steps below — and fix failures before handing off. Do not stop at reporting a broken build or failed test.
+
 ### 5.1 Device Access
 - **Pi**: `192.168.0.239` — SSH `dietpi` / `meowmeow` (not `pi`)
 - **Remote display**: `http://192.168.0.239:8080`, pairing `123456` — use Browser MCP after pairing
 - **Browser input**: click the display to refocus if keys stop working; F/D/S/J/K/L = braille dots, arrows = D-pad, **backtick (`)** = app menu
 
-### 5.2 Testing Workflow
-- Test **one app at a time** comprehensively; fix and redeploy on the Pi when something breaks (do not only report)
-- Use **Browser MCP** for UI verification and **SSH** for build/deploy
+### 5.2 Change Verification Workflow
+- **Completion bar**: clean build → deploy (when runtime is affected) → test → fix loop until passing
+- **When to verify on the Pi**: daemon, firmware, shared protocol, deploy configs, systemd units, or anything that changes on-device behavior — always deploy and test on the Pi
+- **When local-only is OK**: docs, comments, host-side tooling not used on the Pi, or changes with no runtime effect — still run relevant local checks (lint, compile, script dry-run) when applicable
+- **Clean build**: always `make clean` (or equivalent) before rebuilding after source changes — stale artifacts cause false passes
+- **Deploy & test**: use **SSH** for build/deploy/service restarts; use **Browser MCP** for UI verification
+- Test **one app at a time** comprehensively; when tests fail, redeploy, and retest — do not only report
 - **Do not commit** unless the user explicitly asks
 - Build on the Pi (**aarch64** only — never copy x86 binaries):
 

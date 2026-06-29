@@ -34,11 +34,14 @@ public:
 
     std::string scan();
     std::string play(const std::string &track_id);
+    std::string play_path(const std::string &path);
     std::string pause_toggle();
     std::string stop();
     std::string next();
     std::string prev();
     std::string seek(double seconds);
+    std::string skip_forward();
+    std::string skip_backward();
     std::string status() const;
 
     const std::vector<MusicTrack> &tracks() const { return flat_tracks_; }
@@ -52,6 +55,7 @@ private:
     void load_state();
     const MusicTrack *find_track(const std::string &track_id) const;
     int track_index(const std::string &track_id) const;
+    int track_index_by_path(const std::string &path) const;
     std::string play_index(int index);
     std::string track_event_json(const MusicTrack &track) const;
 

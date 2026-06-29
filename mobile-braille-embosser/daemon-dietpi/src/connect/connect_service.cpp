@@ -186,6 +186,9 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     if (cmd == "music.play") {
         return music_.play(json_get_string(request, "track_id"));
     }
+    if (cmd == "music.play_path") {
+        return music_.play_path(json_get_string(request, "path"));
+    }
     if (cmd == "music.pause") {
         return music_.pause_toggle();
     }
@@ -201,6 +204,12 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     if (cmd == "music.seek") {
         const std::string seconds = json_get_string(request, "seconds");
         return music_.seek(seconds.empty() ? 0.0 : std::stod(seconds));
+    }
+    if (cmd == "music.skip_forward") {
+        return music_.skip_forward();
+    }
+    if (cmd == "music.skip_backward") {
+        return music_.skip_backward();
     }
     if (cmd == "music.status") {
         return music_.status();

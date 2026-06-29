@@ -40,6 +40,7 @@ public:
     bool try_serial_reconnect();
 
     void set_braille_service(documents::BrailleTranslationService *service);
+    uint8_t held_dot_mask() const;
 
 private:
     void enqueue_frame(const SerialFrame &frame);

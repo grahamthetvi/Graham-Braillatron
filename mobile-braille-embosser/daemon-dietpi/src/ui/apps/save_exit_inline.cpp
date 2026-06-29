@@ -3,11 +3,18 @@
 #include "app_util.h"
 #include "ui_context.h"
 
+#include "../../documents/library_store.h"
+
 #include <memory>
 #include <string>
 
 namespace braillatron::ui {
 namespace {
+
+documents::LibraryStoreConfig library_config()
+{
+    return documents::load_library_store_config("/etc/braillatron/library.conf");
+}
 
 class SaveExitInline final : public AppSession {
 public:
@@ -19,6 +26,14 @@ public:
     {
         if (ctx.brf != nullptr) {
             ctx.brf->save();
+            const std::string text = ctx.brf->full_text();
+            if (!text.empty()) {
+                documents::LibraryStore store(library_config());
+                store.refresh();
+                if (store.save_document_text(text)) {
+                    announce(ctx, "Saved to library");
+                }
+            }
         }
         if (ctx.coords != nullptr) {
             ctx.coords->save();

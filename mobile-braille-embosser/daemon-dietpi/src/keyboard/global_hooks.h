@@ -10,10 +10,16 @@ class AppRegistry;
 class OutputHub;
 }
 
+namespace braillatron::keyboard {
+class KeyboardService;
+}
+
 namespace braillatron::hooks {
 
 void set_output_hub(ui::OutputHub *hub);
 void set_app_registry(ui::AppRegistry *registry);
+void set_keyboard_service(keyboard::KeyboardService *service);
+uint8_t held_dot_mask();
 
 void on_shift_tts_toggle(bool pressed);
 void on_speech_ptt_gate(bool open);

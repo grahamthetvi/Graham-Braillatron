@@ -4,6 +4,7 @@
 #include "../output_hub.h"
 
 #include "../../connect/connect_client.h"
+#include "../../connect/json_utils.h"
 
 #include <algorithm>
 
@@ -23,6 +24,35 @@ std::vector<const AppSession *> standalone_apps_sorted(
     std::sort(standalone.begin(), standalone.end(),
         [](const AppSession *a, const AppSession *b) { return a->label() < b->label(); });
     return standalone;
+}
+
+void insert_media_playback_menu_item(std::vector<MenuItem> &items, UiContext &ctx, size_t index)
+{
+    if (ctx.output == nullptr || !ctx.output->media_playing()) {
+        return;
+    }
+    const std::string label =
+        ctx.output->media_paused() ? "Resume playback" : "Pause playback";
+    items.insert(items.begin() + static_cast<std::ptrdiff_t>(index),
+                 MenuItem {
+                     label,
+                     {},
+                     [&ctx](MenuOverlay &mo) {
+                         if (ctx.connect == nullptr || ctx.output == nullptr) {
+                             return;
+                         }
+                         const std::string response = ctx.connect->request("media.pause");
+                         if (braillatron::connect::json_get_bool(response, "ok", false)) {
+                             const bool paused =
+                                 braillatron::connect::json_get_bool(response, "paused", false);
+                             ctx.output->set_media_paused(paused);
+                             ctx.output->announce_message(paused ? "Playback paused"
+                                                                 : "Playback resumed");
+                         }
+                         mo.close();
+                         ctx.output->sync_chrome(false);
+                     },
+                 });
 }
 
 } // namespace
@@ -336,6 +366,7 @@ std::vector<MenuItem> AppRegistry::build_launcher_menu()
             }
         },
     });
+    insert_media_playback_menu_item(items, ctx_, 0);
     return items;
 }
 
@@ -413,6 +444,99 @@ std::vector<MenuItem> AppRegistry::build_inline_menu()
                          },
                      });
     }
+
+    if (active_ != nullptr && active_->menu_has_remove()) {
+        size_t remove_index = active_ != nullptr ? 1 : 0;
+        if (active_ != nullptr && active_->id() == "contacts") {
+            ++remove_index;
+        }
+        items.insert(items.begin() + static_cast<std::ptrdiff_t>(remove_index),
+                     MenuItem {
+                         "Remove item",
+                         {},
+                         [this](MenuOverlay &mo) {
+                             (void)mo;
+                             if (active_ != nullptr) {
+                                 active_->on_menu_action("remove", ctx_);
+                             }
+                             if (ctx_.output != nullptr) {
+                                 ctx_.output->menu_overlay().close();
+                                 ctx_.output->sync_chrome(false);
+                             }
+                         },
+                     });
+    }
+
+    if (active_ != nullptr && active_->menu_has_rename()) {
+        size_t rename_index = active_ != nullptr ? 1 : 0;
+        if (active_ != nullptr && active_->id() == "contacts") {
+            ++rename_index;
+        }
+        if (active_ != nullptr && active_->menu_has_remove()) {
+            ++rename_index;
+        }
+        items.insert(items.begin() + static_cast<std::ptrdiff_t>(rename_index),
+                     MenuItem {
+                         "Rename item",
+                         {},
+                         [this](MenuOverlay &mo) {
+                             (void)mo;
+                             if (active_ != nullptr) {
+                                 active_->on_menu_action("rename", ctx_);
+                             }
+                             if (ctx_.output != nullptr) {
+                                 ctx_.output->menu_overlay().close();
+                                 ctx_.output->sync_chrome(false);
+                             }
+                         },
+                     });
+    }
+
+    if (active_ != nullptr && active_->menu_has_import_usb()) {
+        size_t import_index = active_ != nullptr ? 1 : 0;
+        if (active_ != nullptr && active_->id() == "contacts") {
+            ++import_index;
+        }
+        if (active_ != nullptr && active_->menu_has_remove()) {
+            ++import_index;
+        }
+        if (active_ != nullptr && active_->menu_has_rename()) {
+            ++import_index;
+        }
+        items.insert(items.begin() + static_cast<std::ptrdiff_t>(import_index),
+                     MenuItem {
+                         "Import from USB",
+                         {},
+                         [this](MenuOverlay &mo) {
+                             (void)mo;
+                             if (active_ != nullptr) {
+                                 active_->on_menu_action("import_usb", ctx_);
+                             }
+                             if (ctx_.output != nullptr) {
+                                 ctx_.output->menu_overlay().close();
+                                 ctx_.output->sync_chrome(false);
+                             }
+                         },
+                     });
+    }
+
+    size_t media_index = 0;
+    if (active_ != nullptr) {
+        ++media_index;
+    }
+    if (active_ != nullptr && active_->id() == "contacts") {
+        ++media_index;
+    }
+    if (active_ != nullptr && active_->menu_has_remove()) {
+        ++media_index;
+    }
+    if (active_ != nullptr && active_->menu_has_rename()) {
+        ++media_index;
+    }
+    if (active_ != nullptr && active_->menu_has_import_usb()) {
+        ++media_index;
+    }
+    insert_media_playback_menu_item(items, ctx_, media_index);
 
     if (active_ != nullptr && active_->id() == "brailler") {
         items.push_back(MenuItem {

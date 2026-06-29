@@ -70,4 +70,9 @@ std::optional<ControlEdge> ChordEngine::poll_control_edge()
     return edge;
 }
 
+uint8_t ChordEngine::held_dot_mask() const
+{
+    return static_cast<uint8_t>(current_state_ & BRAILLE_DOT_MASK);
+}
+
 } // namespace braillatron::keyboard

@@ -2,10 +2,12 @@
 #include "../../connect/json_utils.h"
 #include "app_session.h"
 #include "app_util.h"
+#include "held_audio_skip.h"
 #include "ui_context.h"
 
 #include "../output_hub.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -58,18 +60,15 @@ public:
 
     void on_exit(UiContext &ctx) override
     {
-        if (ctx.connect != nullptr) {
-            ctx.connect->request("music.stop");
-        }
-        if (ctx.output != nullptr) {
-            ctx.output->set_media_playing(false);
-        }
         reset_session();
         announce(ctx, "Music closed");
     }
 
     void on_poll(UiContext &ctx) override
     {
+        if (phase_ == Phase::Playing && ctx.connect != nullptr) {
+            held_skip_.poll(now_ms(), ctx.connect);
+        }
         if (!pending_announce_.empty()) {
             announce(ctx, pending_announce_);
             pending_announce_.clear();
@@ -86,10 +85,16 @@ public:
         }
         if (event.type == "music.playing" && ctx.output != nullptr) {
             ctx.output->set_media_playing(true);
+            ctx.output->set_media_paused(false);
         }
     }
 
-    void on_chord(uint8_t, UiContext &) override {}
+    void on_chord(uint8_t dot_mask, UiContext &) override
+    {
+        if (phase_ == Phase::Playing && is_skip_chord(dot_mask)) {
+            return;
+        }
+    }
     void on_text(const std::string &, UiContext &) override {}
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
@@ -126,6 +131,15 @@ private:
         track_index_ = 0;
         pending_announce_.clear();
         now_playing_.clear();
+        held_skip_.reset();
+    }
+
+    static uint64_t now_ms()
+    {
+        return static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch())
+                .count());
     }
 
     void parse_scan_response(const std::string &response)
@@ -276,16 +290,41 @@ private:
             announce(ctx, "Playback stopped");
             return;
         }
+        if (key == keyboard::ControlKey::Enter) {
+            const std::string response = ctx.connect->request("music.pause");
+            if (braillatron::connect::json_get_bool(response, "ok", false)) {
+                const bool paused = braillatron::connect::json_get_bool(response, "paused", false);
+                if (ctx.output != nullptr) {
+                    ctx.output->set_media_paused(paused);
+                }
+                announce(ctx, paused ? "Paused" : "Playing " + now_playing_);
+            }
+            return;
+        }
         if (key == keyboard::ControlKey::DpadDown) {
             const std::string response = ctx.connect->request("music.next");
             if (braillatron::connect::json_get_bool(response, "ok", false)) {
                 now_playing_ = braillatron::connect::json_get_string(response, "title");
+                if (now_playing_.empty()) {
+                    const std::string track_json = response.substr(response.find("\"track\":"));
+                    now_playing_ = braillatron::connect::json_get_string(track_json, "title");
+                }
+                if (ctx.output != nullptr) {
+                    ctx.output->set_media_paused(false);
+                }
                 announce(ctx, "Playing " + now_playing_);
             }
         } else if (key == keyboard::ControlKey::DpadUp) {
             const std::string response = ctx.connect->request("music.prev");
             if (braillatron::connect::json_get_bool(response, "ok", false)) {
                 now_playing_ = braillatron::connect::json_get_string(response, "title");
+                if (now_playing_.empty()) {
+                    const std::string track_json = response.substr(response.find("\"track\":"));
+                    now_playing_ = braillatron::connect::json_get_string(track_json, "title");
+                }
+                if (ctx.output != nullptr) {
+                    ctx.output->set_media_paused(false);
+                }
                 announce(ctx, "Playing " + now_playing_);
             }
         }
@@ -304,8 +343,11 @@ private:
             now_playing_ = track.title;
             if (ctx.output != nullptr) {
                 ctx.output->set_media_playing(true);
+                ctx.output->set_media_paused(false);
             }
-            announce(ctx, "Playing " + track.title);
+            announce(ctx, "Playing " + track.title +
+                               ". Enter pause. Hold dots 1-2-3 skip back, 4-5-6 skip forward. "
+                               "Up previous track. Down next track. Backspace stop.");
         } else {
             announce(ctx, "Playback failed");
         }
@@ -318,6 +360,7 @@ private:
     size_t track_index_ = 0;
     std::string pending_announce_;
     std::string now_playing_;
+    HeldAudioSkip held_skip_;
 };
 
 } // namespace

@@ -253,6 +253,16 @@ int MusicBackend::track_index(const std::string &track_id) const
     return -1;
 }
 
+int MusicBackend::track_index_by_path(const std::string &path) const
+{
+    for (size_t i = 0; i < flat_tracks_.size(); ++i) {
+        if (flat_tracks_[i].path == path) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
 std::string MusicBackend::track_event_json(const MusicTrack &track) const
 {
     return "{\"id\":\"" + json_escape(track.id) + "\",\"title\":\"" + json_escape(track.title) +
@@ -334,6 +344,33 @@ std::string MusicBackend::play(const std::string &track_id)
     return play_index(track_index(track_id));
 }
 
+std::string MusicBackend::play_path(const std::string &path)
+{
+    if (!config_.enabled) {
+        return "{\"ok\":false,\"error\":\"music disabled\"}";
+    }
+    if (path.empty()) {
+        return "{\"ok\":false,\"error\":\"empty path\"}";
+    }
+    std::error_code ec;
+    if (!fs::exists(path, ec) || !fs::is_regular_file(path, ec)) {
+        return "{\"ok\":false,\"error\":\"file not found\"}";
+    }
+    if (!is_audio_extension(lower_ext(path))) {
+        return "{\"ok\":false,\"error\":\"not audio\"}";
+    }
+
+    int index = track_index_by_path(path);
+    if (index < 0) {
+        ingest_file(path);
+        index = static_cast<int>(flat_tracks_.size()) - 1;
+        if (index >= 0) {
+            flat_tracks_[static_cast<size_t>(index)].id = std::to_string(index);
+        }
+    }
+    return play_index(index);
+}
+
 std::string MusicBackend::pause_toggle()
 {
     if (mpv_ == nullptr) {
@@ -397,6 +434,28 @@ std::string MusicBackend::seek(double seconds)
         return "{\"ok\":false,\"error\":\"seek failed\"}";
     }
     return "{\"ok\":true,\"position_sec\":" + std::to_string(seconds) + "}";
+}
+
+std::string MusicBackend::skip_forward()
+{
+    if (mpv_ == nullptr || current_index_ < 0) {
+        return "{\"ok\":false,\"error\":\"nothing playing\"}";
+    }
+    if (!mpv_->ipc().seek_relative(30.0)) {
+        return "{\"ok\":false,\"error\":\"seek failed\"}";
+    }
+    return "{\"ok\":true}";
+}
+
+std::string MusicBackend::skip_backward()
+{
+    if (mpv_ == nullptr || current_index_ < 0) {
+        return "{\"ok\":false,\"error\":\"nothing playing\"}";
+    }
+    if (!mpv_->ipc().seek_relative(-30.0)) {
+        return "{\"ok\":false,\"error\":\"seek failed\"}";
+    }
+    return "{\"ok\":true}";
 }
 
 std::string MusicBackend::status() const

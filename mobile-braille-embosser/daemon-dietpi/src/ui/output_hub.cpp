@@ -547,11 +547,13 @@ void OutputHub::on_shift_tts_toggle(bool pressed)
             if (!media_shift_paused_) {
                 connect_client_->request("media.set_pause", ",\"pause\":true");
                 media_shift_paused_ = true;
+                media_paused_ = true;
                 emit("Playback paused");
             }
         } else if (media_shift_paused_) {
             connect_client_->request("media.set_pause", ",\"pause\":false");
             media_shift_paused_ = false;
+            media_paused_ = false;
             emit("Playback resumed");
         }
         return;
@@ -790,6 +792,19 @@ void OutputHub::on_connect_event(const connect::ConnectEvent &event)
         return;
     }
 
+    if (event.type == "music.playing" || event.type == "radio.playing" ||
+        event.type == "podcasts.playing" || event.type == "youtube.playing") {
+        set_media_playing(true);
+        set_media_paused(false);
+        return;
+    }
+
+    if (event.type == "music.ended" || event.type == "radio.ended" ||
+        event.type == "podcasts.ended" || event.type == "youtube.ended") {
+        set_media_playing(false);
+        return;
+    }
+
     if (event.type == "weather.alert") {
         const std::string message = connect::json_get_string(event.data_json, "message");
         play_boundary_haptic();
@@ -937,7 +952,13 @@ void OutputHub::set_media_playing(bool playing)
     media_playing_ = playing;
     if (!playing) {
         media_shift_paused_ = false;
+        media_paused_ = false;
     }
+}
+
+void OutputHub::set_media_paused(bool paused)
+{
+    media_paused_ = paused;
 }
 
 void OutputHub::set_stt_transcript_handler(SttBackend::TranscriptHandler handler)

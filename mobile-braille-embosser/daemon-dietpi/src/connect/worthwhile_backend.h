@@ -34,6 +34,7 @@ private:
     int curl_download(const std::string &url, const std::string &dest) const;
     bool ensure_session();
     bool load_credentials(std::string &email, std::string &password) const;
+    std::string read_xsrf_token() const;
     std::string extract_hidden_token(const std::string &html) const;
     std::vector<CatalogItem> parse_catalog_table(const std::string &html) const;
     std::vector<CatalogItem> parse_recent_block(const std::string &html,

@@ -15,10 +15,56 @@
 namespace braillatron::ui {
 namespace {
 
+constexpr size_t kMaxAnnounceLen = 300;
+constexpr size_t kMaxBrowseLabelLen = 72;
+
+std::string truncate_for_tts(const std::string &text)
+{
+    if (text.size() <= kMaxAnnounceLen) {
+        return text;
+    }
+    return text.substr(0, kMaxAnnounceLen) + "...";
+}
+
+std::string truncate_for_browse(const std::string &text)
+{
+    if (text.size() <= kMaxBrowseLabelLen) {
+        return text;
+    }
+    return text.substr(0, kMaxBrowseLabelLen - 3) + "...";
+}
+
+std::vector<std::string> wrap_definition_lines(const std::string &text, size_t max_len = kMaxBrowseLabelLen)
+{
+    std::vector<std::string> lines;
+    if (text.empty()) {
+        return lines;
+    }
+
+    size_t pos = 0;
+    while (pos < text.size()) {
+        if (text.size() - pos <= max_len) {
+            lines.push_back(text.substr(pos));
+            break;
+        }
+        size_t break_at = text.rfind(' ', pos + max_len);
+        if (break_at == std::string::npos || break_at <= pos) {
+            break_at = pos + max_len;
+        }
+        lines.push_back(text.substr(pos, break_at - pos));
+        pos = break_at;
+        while (pos < text.size() && text[pos] == ' ') {
+            ++pos;
+        }
+    }
+    return lines;
+}
+
 enum class Phase {
     Search,
     PickMatch,
     ReadDefinition,
+    ReadDefinitionText,
 };
 
 class DictionaryApp final : public AppSession {
@@ -29,7 +75,8 @@ public:
 
     bool browse_list_active() const override
     {
-        return phase_ == Phase::PickMatch || phase_ == Phase::ReadDefinition;
+        return phase_ == Phase::PickMatch || phase_ == Phase::ReadDefinition ||
+               phase_ == Phase::ReadDefinitionText;
     }
 
     const LayeredBrowseList *browse_list() const override
@@ -49,6 +96,8 @@ public:
             return "Matches";
         case Phase::ReadDefinition:
             return "Definitions";
+        case Phase::ReadDefinitionText:
+            return definition_title_.empty() ? "Definition" : definition_title_;
         default:
             return {};
         }
@@ -102,6 +151,9 @@ public:
         case Phase::ReadDefinition:
             handle_read_control(key, ctx);
             break;
+        case Phase::ReadDefinitionText:
+            handle_read_text_control(key, ctx);
+            break;
         }
     }
 
@@ -114,6 +166,9 @@ private:
         match_index_ = 0;
         entries_.clear();
         entry_index_ = 0;
+        definition_title_.clear();
+        lines_.clear();
+        line_index_ = 0;
         browse_.clear();
     }
 
@@ -132,10 +187,23 @@ private:
                 if (!entry.part_of_speech.empty()) {
                     label += ", " + entry.part_of_speech;
                 }
+                if (!entry.definition.empty()) {
+                    label += ". " + truncate_for_browse(entry.definition);
+                }
                 labels.push_back(std::move(label));
             }
             browse_.set_items(std::move(labels), entry_index_);
             browse_.set_container_name("Definitions");
+            return;
+        }
+        if (phase_ == Phase::ReadDefinitionText) {
+            std::vector<std::string> labels;
+            labels.reserve(lines_.size());
+            for (const auto &line : lines_) {
+                labels.push_back(truncate_for_browse(line));
+            }
+            browse_.set_items(std::move(labels), line_index_);
+            browse_.set_container_name(definition_title_.empty() ? "Definition" : definition_title_);
         }
     }
 
@@ -257,13 +325,68 @@ private:
             announce_entry(ctx);
             return;
         }
-        if (key == keyboard::ControlKey::Enter && ctx.motion != nullptr && ctx.braille != nullptr &&
-            config_.emboss_enabled && entry_index_ < entries_.size()) {
+        if (key != keyboard::ControlKey::Enter || entry_index_ >= entries_.size()) {
+            return;
+        }
+        open_definition_text(ctx);
+    }
+
+    void handle_read_text_control(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            phase_ = Phase::ReadDefinition;
+            lines_.clear();
+            line_index_ = 0;
+            definition_title_.clear();
+            sync_browse_list();
+            sync_chrome(ctx);
+            announce_entry(ctx);
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadUp && line_index_ > 0) {
+            --line_index_;
+            browse_.set_focus(line_index_);
+            sync_chrome(ctx);
+            announce_definition_line(ctx);
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadDown && line_index_ + 1 < lines_.size()) {
+            ++line_index_;
+            browse_.set_focus(line_index_);
+            sync_chrome(ctx);
+            announce_definition_line(ctx);
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter || lines_.empty()) {
+            return;
+        }
+        if (ctx.motion != nullptr && ctx.braille != nullptr && config_.emboss_enabled) {
             const auto &entry = entries_[entry_index_];
             const std::string text = entry.word + ". " + entry.definition;
             ctx.motion->emboss_text(text, *ctx.braille);
             announce(ctx, "Embossing definition");
         }
+    }
+
+    void open_definition_text(UiContext &ctx)
+    {
+        if (entry_index_ >= entries_.size()) {
+            return;
+        }
+        const auto &entry = entries_[entry_index_];
+        definition_title_ = entry.word;
+        if (!entry.part_of_speech.empty()) {
+            definition_title_ += ", " + entry.part_of_speech;
+        }
+        lines_ = wrap_definition_lines(entry.definition);
+        if (lines_.empty() && !entry.definition.empty()) {
+            lines_.push_back(entry.definition);
+        }
+        line_index_ = 0;
+        phase_ = Phase::ReadDefinitionText;
+        sync_browse_list();
+        sync_chrome(ctx);
+        announce_definition_line(ctx);
     }
 
     void announce_match(UiContext &ctx)
@@ -282,12 +405,22 @@ private:
         if (!entry.part_of_speech.empty()) {
             message += ", " + entry.part_of_speech;
         }
-        message += ". " + entry.definition;
+        message += ". " + truncate_for_tts(entry.definition);
         if (entries_.size() > 1) {
             message = "Definition " + std::to_string(entry_index_ + 1) + " of " +
                       std::to_string(entries_.size()) + ". " + message;
         }
         announce(ctx, message);
+    }
+
+    void announce_definition_line(UiContext &ctx)
+    {
+        if (lines_.empty()) {
+            return;
+        }
+        const std::string prefix = "Line " + std::to_string(line_index_ + 1) + " of " +
+                                   std::to_string(lines_.size()) + ". ";
+        announce(ctx, prefix + truncate_for_tts(lines_[line_index_]));
     }
 
     documents::DictionaryConfig config_ =
@@ -300,6 +433,9 @@ private:
     size_t match_index_ = 0;
     std::vector<documents::DictionaryEntry> entries_;
     size_t entry_index_ = 0;
+    std::string definition_title_;
+    std::vector<std::string> lines_;
+    size_t line_index_ = 0;
 };
 
 } // namespace

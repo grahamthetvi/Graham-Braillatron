@@ -46,6 +46,7 @@ public:
 
     void on_key_state(uint16_t key_state);
     std::optional<ControlEdge> poll_control_edge();
+    uint8_t held_dot_mask() const;
 
 private:
     uint16_t current_state_ = 0;

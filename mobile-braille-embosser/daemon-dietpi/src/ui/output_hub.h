@@ -76,6 +76,9 @@ public:
     void set_stt_transcript_handler(SttBackend::TranscriptHandler handler);
     void set_morse_passive(bool enabled);
     void set_media_playing(bool playing);
+    void set_media_paused(bool paused);
+    bool media_playing() const { return media_playing_; }
+    bool media_paused() const { return media_paused_; }
     void play_morse(const std::string &text);
     void play_boundary_haptic();
     void request_shutdown();
@@ -129,6 +132,7 @@ private:
     std::function<void()> status_report_provider_;
     bool morse_passive_ = false;
     bool media_playing_ = false;
+    bool media_paused_ = false;
     bool media_shift_paused_ = false;
     bool low_battery_announced_ = false;
     bool tts_paused_ = false;

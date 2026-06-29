@@ -100,6 +100,11 @@ bool MpvIpc::seek_seconds(double seconds)
     return send_command("{\"command\":[\"seek\"," + std::to_string(seconds) + ",\"absolute\"]}");
 }
 
+bool MpvIpc::seek_relative(double delta_seconds)
+{
+    return send_command("{\"command\":[\"seek\"," + std::to_string(delta_seconds) + ",\"relative\"]}");
+}
+
 bool MpvIpc::pause()
 {
     playing_ = false;

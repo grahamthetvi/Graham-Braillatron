@@ -62,6 +62,7 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
 
     hooks::set_output_hub(&output_hub_);
     hooks::set_app_registry(&app_registry_);
+    hooks::set_keyboard_service(&keyboard_);
 
     keyboard_.set_braille_service(&braille_input_service_);
 
@@ -127,6 +128,7 @@ void UiApp::stop()
     keyboard_.stop();
     hooks::set_app_registry(nullptr);
     hooks::set_output_hub(nullptr);
+    hooks::set_keyboard_service(nullptr);
 }
 
 void UiApp::repaint_chrome()

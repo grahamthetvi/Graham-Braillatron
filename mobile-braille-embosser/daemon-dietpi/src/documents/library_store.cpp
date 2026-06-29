@@ -44,6 +44,41 @@ bool parse_bool(const std::string &value)
     return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
 }
 
+std::string sanitize_filename(std::string value)
+{
+    value = trim(value);
+    for (char &ch : value) {
+        if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != '_' && ch != '.') {
+            ch = '_';
+        }
+    }
+    return value;
+}
+
+bool has_extension(const std::string &path, const std::string &ext)
+{
+    const std::string lower = lower_copy(path);
+    return lower.size() >= ext.size() && lower.substr(lower.size() - ext.size()) == ext;
+}
+
+void collect_mount_points(const std::string &root, std::vector<std::string> &out)
+{
+    std::error_code ec;
+    if (!fs::exists(root, ec) || !fs::is_directory(root, ec)) {
+        return;
+    }
+    for (const auto &entry : fs::directory_iterator(root, ec)) {
+        if (!entry.is_directory(ec)) {
+            continue;
+        }
+        const std::string path = entry.path().string();
+        if (path.rfind("/data", 0) == 0) {
+            continue;
+        }
+        out.push_back(path);
+    }
+}
+
 std::string json_escape(const std::string &value)
 {
     std::string out;
@@ -59,12 +94,20 @@ std::string json_escape(const std::string &value)
 
 std::string parse_json_string(const std::string &json, const std::string &key)
 {
-    const std::string needle = "\"" + key + "\":\"";
+    const std::string needle = "\"" + key + "\":";
     const size_t pos = json.find(needle);
     if (pos == std::string::npos) {
         return {};
     }
-    const size_t start = pos + needle.size();
+    size_t start = pos + needle.size();
+    while (start < json.size() &&
+           std::isspace(static_cast<unsigned char>(json[start]))) {
+        ++start;
+    }
+    if (start >= json.size() || json[start] != '"') {
+        return {};
+    }
+    ++start;
     const size_t end = json.find('"', start);
     if (end == std::string::npos) {
         return {};
@@ -79,7 +122,11 @@ int parse_json_int(const std::string &json, const std::string &key, int default_
     if (pos == std::string::npos) {
         return default_value;
     }
-    const size_t start = pos + needle.size();
+    size_t start = pos + needle.size();
+    while (start < json.size() &&
+           std::isspace(static_cast<unsigned char>(json[start]))) {
+        ++start;
+    }
     return std::atoi(json.c_str() + start);
 }
 
@@ -90,7 +137,11 @@ uint64_t parse_json_uint64(const std::string &json, const std::string &key, uint
     if (pos == std::string::npos) {
         return default_value;
     }
-    const size_t start = pos + needle.size();
+    size_t start = pos + needle.size();
+    while (start < json.size() &&
+           std::isspace(static_cast<unsigned char>(json[start]))) {
+        ++start;
+    }
     return std::strtoull(json.c_str() + start, nullptr, 10);
 }
 
@@ -690,6 +741,152 @@ bool LibraryStore::register_book(LibraryBook book)
     return save();
 }
 
+bool LibraryStore::remove_book(const std::string &id)
+{
+    const auto it = std::find_if(books_.begin(), books_.end(),
+                                 [&](const LibraryBook &book) { return book.id == id; });
+    if (it == books_.end()) {
+        return false;
+    }
+
+    const std::string local_path = it->local_path;
+    const std::string book_id = it->id;
+    books_.erase(it);
+    if (!save()) {
+        return false;
+    }
+
+    std::error_code ec;
+    const std::string state_path = config_.state_dir + "/" + book_id + ".json";
+    fs::remove(state_path, ec);
+
+    if (!local_path.empty() && fs::exists(local_path, ec)) {
+        if (fs::is_directory(local_path, ec)) {
+            fs::remove_all(local_path, ec);
+        } else {
+            fs::remove(local_path, ec);
+            const std::string lower = lower_copy(local_path);
+            if (lower.size() >= 5 && lower.substr(lower.size() - 5) == ".epub") {
+                fs::remove_all(local_path + ".extracted", ec);
+            }
+        }
+    }
+    return true;
+}
+
+bool LibraryStore::rename_book(const std::string &id, const std::string &new_title)
+{
+    const std::string title = trim(new_title);
+    if (title.empty()) {
+        return false;
+    }
+
+    const auto it = std::find_if(books_.begin(), books_.end(),
+                                 [&](const LibraryBook &book) { return book.id == id; });
+    if (it == books_.end()) {
+        return false;
+    }
+
+    it->title = title;
+
+    std::error_code ec;
+    if (!it->local_path.empty() && fs::exists(it->local_path, ec) && fs::is_regular_file(it->local_path, ec)) {
+        const fs::path old_path(it->local_path);
+        const std::string ext = old_path.extension().string();
+        std::string stem = sanitize_filename(title);
+        if (stem.empty()) {
+            stem = "item";
+        }
+        fs::path new_path = old_path.parent_path() / (stem + ext);
+        int suffix = 1;
+        while (fs::exists(new_path, ec) && new_path != old_path) {
+            new_path = old_path.parent_path() / (stem + "-" + std::to_string(suffix++) + ext);
+        }
+        if (new_path != old_path) {
+            fs::rename(old_path, new_path, ec);
+            if (!ec) {
+                it->local_path = new_path.string();
+            }
+        }
+    }
+
+    return save();
+}
+
+bool LibraryStore::import_file(const std::string &src_path)
+{
+    std::error_code ec;
+    if (!fs::exists(src_path, ec) || !fs::is_regular_file(src_path, ec)) {
+        return false;
+    }
+
+    const std::string format = detect_format(src_path);
+    if (format.empty()) {
+        return false;
+    }
+
+    fs::create_directories(config_.books_dir, ec);
+    const fs::path src(src_path);
+    std::string filename = src.filename().string();
+    fs::path dest = fs::path(config_.books_dir) / filename;
+    int suffix = 1;
+    while (fs::exists(dest, ec)) {
+        dest = fs::path(config_.books_dir) /
+               (src.stem().string() + "-" + std::to_string(suffix++) + src.extension().string());
+    }
+
+    const std::string temp_path = dest.string() + ".tmp";
+    fs::copy_file(src, temp_path, fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        return false;
+    }
+    fs::rename(temp_path, dest, ec);
+    if (ec) {
+        fs::remove(temp_path, ec);
+        return false;
+    }
+
+    if (format == "mp3" || format == "m4a" || format == "ogg" || format == "flac" ||
+        format == "wav") {
+        return register_media_file(dest.string(), src.stem().string(), "usb");
+    }
+
+    if (format == "brf" || format == "txt") {
+        LibraryBook book;
+        book.title = src.stem().string();
+        book.format = format;
+        book.local_path = dest.string();
+        book.source = "usb";
+        return register_book(std::move(book));
+    }
+
+    EbookDocument doc;
+    if (!doc.open(dest.string())) {
+        fs::remove(dest, ec);
+        return false;
+    }
+
+    LibraryBook book;
+    book.title = doc.title().empty() ? src.stem().string() : doc.title();
+    book.author = doc.author();
+    book.format = format;
+    book.local_path = dest.string();
+    book.source = "usb";
+    return register_book(std::move(book));
+}
+
+std::vector<std::string> LibraryStore::list_removable_mounts() const
+{
+    std::vector<std::string> mounts;
+    collect_mount_points("/run/media", mounts);
+    collect_mount_points("/media", mounts);
+    collect_mount_points("/mnt", mounts);
+
+    std::sort(mounts.begin(), mounts.end());
+    mounts.erase(std::unique(mounts.begin(), mounts.end()), mounts.end());
+    return mounts;
+}
+
 std::string LibraryStore::detect_format(const std::string &path) const
 {
     std::error_code ec;
@@ -703,7 +900,90 @@ std::string LibraryStore::detect_format(const std::string &path) const
     if (lower.size() >= 4 && lower.substr(lower.size() - 4) == ".txt") {
         return "txt";
     }
+    if (has_extension(lower, ".brf")) {
+        return "brf";
+    }
+    if (has_extension(lower, ".mp3")) {
+        return "mp3";
+    }
+    if (has_extension(lower, ".m4a")) {
+        return "m4a";
+    }
+    if (has_extension(lower, ".ogg")) {
+        return "ogg";
+    }
+    if (has_extension(lower, ".flac")) {
+        return "flac";
+    }
+    if (has_extension(lower, ".wav")) {
+        return "wav";
+    }
     return {};
+}
+
+bool LibraryStore::save_document_text(const std::string &text, const std::string &title_hint)
+{
+    if (trim(text).empty()) {
+        return false;
+    }
+
+    std::error_code ec;
+    fs::create_directories(config_.books_dir, ec);
+
+    std::string title = trim(title_hint);
+    if (title.empty()) {
+        const size_t newline = text.find('\n');
+        title = trim(newline == std::string::npos ? text : text.substr(0, newline));
+    }
+    if (title.size() > 64) {
+        title = title.substr(0, 61) + "...";
+    }
+    if (title.empty()) {
+        title = "Document";
+    }
+
+    const std::time_t now = std::time(nullptr);
+    const std::string filename = "doc-" + std::to_string(static_cast<long long>(now)) + ".txt";
+    const std::string dest = (fs::path(config_.books_dir) / filename).string();
+    const std::string temp_path = dest + ".tmp";
+    {
+        std::ofstream out(temp_path, std::ios::trunc);
+        if (!out.is_open()) {
+            return false;
+        }
+        out << text;
+        out.flush();
+        if (!out.good()) {
+            return false;
+        }
+    }
+    fs::rename(temp_path, dest, ec);
+    if (ec) {
+        return false;
+    }
+
+    LibraryBook book;
+    book.title = title;
+    book.format = "txt";
+    book.local_path = dest;
+    book.source = "document";
+    return register_book(std::move(book));
+}
+
+bool LibraryStore::register_media_file(const std::string &path, const std::string &title,
+                                       const std::string &source)
+{
+    const std::string format = detect_format(path);
+    if (format.empty()) {
+        return false;
+    }
+
+    LibraryBook book;
+    book.title = title.empty() ? fs::path(path).stem().string() : title;
+    book.format = format;
+    book.local_path = path;
+    book.source = source;
+    return register_book(std::move(book));
 }
 
 bool LibraryStore::process_import_dir()

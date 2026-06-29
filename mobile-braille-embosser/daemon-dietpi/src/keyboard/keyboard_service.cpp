@@ -158,6 +158,11 @@ void KeyboardService::set_braille_service(documents::BrailleTranslationService *
     braille_service_ = service;
 }
 
+uint8_t KeyboardService::held_dot_mask() const
+{
+    return chord_.held_dot_mask();
+}
+
 bool KeyboardService::serial_connected() const
 {
     return serial_started_.load() && serial_.is_connected();
