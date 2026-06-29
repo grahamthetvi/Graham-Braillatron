@@ -4,8 +4,11 @@
 #include "ui_context.h"
 
 #include "../../platform/audio_output.h"
+#include "../../platform/network_util.h"
+#include "../layered_browse_list.h"
+#include "../output_hub.h"
 
-#include <cctype>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -13,113 +16,94 @@
 namespace braillatron::ui {
 namespace {
 
-std::string to_lower_ascii(std::string value)
+constexpr size_t kMaxBrowseLabelLen = 72;
+
+uint64_t steady_now_ms()
 {
-    for (char &ch : value) {
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    }
-    return value;
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
 }
 
-std::optional<std::string> resolve_bluetooth_selection(
-    const std::string &selection, const std::vector<platform::BluetoothDevice> &devices)
+std::string truncate_for_browse(const std::string &text)
 {
-    const std::string trimmed = [&selection]() {
-        size_t start = 0;
-        while (start < selection.size() &&
-               std::isspace(static_cast<unsigned char>(selection[start]))) {
-            ++start;
-        }
-        size_t end = selection.size();
-        while (end > start && std::isspace(static_cast<unsigned char>(selection[end - 1]))) {
-            --end;
-        }
-        return selection.substr(start, end - start);
-    }();
-
-    if (trimmed.empty()) {
-        return std::nullopt;
+    if (text.size() <= kMaxBrowseLabelLen) {
+        return text;
     }
-
-    if (const auto mac = platform::normalize_mac(trimmed); mac.has_value()) {
-        return mac;
-    }
-
-    const std::string needle = to_lower_ascii(trimmed);
-    const platform::BluetoothDevice *exact = nullptr;
-    const platform::BluetoothDevice *partial = nullptr;
-    int partial_count = 0;
-
-    for (const auto &device : devices) {
-        const std::string name = to_lower_ascii(device.name);
-        if (name == needle) {
-            exact = &device;
-            break;
-        }
-        if (name.find(needle) != std::string::npos) {
-            partial = &device;
-            ++partial_count;
-        }
-    }
-
-    if (exact != nullptr) {
-        return exact->mac;
-    }
-    if (partial_count == 1 && partial != nullptr) {
-        return partial->mac;
-    }
-    return std::nullopt;
+    return text.substr(0, kMaxBrowseLabelLen - 3) + "...";
 }
+
+enum class Phase {
+    Scanning,
+    Devices,
+};
 
 class BluetoothSetupApp final : public AppSession {
 public:
     std::string id() const override { return "bluetooth_setup"; }
-    std::string label() const override { return "Pair Bluetooth"; }
+    std::string label() const override { return "Bluetooth"; }
     AppKind kind() const override { return AppKind::Standalone; }
     bool show_in_launcher() const override { return false; }
 
+    bool browse_list_active() const override { return phase_ == Phase::Devices; }
+
+    const LayeredBrowseList *browse_list() const override
+    {
+        return browse_list_active() ? &browse_ : nullptr;
+    }
+
+    std::string browse_breadcrumb() const override { return {}; }
+
     void on_enter(UiContext &ctx) override
     {
-        selection_buffer_.clear();
-        announce(ctx, "Scanning Bluetooth devices. Put speaker in pairing mode.");
-        scanned_devices_ = platform::scan_bluetooth_devices();
-        if (scanned_devices_.empty()) {
-            announce(ctx, "No devices found. Type MAC address and press Enter.");
-        } else {
-            int count = 0;
-            for (const auto &device : scanned_devices_) {
-                if (count >= 10) {
-                    break;
-                }
-                announce(ctx, device.name);
-                ++count;
-            }
-            announce(ctx, "Type device name or MAC address. Press Enter to pair.");
+        reset_session();
+        if (!platform::bluetooth_powered()) {
+            announce(ctx, "Bluetooth is off. Turn Bluetooth on in Settings.");
+            return;
         }
+        start_scan(ctx);
     }
 
     void on_exit(UiContext &ctx) override
     {
-        selection_buffer_.clear();
-        scanned_devices_.clear();
-        announce(ctx, "Bluetooth pairing closed");
+        if (ctx.registry != nullptr) {
+            ctx.registry->clear_busy();
+        }
+        reset_session();
+        announce(ctx, "Bluetooth closed");
     }
 
-    void on_poll(UiContext &) override {}
-    void on_chord(uint8_t, UiContext &) override {}
-
-    bool buffers_braille_words() const override { return true; }
-
-    void on_text(const std::string &text, UiContext &ctx) override
+    void on_poll(UiContext &ctx) override
     {
-        if (text.empty()) {
+        if (!pending_announce_.empty()) {
+            announce(ctx, pending_announce_);
+            pending_announce_.clear();
+        }
+        if (phase_ != Phase::Scanning || scan_started_) {
             return;
         }
-        selection_buffer_ += text;
-        if (selection_buffer_.size() % 4 == 0) {
-            announce(ctx, std::to_string(selection_buffer_.size()) + " characters entered");
+        scan_started_ = true;
+        devices_ = platform::scan_bluetooth_devices();
+        build_rows();
+        phase_ = Phase::Devices;
+        sync_browse_list();
+        sync_chrome(ctx);
+        if (rows_.size() <= 1) {
+            pending_announce_ =
+                "No Bluetooth devices found. Put device in pairing mode, then select Rescan.";
+        } else {
+            pending_announce_ = std::to_string(rows_.size() - 1) + " devices. " +
+                                browse_.focused_label();
+        }
+        if (ctx.registry != nullptr) {
+            ctx.registry->clear_busy();
         }
     }
+
+    void on_chord(uint8_t, UiContext &) override {}
+    void on_text(const std::string &, UiContext &) override {}
+    bool buffers_braille_words() const override { return false; }
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
     {
@@ -127,45 +111,129 @@ public:
             return;
         }
 
-        if (key == keyboard::ControlKey::Backspace) {
-            if (!selection_buffer_.empty()) {
-                selection_buffer_.pop_back();
+        switch (phase_) {
+        case Phase::Scanning:
+            if (key == keyboard::ControlKey::Backspace && ctx.registry != nullptr) {
+                ctx.registry->exit();
             }
-            if (selection_buffer_.size() % 4 == 0 && !selection_buffer_.empty()) {
-                announce(ctx, std::to_string(selection_buffer_.size()) + " characters entered");
-            }
-            return;
-        }
-
-        if (key != keyboard::ControlKey::Enter) {
-            return;
-        }
-
-        const auto mac = resolve_bluetooth_selection(selection_buffer_, scanned_devices_);
-        if (!mac.has_value()) {
-            announce(ctx, "Device not found. Check name or MAC address.");
-            return;
-        }
-
-        if (!platform::save_bluetooth_mac(*mac)) {
-            announce(ctx, "Could not save Bluetooth speaker address.");
-            return;
-        }
-
-        const std::string pair_result = platform::pair_bluetooth_mac(*mac);
-        announce(ctx, pair_result);
-
-        const std::string switch_result = platform::switch_output("bluetooth");
-        announce(ctx, switch_result);
-
-        if (ctx.registry != nullptr) {
-            ctx.registry->exit();
+            break;
+        case Phase::Devices:
+            handle_devices_control(key, ctx);
+            break;
         }
     }
 
 private:
-    std::string selection_buffer_;
-    std::vector<platform::BluetoothDevice> scanned_devices_;
+    enum class DeviceRowKind {
+        Rescan,
+        Device,
+    };
+
+    struct DeviceRow {
+        DeviceRowKind kind = DeviceRowKind::Device;
+        platform::BluetoothDevice device;
+    };
+
+    void reset_session()
+    {
+        phase_ = Phase::Scanning;
+        scan_started_ = false;
+        devices_.clear();
+        rows_.clear();
+        row_index_ = 0;
+        pending_announce_.clear();
+        browse_.clear();
+    }
+
+    void start_scan(UiContext &ctx)
+    {
+        phase_ = Phase::Scanning;
+        scan_started_ = false;
+        devices_.clear();
+        rows_.clear();
+        browse_.clear();
+        pending_announce_ = "Scanning Bluetooth devices";
+        if (ctx.registry != nullptr) {
+            ctx.registry->mark_busy(steady_now_ms());
+        }
+        sync_chrome(ctx);
+    }
+
+    void build_rows()
+    {
+        rows_.clear();
+        rows_.push_back(DeviceRow {DeviceRowKind::Rescan, {}});
+        for (const auto &device : devices_) {
+            rows_.push_back(DeviceRow {DeviceRowKind::Device, device});
+        }
+        row_index_ = 0;
+    }
+
+    void sync_browse_list()
+    {
+        std::vector<std::string> labels;
+        labels.reserve(rows_.size());
+        for (const auto &row : rows_) {
+            if (row.kind == DeviceRowKind::Rescan) {
+                labels.push_back("Rescan");
+            } else {
+                labels.push_back(truncate_for_browse(row.device.name));
+            }
+        }
+        browse_.set_items(std::move(labels), row_index_);
+        browse_.set_container_name("Bluetooth");
+    }
+
+    void handle_devices_control(keyboard::ControlKey key, UiContext &ctx)
+    {
+        if (key == keyboard::ControlKey::Backspace) {
+            if (ctx.registry != nullptr) {
+                ctx.registry->exit();
+            }
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadUp) {
+            announce_browse_focus(ctx, !browse_.move_up());
+            row_index_ = browse_.focus_index();
+            return;
+        }
+        if (key == keyboard::ControlKey::DpadDown) {
+            announce_browse_focus(ctx, !browse_.move_down());
+            row_index_ = browse_.focus_index();
+            return;
+        }
+        if (key != keyboard::ControlKey::Enter || rows_.empty()) {
+            return;
+        }
+
+        row_index_ = browse_.focus_index();
+        const DeviceRow &row = rows_[row_index_];
+        if (row.kind == DeviceRowKind::Rescan) {
+            start_scan(ctx);
+            return;
+        }
+
+        if (!platform::save_bluetooth_mac(row.device.mac)) {
+            announce(ctx, "Could not save Bluetooth device address.");
+            return;
+        }
+
+        announce(ctx, platform::pair_bluetooth_mac(row.device.mac));
+        announce(ctx, platform::switch_output("bluetooth"));
+    }
+
+    void announce_browse_focus(UiContext &ctx, bool at_boundary)
+    {
+        browse_.announce_focus(ctx.output, at_boundary);
+    }
+
+    Phase phase_ = Phase::Scanning;
+    bool scan_started_ = false;
+    std::vector<platform::BluetoothDevice> devices_;
+    std::vector<DeviceRow> rows_;
+    size_t row_index_ = 0;
+    std::string pending_announce_;
+    LayeredBrowseList browse_;
 };
 
 } // namespace

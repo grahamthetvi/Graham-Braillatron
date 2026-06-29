@@ -3,6 +3,7 @@
 #include "../documents/liblouis_bridge.h"
 #include "../motion/motion_service.h"
 #include "../platform/audio_output.h"
+#include "../platform/network_util.h"
 #include "../platform/shell_util.h"
 #include "../telemetry/system_shutdown.h"
 #include "../telemetry/telemetry_bridge.h"
@@ -1045,6 +1046,14 @@ void OutputHub::open_restart_confirm()
     open_shutdown_confirm();
 }
 
+void OutputHub::open_settings_menu()
+{
+    menu_overlay_.set_root_items(build_settings_menu(), "Settings");
+    menu_overlay_.open();
+    announce_focus(menu_overlay_.focused_label(), false);
+    sync_chrome(false);
+}
+
 void OutputHub::push_power_confirm(MenuOverlay &mo)
 {
     mo.push_level(build_power_confirm_items([](MenuOverlay &mo) { mo.pop_level(); }), "Power");
@@ -1145,7 +1154,19 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             nullptr
         },
         MenuItem {
-            "Network and Devices",
+            "WiFi",
+            [this]() { return platform::wifi_radio_enabled() ? "WiFi: On" : "WiFi: Off"; },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                emit(platform::set_wifi_radio_enabled(!platform::wifi_radio_enabled()));
+            },
+            "Toggle",
+            [this]() {
+                return platform::wifi_radio_enabled() ? "On" : "Off";
+            }
+        },
+        MenuItem {
+            "WiFi networks",
             {},
             [this](MenuOverlay &mo) {
                 (void)mo;
@@ -1158,7 +1179,19 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             nullptr
         },
         MenuItem {
-            "Pair Bluetooth",
+            "Bluetooth",
+            [this]() {
+                return platform::bluetooth_powered() ? "Bluetooth: On" : "Bluetooth: Off";
+            },
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                emit(platform::set_bluetooth_powered(!platform::bluetooth_powered()));
+            },
+            "Toggle",
+            [this]() { return platform::bluetooth_powered() ? "On" : "Off"; }
+        },
+        MenuItem {
+            "Bluetooth devices",
             {},
             [this](MenuOverlay &mo) {
                 (void)mo;

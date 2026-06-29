@@ -211,7 +211,7 @@ void UiApp::handle_activate(size_t index, const std::string &label)
     (void)index;
 
     if (label == "Settings") {
-        output_hub_.on_menu_overlay(true);
+        output_hub_.open_settings_menu();
         return;
     }
 

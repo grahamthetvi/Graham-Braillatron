@@ -92,7 +92,8 @@ PLATFORM_OBJS := \
 	src/platform/device_status.o \
 	src/platform/serial_link.o \
 	src/platform/shell_util.o \
-	src/platform/audio_output.o
+	src/platform/audio_output.o \
+	src/platform/network_util.o
 
 NET_OBJS := \
 	src/net/wikipedia_client.o

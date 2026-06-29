@@ -85,6 +85,7 @@ public:
     void request_restart();
     void open_shutdown_confirm();
     void open_restart_confirm();
+    void open_settings_menu();
     void push_power_confirm(MenuOverlay &mo);
     void open_frozen_app_confirm(AppRegistry *registry);
 
