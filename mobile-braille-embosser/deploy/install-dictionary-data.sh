@@ -2,15 +2,23 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IMPORT_SCRIPT="${SCRIPT_DIR}/braillatron-import-kaikki-dictionary"
+if [[ ! -x "${IMPORT_SCRIPT}" ]]; then
+  IMPORT_SCRIPT="${ROOT}/deploy/import-kaikki-dictionary.py"
+fi
 DB_PATH="${DB_PATH:-/data/braillatron/dictionary/en.sqlite}"
 KAIKKI_JSONL="${KAIKKI_JSONL:-}"
+KAIKKI_URL="${KAIKKI_URL:-https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl}"
+MIN_ENTRIES="${MIN_ENTRIES:-10000}"
+MAX_IMPORT_ROWS="${MAX_IMPORT_ROWS:-500000}"
 
-if [[ "$(id -u)" -ne 0 ]]; then
-  echo "install-dictionary-data.sh must run as root (sudo)." >&2
+if [[ "$(id -u)" -ne 0 && "${DB_PATH}" == /data/* ]]; then
+  echo "install-dictionary-data.sh must run as root for ${DB_PATH} (sudo)." >&2
   exit 1
 fi
 
-install -d "$(dirname "${DB_PATH}")"
+install -d "$(dirname "${DB_PATH}")" 2>/dev/null || mkdir -p "$(dirname "${DB_PATH}")"
 
 existing_entry_count() {
   if [[ ! -f "${DB_PATH}" ]]; then
@@ -48,7 +56,7 @@ SQL
 
 import_kaikki_jsonl() {
   local source="$1"
-  if [[ ! -f "${source}" ]]; then
+  if [[ "${source}" != "-" && ! -f "${source}" ]]; then
     echo "Kaikki JSONL not found: ${source}" >&2
     return 1
   fi
@@ -57,65 +65,41 @@ import_kaikki_jsonl() {
     return 1
   fi
 
-  python3 - "${source}" "${DB_PATH}" <<'PY'
-import json
-import sqlite3
-import sys
-
-source, db_path = sys.argv[1], sys.argv[2]
-conn = sqlite3.connect(db_path)
-conn.execute("PRAGMA journal_mode=WAL")
-conn.executescript(
-    """
-    CREATE TABLE IF NOT EXISTS entries (
-      word TEXT NOT NULL,
-      pos TEXT,
-      definition TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_entries_word ON entries(word COLLATE NOCASE);
-    DELETE FROM entries;
-    """
-)
-inserted = 0
-with open(source, "r", encoding="utf-8") as handle:
-    for line in handle:
-        line = line.strip()
-        if not line:
-            continue
-        row = json.loads(line)
-        word = row.get("word") or row.get("title")
-        if not word:
-            continue
-        entry_pos = row.get("pos") or ""
-        for sense in row.get("senses", []):
-            glosses = sense.get("glosses") or []
-            if not glosses:
-                continue
-            pos_text = entry_pos
-            if not pos_text:
-                tags = sense.get("tags")
-                pos_text = tags[0] if isinstance(tags, list) and tags else ""
-            definition = "; ".join(str(g) for g in glosses[:3])
-            conn.execute(
-                "INSERT INTO entries(word,pos,definition) VALUES (?,?,?)",
-                (word, str(pos_text), definition),
-            )
-            inserted += 1
-            if inserted >= 500000:
-                break
-        if inserted >= 500000:
-            break
-conn.commit()
-conn.close()
-print(f"Imported {inserted} dictionary rows into {db_path}")
-PY
+  python3 "${IMPORT_SCRIPT}" "${source}" "${DB_PATH}" "${MAX_IMPORT_ROWS}"
 }
+
+download_and_import_kaikki() {
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl required to download Kaikki dictionary data" >&2
+    return 1
+  fi
+
+  echo "Downloading Kaikki English dictionary (streaming, up to ${MAX_IMPORT_ROWS} senses)..."
+  set +o pipefail
+  curl -fsSL "${KAIKKI_URL}" | python3 "${IMPORT_SCRIPT}" "-" "${DB_PATH}" "${MAX_IMPORT_ROWS}"
+  local rc=$?
+  set -o pipefail
+  return "${rc}"
+}
+
+existing="$(existing_entry_count)"
+if [[ "${FORCE:-0}" != "1" && "${existing}" -ge "${MIN_ENTRIES}" ]]; then
+  echo "Dictionary already populated (${existing} rows); skipping install."
+  exit 0
+fi
 
 if [[ -n "${KAIKKI_JSONL}" ]]; then
   import_kaikki_jsonl "${KAIKKI_JSONL}"
-else
-  echo "No KAIKKI_JSONL set; installing seed dictionary at ${DB_PATH}"
+elif [[ "${SKIP_DOWNLOAD:-0}" == "1" ]]; then
+  echo "SKIP_DOWNLOAD=1; installing seed dictionary at ${DB_PATH}"
   build_seed_db
+else
+  if download_and_import_kaikki; then
+    :
+  else
+    echo "Kaikki download/import failed; installing seed dictionary at ${DB_PATH}" >&2
+    build_seed_db
+  fi
 fi
 
-echo "Dictionary database ready: ${DB_PATH}"
+echo "Dictionary database ready: ${DB_PATH} ($(existing_entry_count) rows)"

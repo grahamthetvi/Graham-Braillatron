@@ -1,0 +1,13 @@
+[Unit]
+Description=Ensure Braillatron dictionary database
+Before=braillatron-ui.service
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/braillatron-install-dictionary-data
+RemainAfterExit=yes
+
+[Install]
+WantedBy=braillatron.target

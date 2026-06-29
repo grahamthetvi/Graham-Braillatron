@@ -91,6 +91,7 @@ if [[ -d "${ROOT}/deploy/data/contacts" ]]; then
 fi
 install -d -m 700 /data/braillatron/credentials/incoming /data/braillatron/credentials/signal-cli /data/braillatron/credentials/gmail || true
 
+install -m 755 "${ROOT}/deploy/import-kaikki-dictionary.py" "${PREFIX}/bin/braillatron-import-kaikki-dictionary"
 install -m 755 "${ROOT}/deploy/install-dictionary-data.sh" "${PREFIX}/bin/braillatron-install-dictionary-data"
 install -m 755 "${ROOT}/deploy/install-spelling-data.sh" "${PREFIX}/bin/braillatron-install-spelling-data"
 install -m 755 "${ROOT}/deploy/install-gmail-oauth.sh" "${PREFIX}/bin/braillatron-install-gmail-oauth"
@@ -111,6 +112,7 @@ install -m 755 "${ROOT}/deploy/os/braillatron-boot-diagnose.sh" /usr/local/bin/b
 install -m 755 "${ROOT}/deploy/os/braillatron-fb-repaint.sh" /usr/local/sbin/braillatron-fb-repaint.sh
 install -m 755 "${ROOT}/deploy/os/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
 
+install -m 644 "${ROOT}/deploy/systemd/braillatron-dictionary-data.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-ui.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sentinel.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-connectd.service" "${SYSTEMD_DIR}/"
@@ -127,6 +129,7 @@ install -m 644 "${ROOT}/deploy/systemd/braillatron.target" "${SYSTEMD_DIR}/"
 
 systemctl daemon-reload
 systemctl enable braillatron.target
+systemctl enable braillatron-dictionary-data.service 2>/dev/null || true
 systemctl enable braillatron-ui.service
 systemctl disable braillatron-ui-stub.service 2>/dev/null || true
 systemctl disable braillatron-console-ui.service 2>/dev/null || true

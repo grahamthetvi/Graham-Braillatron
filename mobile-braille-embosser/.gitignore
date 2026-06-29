@@ -20,3 +20,6 @@ firmware-arduino/build/
 # Agent-local credentials (never commit)
 .cursor/pi.local.env
 .cursor/*.local.env
+
+# Downloaded dictionary SQLite (~50 MB)
+deploy/data/dictionary/
