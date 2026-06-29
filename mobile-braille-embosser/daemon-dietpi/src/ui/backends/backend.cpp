@@ -9,7 +9,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
+#include <deque>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -41,74 +43,134 @@ public:
 };
 
 #ifdef BRAILLATRON_A11Y
+// All Speech Dispatcher I/O runs on a dedicated worker thread. spd_open (which
+// can autospawn a daemon) and spd_say block the calling thread whenever the
+// server is wedged (e.g. no usable audio sink). Routing every SSIP call through
+// the worker guarantees the UI thread that drives navigation and keyboard input
+// never stalls on TTS.
 class SpdTtsBackend final : public TtsBackend {
 public:
     explicit SpdTtsBackend(std::string voice)
         : voice_(std::move(voice))
     {
+        worker_ = std::thread([this]() { worker_loop(); });
     }
 
     ~SpdTtsBackend() override
     {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            shutting_down_ = true;
+        }
+        cv_.notify_all();
+        if (worker_.joinable()) {
+            worker_.join();
+        }
         if (connection_ != nullptr) {
             spd_close(connection_);
             connection_ = nullptr;
         }
     }
 
-    bool available() const override
-    {
-        return connect();
-    }
+    // Never report unavailable from the UI thread: probing would require a
+    // blocking connect. The worker logs to stderr if the daemon is unreachable.
+    bool available() const override { return true; }
 
-    void speak(const std::string &text) override
-    {
-        if (!connect()) {
-            std::cerr << "[tts] " << text << "\n";
-            return;
-        }
-        spd_say(connection_, SPD_MESSAGE, text.c_str());
-    }
-
-    void pause() override
-    {
-        if (connection_ != nullptr) {
-            spd_pause(connection_);
-        }
-    }
-
-    void resume() override
-    {
-        if (connection_ != nullptr) {
-            spd_resume(connection_);
-        }
-    }
-
-    void stop() override
-    {
-        if (connection_ != nullptr) {
-            spd_cancel(connection_);
-        }
-    }
+    void speak(const std::string &text) override { enqueue(Command {CommandType::Speak, text, 0}); }
+    void pause() override { enqueue(Command {CommandType::Pause, {}, 0}); }
+    void resume() override { enqueue(Command {CommandType::Resume, {}, 0}); }
+    void stop() override { enqueue(Command {CommandType::Stop, {}, 0}); }
 
     void set_rate(int rate) override
     {
         pending_rate_ = rate;
-        if (connection_ != nullptr) {
-            apply_rate(rate);
-        }
+        enqueue(Command {CommandType::SetRate, {}, rate});
     }
 
     void set_volume(int volume) override
     {
         pending_volume_ = volume;
-        if (connection_ != nullptr) {
-            spd_set_volume(connection_, volume);
-        }
+        enqueue(Command {CommandType::SetVolume, {}, volume});
     }
 
 private:
-    bool connect() const
+    enum class CommandType { Speak, Pause, Resume, Stop, SetRate, SetVolume };
+
+    struct Command {
+        CommandType type;
+        std::string text;
+        int value;
+    };
+
+    void enqueue(Command command)
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (shutting_down_) {
+                return;
+            }
+            queue_.push_back(std::move(command));
+        }
+        cv_.notify_all();
+    }
+
+    void worker_loop()
+    {
+        for (;;) {
+            Command command;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                cv_.wait(lock, [this]() { return shutting_down_ || !queue_.empty(); });
+                if (queue_.empty()) {
+                    return; // shutting_down_ with nothing left to flush.
+                }
+                command = std::move(queue_.front());
+                queue_.pop_front();
+            }
+            process(command);
+        }
+    }
+
+    void process(const Command &command)
+    {
+        switch (command.type) {
+        case CommandType::Speak:
+            if (connect()) {
+                spd_say(connection_, SPD_MESSAGE, command.text.c_str());
+            } else {
+                std::cerr << "[tts] " << command.text << "\n";
+            }
+            break;
+        case CommandType::Pause:
+            if (connection_ != nullptr) {
+                spd_pause(connection_);
+            }
+            break;
+        case CommandType::Resume:
+            if (connection_ != nullptr) {
+                spd_resume(connection_);
+            }
+            break;
+        case CommandType::Stop:
+            if (connection_ != nullptr) {
+                spd_cancel(connection_);
+            }
+            break;
+        case CommandType::SetRate:
+            if (connect()) {
+                apply_rate(command.value);
+            }
+            break;
+        case CommandType::SetVolume:
+            if (connect()) {
+                spd_set_volume(connection_, command.value);
+            }
+            break;
+        }
+    }
+
+    // Runs on the worker thread only.
+    bool connect()
     {
         if (connection_ != nullptr) {
             return true;
@@ -131,7 +193,7 @@ private:
         return true;
     }
 
-    void apply_rate(int rate) const
+    void apply_rate(int rate)
     {
         if (connection_ == nullptr) {
             return;
@@ -147,9 +209,15 @@ private:
     }
 
     std::string voice_;
-    mutable SPDConnection *connection_ = nullptr;
+    SPDConnection *connection_ = nullptr;
     int pending_rate_ = -1;
     int pending_volume_ = -1;
+
+    std::thread worker_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::deque<Command> queue_;
+    bool shutting_down_ = false;
 };
 #endif
 

@@ -14,6 +14,12 @@ namespace braillatron::keyboard {
 
 namespace {
 
+// The browser dev console's virtual keyboard (and hot-plugged USB keyboards)
+// can appear after braillatron-ui starts, and displayd recreates the virtual
+// device on every restart. Rescan periodically so input is picked up without
+// requiring a specific daemon start order.
+constexpr uint64_t kEvdevRescanIntervalMs = 2000;
+
 const char *fault_block_reason(uint8_t fault_code)
 {
     switch (fault_code) {
@@ -91,36 +97,17 @@ void KeyboardService::start()
         const std::string map_path = resolve_config_path(config_.evdev_map_config);
         evdev_keymap_ = EvdevKeymap::load(map_path);
 
-        const auto device_paths = EvdevInput::resolve_device_paths(config_.evdev_device);
-        if (device_paths.empty()) {
-            std::cerr << "evdev: no suitable input device found\n";
-        } else {
-            bool any_started = false;
-            for (const auto &device_path : device_paths) {
-                auto evdev = std::make_unique<EvdevInput>(device_path, config_.evdev_grab);
-                if (evdev->start(evdev_keymap_)) {
-                    std::cerr << "keyboard: evdev listening on " << device_path
-                              << " (bench mode)\n";
-                    evdevs_.push_back(std::move(evdev));
-                    any_started = true;
-                }
-            }
-            if (any_started) {
-                evdev_started_ = true;
-                host_chord_assembler_.reset();
-                evdev_device_states_.assign(evdevs_.size(), 0);
-                evdev_raw_state_ = 0;
-                evdev_previous_debounced_state_ = 0;
-                evdev_debouncer_.set_raw_state(0);
-            } else {
-                evdev_started_ = false;
-            }
+        rescan_evdev_devices();
+        if (!evdev_started_) {
+            std::cerr << "evdev: no suitable input device yet; will keep scanning\n";
         }
     }
 
     if (!serial_started_ && !evdev_started_) {
-        if (config_.allow_missing_arduino) {
-            std::cerr << "keyboard: no input sources available\n";
+        // evdev devices (e.g. the web virtual keyboard) may still appear later;
+        // poll() keeps scanning. Only abort when no late source is possible.
+        if (config_.allow_missing_arduino || config_.evdev_enabled) {
+            std::cerr << "keyboard: no input sources available yet\n";
             return;
         }
         throw std::runtime_error("no keyboard input sources available");
@@ -139,12 +126,23 @@ void KeyboardService::stop()
         }
     }
     evdevs_.clear();
+    evdev_open_paths_.clear();
+    last_evdev_scan_ms_ = 0;
     evdev_started_ = false;
 }
 
 void KeyboardService::poll()
 {
     drain_frame_queue();
+
+    if (config_.evdev_enabled) {
+        const uint64_t now = now_ms();
+        if (last_evdev_scan_ms_ == 0 || now - last_evdev_scan_ms_ >= kEvdevRescanIntervalMs) {
+            last_evdev_scan_ms_ = now;
+            rescan_evdev_devices();
+        }
+    }
+
     poll_evdev();
 }
 
@@ -233,6 +231,54 @@ void KeyboardService::drain_frame_queue()
         default:
             break;
         }
+    }
+}
+
+void KeyboardService::rescan_evdev_devices()
+{
+    if (!config_.evdev_enabled) {
+        return;
+    }
+
+    bool changed = false;
+
+    // Drop devices that disconnected (e.g. displayd recreated the virtual
+    // keyboard, or a USB keyboard was unplugged) so their paths can be reopened.
+    for (size_t i = 0; i < evdevs_.size();) {
+        if (evdevs_[i] == nullptr || !evdevs_[i]->is_connected()) {
+            if (evdevs_[i] != nullptr) {
+                evdev_open_paths_.erase(evdevs_[i]->device_path());
+                evdevs_[i]->stop();
+            }
+            evdevs_.erase(evdevs_.begin() + static_cast<std::ptrdiff_t>(i));
+            changed = true;
+        } else {
+            ++i;
+        }
+    }
+
+    // Open any newly available bench devices we are not already reading.
+    const auto device_paths = EvdevInput::resolve_device_paths(config_.evdev_device);
+    for (const auto &device_path : device_paths) {
+        if (evdev_open_paths_.count(device_path) != 0) {
+            continue;
+        }
+        auto evdev = std::make_unique<EvdevInput>(device_path, config_.evdev_grab);
+        if (evdev->start(evdev_keymap_)) {
+            std::cerr << "keyboard: evdev listening on " << device_path << " (bench mode)\n";
+            evdev_open_paths_.insert(device_path);
+            evdevs_.push_back(std::move(evdev));
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        evdev_started_ = !evdevs_.empty();
+        evdev_device_states_.assign(evdevs_.size(), 0);
+        evdev_raw_state_ = 0;
+        evdev_previous_debounced_state_ = 0;
+        evdev_debouncer_.set_raw_state(0);
+        host_chord_assembler_.reset();
     }
 }
 

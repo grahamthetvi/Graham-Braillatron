@@ -34,6 +34,13 @@ install -m 644 "${ROOT}/deploy/os/audio/asound.aux.conf" /usr/share/braillatron/
 install -m 644 "${ROOT}/deploy/os/audio/asound.bluetooth.conf" /usr/share/braillatron/audio/
 install -m 644 "${ROOT}/deploy/os/audio/asound.i2s.conf" /usr/share/braillatron/audio/
 
+# Establish a default audio output (3.5 mm aux jack) and set Speech Dispatcher's
+# AudioOutputMethod to "alsa". Without this, speech-dispatcher keeps its built-in
+# "pulse" default and blocks forever opening audio on headless images that have no
+# PulseAudio/PipeWire server, which wedges all on-device TTS. --no-restart-ui keeps
+# install.sh from starting the UI before the rest of the install completes.
+"${PREFIX}/bin/braillatron-audio-select" --no-restart-ui aux || true
+
 install -d "${CONFIG_DIR}"
 install -m 644 "${DAEMON_DIR}/config/hardware.conf" "${CONFIG_DIR}/hardware.conf"
 install -m 644 "${DAEMON_DIR}/config/keyboard.conf" "${CONFIG_DIR}/keyboard.conf"

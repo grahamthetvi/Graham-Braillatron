@@ -18,6 +18,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <set>
+#include <string>
 #include <vector>
 
 namespace braillatron::keyboard {
@@ -45,6 +47,7 @@ public:
 private:
     void enqueue_frame(const SerialFrame &frame);
     void drain_frame_queue();
+    void rescan_evdev_devices();
     void poll_evdev();
     void handle_key_state(uint16_t key_state);
     void handle_chord(uint8_t dot_mask);
@@ -60,6 +63,8 @@ private:
     documents::BrailleTranslationService *braille_service_ = nullptr;
 
     std::vector<std::unique_ptr<EvdevInput>> evdevs_;
+    std::set<std::string> evdev_open_paths_;
+    uint64_t last_evdev_scan_ms_ = 0;
     HostChordAssembler host_chord_assembler_;
     KeyDebouncer evdev_debouncer_;
     EvdevKeymap evdev_keymap_;

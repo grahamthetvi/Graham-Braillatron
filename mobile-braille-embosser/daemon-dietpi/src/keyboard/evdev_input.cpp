@@ -166,7 +166,8 @@ bool EvdevInput::start(const EvdevKeymap &keymap)
     running_ = true;
     connected_ = true;
     worker_ = std::thread([this]() {
-        while (running_.load()) {
+        bool device_lost = false;
+        while (running_.load() && !device_lost) {
             pollfd pfd {};
             pfd.fd = fd_;
             pfd.events = POLLIN;
@@ -182,6 +183,13 @@ bool EvdevInput::start(const EvdevKeymap &keymap)
                 continue;
             }
 
+            // The device was removed (e.g. displayd destroyed and recreated the
+            // virtual web keyboard). Stop so the service can reopen the new node.
+            if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+                device_lost = true;
+                break;
+            }
+
             while (running_.load()) {
                 input_event ev {};
                 const ssize_t nbytes = read(fd_, &ev, sizeof(ev));
@@ -192,6 +200,9 @@ bool EvdevInput::start(const EvdevKeymap &keymap)
                 if (nbytes < 0 && (errno == EAGAIN || errno == EINTR)) {
                     break;
                 }
+                // EOF (0) or a hard error such as ENODEV means the device is
+                // gone; mark it lost so poll_evdev/rescan reopens a fresh node.
+                device_lost = true;
                 break;
             }
         }
