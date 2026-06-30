@@ -294,27 +294,41 @@ This script runs, in order:
 
 2. **I2S overlay** — adds `rk3566-i2s1-overlay` to the `overlays=` line in `/boot/dietpiEnv.txt` (MAX98357A audio; see Skeleton Build Guide)
 
-3. **SPI overlay (optional)** — adds `spi-spidev` only when `BRAILLATRON\_SPI\_PANEL=1` (HAT fitted). Default bootstrap leaves SPI off so `/dev/spidev0.0` is absent and HDMI framebuffer UI works on skeleton bench
+3. **I2C1 overlay** — adds `i2c1` to `overlays=` in `/boot/dietpiEnv.txt` (LTC2944 fuel gauge, DRV2605L haptics on Pi `i2c-1`)
 
-4. **`/data` partition** — `deploy/os/setup-data-partition.sh` creates an ext4 partition labeled `braillatron-data` in unallocated tail space (requires ≥ 768 MB free at the disk end; does not shrink root)
+4. **SPI overlay (optional)** — adds `spi3-spidev` only when `BRAILLATRON\_SPI\_PANEL=1` (ST7789 HAT fitted). Default bootstrap leaves SPI off so `/dev/spidev0.0` is absent and HDMI framebuffer UI works on skeleton bench
 
-5. **libvosk** — `deploy/install-vosk-lib.sh` installs the prebuilt aarch64 Vosk library (not in Debian apt)
+5. **`/data` partition** — `deploy/os/setup-data-partition.sh` creates an ext4 partition labeled `braillatron-data` in unallocated tail space (requires ≥ 768 MB free at the disk end; does not shrink root)
 
-6. **Build + install** — `deploy/install.sh` compiles with `BRAILLATRON\_A11Y=1`, installs binaries, configs, systemd units, dictionary/spelling seed data, and Gmail OAuth setup helper
+6. **libvosk** — `deploy/install-vosk-lib.sh` installs the prebuilt aarch64 Vosk library (not in Debian apt)
 
-7. **signal-cli (optional)** — `deploy/install-signal-cli.sh` for Messages app; skipped gracefully if it fails
+7. **Build + install** — `deploy/install.sh` compiles with `BRAILLATRON\_A11Y=1`, installs binaries, configs, systemd units, dictionary/spelling seed data, and Gmail OAuth setup helper
 
-8. **Vosk model** — downloads `vosk-model-small-en-us-0.15` (~40 MB) to `/data/braillatron/vosk-models/`
+8. **signal-cli (optional)** — `deploy/install-signal-cli.sh` for Messages app; skipped gracefully if it fails
 
-9. **Accessibility stack** — enables `speech-dispatcher` and `brltty`
+9. **Vosk model** — downloads `vosk-model-small-en-us-0.15` (~40 MB) to `/data/braillatron/vosk-models/`
 
-10. **Networking** — `setup-dietpi-networking.sh` keeps DietPi **ifupdown + wpa\_supplicant** on `wlan0` and wired interfaces; disables NetworkManager and DietPi's `dietpi-wifi-monitor` (see **Wi‑Fi and network connectivity**)
+10. **Accessibility stack** — enables `speech-dispatcher` and `brltty`
 
-11. **Audio default** — `setup-aux-audio.sh` routes ALSA + TTS to the 3.5 mm aux jack; optional Bluetooth via `setup-bluetooth-audio.sh`
+11. **Networking** — `setup-dietpi-networking.sh` keeps DietPi **ifupdown + wpa\_supplicant** on `wlan0` and wired interfaces; disables NetworkManager and DietPi's `dietpi-wifi-monitor` (see **Wi‑Fi and network connectivity**)
 
-12. **Appliance mode** — `setup-appliance-mode.sh` disables local console login, routes display (SPI + HDMI framebuffer / headless stub), enables read-only root, keeps SSH (skipped when `BRAILLATRON\_APPLIANCE=0`)
+12. **Audio default** — `setup-aux-audio.sh` routes ALSA + TTS to the 3.5 mm aux jack; optional Bluetooth via `setup-bluetooth-audio.sh`
+
+13. **Appliance mode** — `setup-appliance-mode.sh` disables local console login, routes display (SPI + HDMI framebuffer / headless stub), enables read-only root, keeps SSH (skipped when `BRAILLATRON\_APPLIANCE=0`)
 
 Bootstrap takes several minutes on first run (apt + compile + model download).
+
+### Klipper / Moonraker (Monster8 Option A)
+
+Bootstrap prints a reminder but does **not** install Klipper or Moonraker automatically — install them on first Pi bring-up when the Monster8 is wired:
+
+1. Flash Monster8 with Klipper firmware (see [`klipper/printer.cfg`](../klipper/printer.cfg) in the repo).
+2. Install Klipper + Moonraker per [Klipper](https://www.klipper3d.org/) and [Moonraker](https://moonraker.readthedocs.io/) docs.
+3. Copy `mobile-braille-embosser/klipper/printer.cfg` to `~/printer_data/config/printer.cfg`.
+4. Set `[mcu] serial` to your USB ID: `ls /dev/serial/by-id/usb-Klipper_*`
+5. Confirm Moonraker responds on `http://127.0.0.1:7125`, then set `klipper.conf` `enabled=true` in `/etc/braillatron/` and `motion_enabled=true` in `hardware.conf`.
+
+`braillatron-ui` connects to Moonraker for emboss G-code, homing, and **M112** on freefall; `braillatron-sentinel` polls Klipper endstops when GPIO limit paths are empty. Full wiring: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md).
 
 ## Step 5: Reboot
 
@@ -422,7 +436,7 @@ ls /data/braillatron/documents/
 **Display overrides:**
 
 ```
-\# SPI HAT fitted (enables spi-spidev overlay and SPI UI routing)  
+\# SPI HAT fitted (enables spi3-spidev overlay and SPI UI routing)  
 BRAILLATRON\_SPI\_PANEL=1 sudo bash deploy/bootstrap-dietpi.sh  
   
 \# TTS-only skeleton (no visual UI)  
@@ -708,7 +722,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | Config changes lost after rebuild | `make install` overwrites `/etc/braillatron/` — back up before install |
 | Monitor frozen on last boot line (`graphical.target`) | Boot may be done — SSH in and check `systemctl is-active braillatron-ui` and `journalctl -u braillatron-ui -b | grep backend=` |
 | Monitor shows DietPi "hit return to login" but Enter does nothing | Expected when getty is disabled — re-run `setup-appliance-mode.sh`; use SSH or USB keyboard on the Pi |
-| No framebuffer UI on HDMI after reboot | `sudo braillatron-boot-diagnose.sh`; check `test -f /etc/braillatron/appliance-headless && echo headless`; `journalctl -u braillatron-ui -b | grep backend=` (expect `fb` or `spi+fb`, not `stub`); `/dev/fb0` present; `grep hdmi\_enabled /etc/braillatron/display.conf`; run `sudo bash deploy/os/setup-appliance-mode.sh` and `sudo systemctl restart braillatron.target`. Stale `spi-spidev` in `/boot/dietpiEnv.txt` without a HAT — remove overlay, ensure `appliance-spi` absent, reboot |
+| No framebuffer UI on HDMI after reboot | `sudo braillatron-boot-diagnose.sh`; check `test -f /etc/braillatron/appliance-headless && echo headless`; `journalctl -u braillatron-ui -b | grep backend=` (expect `fb` or `spi+fb`, not `stub`); `/dev/fb0` present; `grep hdmi\_enabled /etc/braillatron/display.conf`; run `sudo bash deploy/os/setup-appliance-mode.sh` and `sudo systemctl restart braillatron.target`. Stale `spi-spidev` or wrong SPI overlay in `/boot/dietpiEnv.txt` without a HAT — use `spi3-spidev`, ensure `appliance-spi` absent, reboot |
 | No local login prompt after bootstrap | Expected in appliance mode — use SSH; re-flash or `BRAILLATRON\_APPLIANCE=0` bootstrap for dev image |
 | SSH unreachable after bootstrap | `ip -4 addr`; `wpa_cli -i wlan0 status`; `systemctl status ifup@wlan0 ssh`; factory Wi‑Fi: `sudo bash deploy/os/setup-wifi-credentials.sh SSID PASS`; if locked out, re-flash and use `BRAILLATRON\_APPLIANCE=0` bootstrap for a dev image with local login |
 | Wi‑Fi scan empty in Network and Devices | Confirm `wpa_cli -i wlan0 ping` succeeds; `systemctl status ifup@wlan0`; check `rfkill list`; ensure NetworkManager is disabled (`systemctl is-enabled NetworkManager` → `disabled` or `masked`) |
@@ -750,9 +764,9 @@ flowchart TD
 
 - [Master Software Architecture V9](file:///home/grahamthetvi/Projects/Graham%20Braillatron/mobile-braille-embosser/specs/Master%20Software%20Architecture%20V9.md) — product architecture, OS storage, co-processor protocol
 
-- [Master Architecture V4.9](file:///home/grahamthetvi/Projects/Graham%20Braillatron/mobile-braille-embosser/specs/Master%20Architecture%20V4.9.md) — power topology, TMC2209 daisy chain, PCB lifecycle
+- [Master Architecture V4.9](file:///home/grahamthetvi/Projects/Graham%20Braillatron/mobile-braille-embosser/specs/Master%20Architecture%20V4.9.md) — power topology, Monster8/Klipper motion path, PCB lifecycle
 
-- [Skeleton Prototype V5.1 Build Guide](file:///home/grahamthetvi/Projects/Graham%20Braillatron/mobile-braille-embosser/specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) — I2S, GPIO, UART, and Klipper wiring
+- [Skeleton Prototype V5.1 Build Guide](file:///home/grahamthetvi/Projects/Graham%20Braillatron/mobile-braille-embosser/specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) — I2S, I2C, SPI3, Monster8 USB, and Klipper wiring
 
 - `deploy/` — `prepare-sd-card.py` (PC SD prep), `bootstrap-dietpi.sh`, `install.sh`, systemd units, OS scripts
 

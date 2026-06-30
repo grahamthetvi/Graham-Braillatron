@@ -68,6 +68,8 @@ HardwareConfig load_hardware_config(const std::string &path)
             config.matrix_map_config = value;
         } else if (key == "telemetry_config") {
             config.telemetry_config = value;
+        } else if (key == "klipper_config") {
+            config.klipper_config = value;
         }
     }
 

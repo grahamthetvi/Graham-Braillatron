@@ -104,6 +104,10 @@ UiConfig load_ui_config(const std::string &path)
             config.heartbeat_interval_ms = static_cast<uint32_t>(std::stoul(value));
         } else if (key == "transcriber_queue_limit") {
             config.transcriber_queue_limit = static_cast<uint32_t>(std::stoul(value));
+        } else if (key == "dev_mode") {
+            config.dev_mode = parse_bool(value);
+        } else if (key == "factory_pin") {
+            config.factory_pin = value;
         }
     }
 

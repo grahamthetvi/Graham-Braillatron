@@ -127,4 +127,10 @@ bool SerialLink::send_heartbeat()
     return write_frame(static_cast<uint8_t>(BRAILLATRON_OP_HEARTBEAT), nullptr, 0);
 }
 
+bool SerialLink::send_telemetry(const braillatron_telemetry_t &payload)
+{
+    return write_frame(static_cast<uint8_t>(BRAILLATRON_OP_TELEMETRY), &payload,
+                       sizeof(payload));
+}
+
 } // namespace braillatron::platform

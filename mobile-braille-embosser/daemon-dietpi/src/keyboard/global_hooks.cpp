@@ -4,6 +4,10 @@
 #include "../ui/output_hub.h"
 #include "keyboard_service.h"
 
+extern "C" {
+#include "protocol.h"
+}
+
 namespace braillatron::hooks {
 
 namespace {
@@ -11,6 +15,7 @@ namespace {
 ui::OutputHub *g_output_hub = nullptr;
 ui::AppRegistry *g_app_registry = nullptr;
 keyboard::KeyboardService *g_keyboard_service = nullptr;
+std::function<void()> g_klipper_emergency_stop;
 
 } // namespace
 
@@ -90,9 +95,18 @@ void on_menu_back()
 
 void on_safety_broadcast(uint8_t fault_code, uint8_t severity, uint16_t detail)
 {
+    if (fault_code == BRAILLATRON_FAULT_FREEFALL && g_klipper_emergency_stop) {
+        g_klipper_emergency_stop();
+    }
+
     if (g_output_hub != nullptr) {
         g_output_hub->announce_safety_fault(fault_code, severity, detail);
     }
+}
+
+void set_klipper_emergency_stop(std::function<void()> handler)
+{
+    g_klipper_emergency_stop = std::move(handler);
 }
 
 bool standalone_app_active()

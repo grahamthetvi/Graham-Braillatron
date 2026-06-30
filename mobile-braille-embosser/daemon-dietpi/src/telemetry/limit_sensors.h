@@ -9,6 +9,10 @@ extern "C" {
 #include <cstdint>
 #include <string>
 
+namespace braillatron::motion {
+class MoonrakerClient;
+}
+
 namespace braillatron::telemetry {
 
 enum class GpioAvailability {
@@ -35,12 +39,16 @@ class LimitSensors {
 public:
     explicit LimitSensors(TelemetryConfig config);
 
+    void set_moonraker_client(motion::MoonrakerClient *client);
+
     LimitSensorState read() const;
 
 private:
     GpioReading read_gpio(const std::string &path) const;
+    LimitSensorState read_klipper_endstops() const;
 
     TelemetryConfig config_;
+    motion::MoonrakerClient *moonraker_ = nullptr;
 };
 
 } // namespace braillatron::telemetry

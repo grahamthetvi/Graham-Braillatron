@@ -25,6 +25,7 @@ std::unique_ptr<AppSession> make_weather_app();
 std::unique_ptr<AppSession> make_podcasts_app();
 std::unique_ptr<AppSession> make_radio_app();
 std::unique_ptr<AppSession> make_gmail_app();
+std::unique_ptr<AppSession> make_factory_test_app();
 std::unique_ptr<AppSession> make_timer_inline();
 std::unique_ptr<AppSession> make_quick_status_inline();
 std::unique_ptr<AppSession> make_morse_output_inline();

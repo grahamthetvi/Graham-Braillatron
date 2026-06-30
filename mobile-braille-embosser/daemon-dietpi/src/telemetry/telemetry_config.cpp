@@ -97,6 +97,12 @@ TelemetryConfig load_telemetry_config(const std::string &path)
             config.persistent_output_dir = value;
         } else if (key == "shutdown_waveform_effect") {
             config.shutdown_waveform_effect = static_cast<uint8_t>(std::stoul(value));
+        } else if (key == "charging_rise_mv") {
+            config.charging_rise_mv = static_cast<uint16_t>(std::stoul(value));
+        } else if (key == "charging_polls_required") {
+            config.charging_polls_required = static_cast<uint8_t>(std::stoul(value));
+        } else if (key == "ip2368_status_path") {
+            config.ip2368_status_path = value;
         } else if (key == "coordinate_ram_path") {
             config.coordinate_ram_path = value;
         } else if (key == "homing_status_path") {

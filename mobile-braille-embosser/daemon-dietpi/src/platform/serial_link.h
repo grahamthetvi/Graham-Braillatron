@@ -21,6 +21,7 @@ public:
     bool try_open();
     void close();
     bool send_heartbeat();
+    bool send_telemetry(const braillatron_telemetry_t &payload);
 
 private:
     bool write_frame(uint8_t opcode, const void *payload, uint8_t payload_len);

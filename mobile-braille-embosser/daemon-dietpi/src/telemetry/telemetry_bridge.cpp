@@ -32,8 +32,8 @@ bool write_telemetry_json(const std::string &path, const TelemetrySnapshot &snap
         output << "  \"battery_mv\": " << snapshot.battery_mv << ",\n";
         output << "  \"limit_status\": " << static_cast<unsigned>(snapshot.limit_status)
                << ",\n";
-        output << "  \"motion_blocked\": " << (snapshot.motion_blocked ? "true" : "false")
-               << "\n";
+        output << "  \"motion_blocked\": " << (snapshot.motion_blocked ? "true" : "false") << ",\n";
+        output << "  \"charging\": " << (snapshot.charging ? "true" : "false") << "\n";
         output << "}\n";
         output.flush();
         if (!output.good()) {
@@ -84,6 +84,7 @@ TelemetrySnapshot read_telemetry_json(const std::string &path)
     }
 
     snapshot.motion_blocked = json.find("\"motion_blocked\": true") != std::string::npos;
+    snapshot.charging = json.find("\"charging\": true") != std::string::npos;
 
     const std::string limit_key = "\"limit_status\":";
     const size_t limit_pos = json.find(limit_key);

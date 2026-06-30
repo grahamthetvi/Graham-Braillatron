@@ -7,6 +7,7 @@
 #include "protocol_rx.h"
 
 #include "protocol.h"
+#include "telemetry_handler.h"
 #include "watchdog.h"
 
 #include <Arduino.h>
@@ -37,8 +38,16 @@ static void dispatch_frame(uint32_t now_ms)
     case BRAILLATRON_OP_HEARTBEAT:
         watchdog_notify_heartbeat(now_ms);
         break;
+    case BRAILLATRON_OP_TELEMETRY:
+        if (g_expected_payload == (uint8_t)sizeof(braillatron_telemetry_t)) {
+            braillatron_telemetry_t payload;
+            for (uint8_t i = 0u; i < (uint8_t)sizeof(payload); ++i) {
+                ((uint8_t *)&payload)[i] = g_buffer[(uint8_t)(BRAILLATRON_FRAME_HEADER_SIZE + i)];
+            }
+            telemetry_handler_apply(&payload);
+        }
+        break;
     default:
-        /* TELEMETRY relay and future opcodes are accepted and ignored. */
         break;
     }
 }

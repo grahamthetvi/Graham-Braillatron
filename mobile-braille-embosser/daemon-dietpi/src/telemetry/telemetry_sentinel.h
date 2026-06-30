@@ -23,6 +23,7 @@ struct TelemetrySnapshot {
     uint8_t limit_status = 0;
     uint16_t battery_mv = 0;
     bool motion_blocked = false;
+    bool charging = false;
 };
 
 using TelemetryCallback = std::function<void(const TelemetrySnapshot &)>;
@@ -34,6 +35,8 @@ public:
 
     TelemetrySentinel(const TelemetrySentinel &) = delete;
     TelemetrySentinel &operator=(const TelemetrySentinel &) = delete;
+
+    void set_moonraker_client(motion::MoonrakerClient *client);
 
     void start(TelemetryCallback callback = nullptr);
     void stop();
@@ -57,6 +60,8 @@ private:
     std::atomic<bool> shutdown_in_progress_ {false};
     TelemetryCallback callback_;
     mutable TelemetrySnapshot snapshot_;
+    uint16_t last_battery_mv_ = 0;
+    uint8_t charging_rise_polls_ = 0;
 };
 
 } // namespace braillatron::telemetry

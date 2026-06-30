@@ -16,9 +16,9 @@
 |-------|-------------|
 | Applications, ScreenReader UI, edit modes, implementation status | [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md) |
 | Arduino ↔ Pi wire protocol (opcodes, frames, safety) | [V9 §4](Master%20Software%20Architecture%20V9.md#4-co-processor--inter-processor-protocol), `shared/protocol.h`, `shared/protocol.md` |
-| Prototype wiring, GPIO, I2S, UART pin assignments | [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) |
+| Prototype wiring, GPIO, I2S, Monster8/Klipper | [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) |
 | DietPi image, overlayfs, systemd, deploy | [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Software%20Build%20Guide.md) |
-| Power rails, thermal fuse, TMC2209 daisy chain (this doc) | §3–4 below |
+| Power rails, thermal fuse, Monster8 motion path (this doc) | §3–4 below |
 
 ---
 
@@ -44,11 +44,11 @@ Hardware must support the universal ScreenReader paradigm described in [V9 §1](
 
 **Retired:** 4×4 switch matrix, 1N4148 steering diodes per key, external 10 kΩ pull-ups.
 
-**Production:** 13 Cherry MX switches (6 Braille dots, D-pad Up/Down, Backspace, Enter, Shift/TTS, Speech, Menu) wired direct-pin to the Arduino Micro — one GPIO per key, common ground bus, `INPUT_PULLUP`, active LOW. Scanning, debounce, and chord assembly run on the co-processor ([V9 §1.3](Master%20Software%20Architecture%20V9.md#13-production-keyboard-driver-direct-pin-topology), Build Guide Part 3.1).
+**Production:** 12 Cherry MX tactile switches (6 Braille dots, D-pad Up/Down, Backspace, Enter, Shift/TTS, Speech) wired direct-pin to the Arduino Micro — one GPIO per key, common ground bus, `INPUT_PULLUP`, active LOW. **Menu** is a software overlay (backtick / remote display), not a 13th physical key. Scanning, debounce, and chord assembly run on the co-processor ([V9 §1.3](Master%20Software%20Architecture%20V9.md#13-production-keyboard-driver-direct-pin-topology), Build Guide Part 3.1).
 
 ### 2.2 Audio (I2S Class D)
 
-System audio over Rockchip **I2S1** to **MAX98357A** Class D mono amp (on-silicon DAC + amplification, up to ~3.2 W into a **4 Ω 3 W** or **8 Ω 2 W** enclosed capsule). Private listening via Orange Pi 3.5 mm jack.
+System audio over Rockchip **I2S1** to **MAX98357A** Class D mono amp (on-silicon DAC + amplification, up to ~3.2 W into an **8 Ω 3 W** enclosed capsule). Private listening via Orange Pi 3.5 mm jack.
 
 Local **470 µF + 0.1 µF** at MAX98357A VDD/GND (see §3.1).
 
@@ -76,26 +76,26 @@ Block diagram for custom PCB and HAT routing:
 [4S 30A BMS w/ Balancer] (14.8 V nominal)
          │
          ├─────────────────────────────────┐
-         ▼ (15 A motor fuse)               ▼ (3–5 A logic fuse)
+         ▼ (15 A motor fuse)               ▼ (5 A logic fuse — see V5.1 Part 1 BOM)
    [85 °C thermal fuse]                     ▼
-         │                        [TPS5430 5 V buck]
+         │                        [Mini560 / TPS5430 5 V buck]
          ▼                                 │
    [IRLZ44N MOSFET]                         ├──────────────► [Orange Pi 3B]
-   (Arduino gate control)                  └──────────────► [Arduino Micro]
+   (low-side on Monster8 VIN−)              └──────────────► [Arduino Micro]
          │
          ▼
 [15 A star power terminal block]
-         ├──► 8× TMC2209 VMOT
+         ├──► Monster8 VIN+ → 8× TMC2209 VMOT
          └──► star ground return
 
-Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [4 Ω 3 W speaker]
+Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [8 Ω 3 W speaker]
 ```
 
 ### 3.1 Structural safety interlocks
 
 - **High-current terminals:** VMOT and returns use dual-row terminal blocks (up to 15 A), not prototype-board traces.
-- **Thermal fuse:** Non-resettable **85 °C** fuse clamped to a unified aluminum heatsink spanning all eight TMC2209 boards; blows on driver thermal runaway.
-- **Motor rail gate:** **IRLZ44N** in series on 14.8 V VMOT; **TC4420** gate driver from Arduino GPIO. Cut on freefall, comms loss, or watchdog fault ([V9 §5.2](Master%20Software%20Architecture%20V9.md#52-real-time-hardware-interlock-mpu6050), `shared/protocol.h`).
+- **Thermal fuse:** Optional on skeleton (individual heatsinks). Production target: unified aluminum bar + 85 °C fuse on motor rail (§3.1).
+- **Motor rail gate:** **IRLZ44N low-side** on Monster8 VIN− return (Drain → VIN−, Source → star ground); **TC4420** gate driver from Arduino D12. Cut on freefall, comms loss, or watchdog fault ([V9 §5.2](Master%20Software%20Architecture%20V9.md#52-real-time-hardware-interlock-mpu6050), `shared/protocol.h`). Pi also issues Klipper **M112** on freefall SAFETY frames.
 - **Audio filtering:** 470 µF low-ESR + 0.1 µF ceramic at MAX98357A VDD/GND to keep Class D switching noise off the 5 V logic bus.
 
 ### 3.2 Battery & telemetry
@@ -104,11 +104,14 @@ Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [4 Ω 3 W speaker]
 
 ---
 
-## 4. Dual-bus TMC2209 UART daisy chain
+## 4. Motion control — Option A: Monster8 + Klipper (canonical)
 
-RK3566 UART count cannot support eight independent driver serial lines. Eight **TMC2209** drivers daisy-chain on two buses with **1N4148** steering diodes and **MS1/MS2** address straps:
+> **Errata (2025):** The dual-bus **Orange Pi UART4/UART9 TMC2209 daisy chain** described in earlier revisions is **retired** for the skeleton and production path. Eight TMC2209 drivers live on the **MKS Monster8 V2**, flashed as a **Klipper MCU**, connected to the Pi via **USB**. Motion, homing, endstops, and `run_current` tuning are configured in Klipper `printer.cfg`. See [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) for driver slot map and wiring.
+
+The historical UART daisy-chain diagram is preserved below for PCB archaeology only — **do not wire** on new builds:
 
 ```
+[RETIRED — Pi-native path]
 Orange Pi UART4 ──┬──► TMC2209 Driver 1 (addr 0)
                   ├──► TMC2209 Driver 2 (addr 1)
                   ├──► TMC2209 Driver 3 (addr 2)
@@ -120,7 +123,7 @@ Orange Pi UART9 ──┬──► TMC2209 Driver 5 (addr 0)
                   └──► TMC2209 Driver 8 (addr 3)
 ```
 
-Pin-level wiring: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Motion, homing, and staggered solenoid timing: [V9 §3.3–3.4, §5.4–5.5](Master%20Software%20Architecture%20V9.md).
+Pin-level wiring for the active stack: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Motion, homing, and stagger timing: [V9 §3.3–3.4, §5.4–5.5](Master%20Software%20Architecture%20V9.md).
 
 ---
 
@@ -130,8 +133,8 @@ The **Arduino Micro** (Tier 3) isolates real-time safety from the Orange Pi:
 
 | Function | Hardware |
 |----------|----------|
-| Keyboard scan / debounce / chords | 13 direct-pin GPIOs |
-| Freefall interlock | MPU6050 → INT0; ISR cuts IRLZ44N in <10 ms |
+| Keyboard scan / debounce / chords | 12 direct-pin GPIOs (+ Menu via software overlay) |
+| Freefall interlock | MPU6050 → INT6 (D7); ISR cuts IRLZ44N in <10 ms |
 | Host liveness | Pi `HEARTBEAT` over USB CDC; comms timeout cuts VMOT |
 | MCU hang recovery | AVR 500 ms hardware WDT |
 
@@ -158,13 +161,13 @@ Full deploy procedure: [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Soft
 | Constraint | Risk | Mitigation |
 |------------|------|------------|
 | Heavy stepper EMI | Audio hum, SoC instability | Digital I2S (MAX98357A); local 470 µF + 0.1 µF on amp |
-| RK3566 pin limits | Cannot wire 8 independent driver UARTs | Dual-bus UART daisy chain + diodes + MS1/MS2 addresses (§4) |
+| RK3566 pin limits | Cannot wire 8 independent driver UARTs | **MKS Monster8 V2 + Klipper over USB** — Pi issues motion via Moonraker, not Pi UART (§4) |
 | Sudden power loss | eMMC/SD corruption | Read-only root, overlayfs, atomic `/data` writes, sync timer (§6) |
 | Drop during motion | Head/solenoid damage | MPU6050 hardware INT → sub-10 ms IRLZ44N cut + SAFETY frame (§5) |
 | Driver thermal runaway | Fire / hardware damage | Unified heatsink + 85 °C thermal fuse on motor rail (§3.1) |
 | Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin keyboard** — one GPIO per key, no matrix (§2.1) |
 
-Standardized BOM: [V9 §7](Master%20Software%20Architecture%20V9.md#7-standardized-hardware-reference). Prototype breadboard part list: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) Part 1.
+Standardized BOM: [V9 §7](Master%20Software%20Architecture%20V9.md#7-standardized-hardware-reference). Prototype breadboard part list and fuse ratings: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) Part 1.
 
 ---
 

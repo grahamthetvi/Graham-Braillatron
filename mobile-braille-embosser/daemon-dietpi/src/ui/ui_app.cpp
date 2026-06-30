@@ -1,6 +1,7 @@
 #include "ui_app.h"
 
 #include "../keyboard/global_hooks.h"
+#include "../motion/klipper_config.h"
 #include "../telemetry/telemetry_bridge.h"
 
 #include <chrono>
@@ -42,7 +43,12 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     coord_store_.load();
     brf_store_.load();
 
-    paper_separator_.set_feed_handler([this](int32_t delta) { motion_service_.feed_lines(delta); });
+    paper_separator_.set_feed_handler([this](int32_t delta) {
+        motion_service_.feed_lines(delta);
+        if (klipper_bridge_ != nullptr) {
+            klipper_bridge_->feed_lines(delta);
+        }
+    });
 
     ui_context_.output = &output_hub_;
     ui_context_.motion = &motion_service_;
@@ -55,6 +61,9 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     ui_context_.registry = &app_registry_;
     ui_context_.connect = &connect_client_;
     ui_context_.timer = &timer_service_;
+    ui_context_.keyboard = &keyboard_;
+    ui_context_.dev_mode = ui_config_.dev_mode;
+    ui_context_.factory_pin = ui_config_.factory_pin;
 
     app_registry_.set_context(ui_context_);
     output_hub_.set_app_registry(&app_registry_);
@@ -98,6 +107,28 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     if (!braille_service_.available()) {
         output_hub_.announce_message("Braille translation unavailable");
     }
+
+    if (hardware_.motion_enabled) {
+        const motion::KlipperConfig klipper_config = motion::load_klipper_config(
+            hardware_.klipper_config.empty() ? "config/klipper.conf" : hardware_.klipper_config);
+        if (klipper_config.enabled) {
+            klipper_bridge_ =
+                std::make_unique<motion::KlipperMotionBridge>(klipper_config, motion_service_);
+            if (klipper_bridge_->connect()) {
+                ui_context_.klipper = klipper_bridge_.get();
+                paper_separator_.set_paper_edge_sensor([this]() {
+                    return klipper_bridge_ != nullptr && klipper_bridge_->paper_edge_active();
+                });
+                hooks::set_klipper_emergency_stop([this]() {
+                    if (klipper_bridge_ != nullptr) {
+                        klipper_bridge_->emergency_stop();
+                    }
+                });
+            } else {
+                klipper_bridge_.reset();
+            }
+        }
+    }
 }
 
 void UiApp::start()
@@ -129,6 +160,9 @@ void UiApp::stop()
     hooks::set_app_registry(nullptr);
     hooks::set_output_hub(nullptr);
     hooks::set_keyboard_service(nullptr);
+    hooks::set_klipper_emergency_stop(nullptr);
+    klipper_bridge_.reset();
+    ui_context_.klipper = nullptr;
 }
 
 void UiApp::repaint_chrome()
@@ -159,6 +193,7 @@ void UiApp::poll()
     telemetry::sync_motion_gate_from_telemetry();
     output_hub_.check_battery_warning();
     send_heartbeat_if_due(now);
+    send_telemetry_if_due(now);
 
     if (!keyboard_.serial_connected() && keyboard_config_.allow_missing_arduino) {
         keyboard_.try_serial_reconnect();
@@ -203,6 +238,31 @@ void UiApp::send_heartbeat_if_due(uint64_t now_ms)
 
     last_heartbeat_ms_ = now_ms;
     if (!serial_link_.send_heartbeat()) {
+        serial_link_.close();
+    }
+}
+
+void UiApp::send_telemetry_if_due(uint64_t now_ms)
+{
+    if (!serial_link_.is_open()) {
+        return;
+    }
+
+    if (now_ms - last_telemetry_relay_ms_ < telemetry_config_.poll_interval_ms) {
+        return;
+    }
+
+    last_telemetry_relay_ms_ = now_ms;
+
+    const telemetry::TelemetrySnapshot snapshot =
+        telemetry::read_telemetry_json(telemetry::kTelemetryJsonPath);
+
+    braillatron_telemetry_t payload {};
+    payload.battery_percent = snapshot.battery_percent;
+    payload.temperature_c = snapshot.temperature_c;
+    payload.limit_status = snapshot.limit_status;
+
+    if (!serial_link_.send_telemetry(payload)) {
         serial_link_.close();
     }
 }

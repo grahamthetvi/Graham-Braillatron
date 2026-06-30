@@ -13,6 +13,7 @@ struct HardwareConfig {
     bool allow_missing_arduino = true;
     std::string matrix_map_config = "config/matrix_map.conf";
     std::string telemetry_config = "config/telemetry.conf";
+    std::string klipper_config = "config/klipper.conf";
 };
 
 HardwareConfig load_hardware_config(const std::string &path);

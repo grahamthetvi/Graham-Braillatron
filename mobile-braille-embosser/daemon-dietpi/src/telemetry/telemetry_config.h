@@ -35,6 +35,10 @@ struct TelemetryConfig {
     std::string persistent_output_dir = "/var/lib/braillatron/documents";
 
     uint8_t shutdown_waveform_effect = 47;
+
+    uint16_t charging_rise_mv = 50;
+    uint8_t charging_polls_required = 3;
+    std::string ip2368_status_path;
 };
 
 TelemetryConfig load_telemetry_config(const std::string &path);

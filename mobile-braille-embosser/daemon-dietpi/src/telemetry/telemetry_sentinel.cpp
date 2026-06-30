@@ -1,5 +1,6 @@
 #include "telemetry_sentinel.h"
 
+#include "../motion/moonraker_client.h"
 #include "../motion_gate.h"
 #include "system_shutdown.h"
 #include "telemetry_bridge.h"
@@ -10,6 +11,26 @@
 #include <thread>
 
 namespace braillatron::telemetry {
+
+namespace {
+
+bool ip2368_charging_active(const std::string &path)
+{
+    if (path.empty()) {
+        return false;
+    }
+
+    std::ifstream input(path);
+    if (!input.is_open()) {
+        return false;
+    }
+
+    int value = 0;
+    input >> value;
+    return value != 0;
+}
+
+} // namespace
 
 TelemetrySentinel::TelemetrySentinel(TelemetryConfig config)
     : config_(std::move(config))
@@ -27,6 +48,11 @@ TelemetrySentinel::~TelemetrySentinel()
 {
     /* Joins the worker; without this a joinable thread would std::terminate. */
     stop();
+}
+
+void TelemetrySentinel::set_moonraker_client(motion::MoonrakerClient *client)
+{
+    limit_sensors_.set_moonraker_client(client);
 }
 
 void TelemetrySentinel::start(TelemetryCallback callback)
@@ -70,6 +96,23 @@ void TelemetrySentinel::poll_once()
         snapshot.limit_status |= BRAILLATRON_LIMIT_BATTERY_CRITICAL;
         handle_battery_critical(gauge.soc_percent);
         snapshot.motion_blocked = true;
+    }
+
+    if (gauge.valid) {
+        if (last_battery_mv_ != 0 &&
+            gauge.battery_mv > last_battery_mv_ &&
+            (gauge.battery_mv - last_battery_mv_) >= config_.charging_rise_mv) {
+            ++charging_rise_polls_;
+        } else if (gauge.battery_mv <= last_battery_mv_) {
+            charging_rise_polls_ = 0;
+        }
+
+        if (charging_rise_polls_ >= config_.charging_polls_required ||
+            ip2368_charging_active(config_.ip2368_status_path)) {
+            snapshot.charging = true;
+        }
+
+        last_battery_mv_ = gauge.battery_mv;
     }
 
     snapshot_ = snapshot;

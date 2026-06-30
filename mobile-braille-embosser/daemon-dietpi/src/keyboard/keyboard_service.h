@@ -43,6 +43,7 @@ public:
 
     void set_braille_service(documents::BrailleTranslationService *service);
     uint8_t held_dot_mask() const;
+    uint16_t last_matrix_state() const;
 
 private:
     void enqueue_frame(const SerialFrame &frame);
@@ -77,6 +78,7 @@ private:
 
     uint8_t last_announced_fault_ = 0;
     uint8_t last_announced_severity_ = 0;
+    uint16_t last_matrix_state_ = 0;
 
     std::atomic<bool> running_ {false};
     std::atomic<bool> serial_started_ {false};

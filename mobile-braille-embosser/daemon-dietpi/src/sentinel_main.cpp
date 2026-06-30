@@ -1,4 +1,6 @@
 #include "hardware/hardware_config.h"
+#include "motion/klipper_config.h"
+#include "motion/moonraker_client.h"
 #include "motion_gate.h"
 #include "telemetry/crash_reporter.h"
 #include "telemetry/homing_service.h"
@@ -9,6 +11,7 @@
 #include <csignal>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -79,6 +82,20 @@ int main(int argc, char *argv[])
         braillatron::telemetry::TelemetryConfig config =
             braillatron::telemetry::load_telemetry_config(telemetry_path);
 
+        const std::string klipper_path = resolve_config_path(base, hardware.klipper_config);
+        const braillatron::motion::KlipperConfig klipper_config =
+            braillatron::motion::load_klipper_config(klipper_path);
+
+        std::unique_ptr<braillatron::motion::MoonrakerClient> moonraker;
+        braillatron::motion::MoonrakerClient *moonraker_ptr = nullptr;
+        if (hardware.motion_enabled && klipper_config.enabled) {
+            moonraker = std::make_unique<braillatron::motion::MoonrakerClient>(klipper_config);
+            if (moonraker->ping()) {
+                moonraker_ptr = moonraker.get();
+                std::cerr << "telemetry: Klipper/Moonraker connected for limits and homing\n";
+            }
+        }
+
         braillatron::telemetry::CrashReporterConfig crash_config;
         crash_config.sentry_dsn = config.sentry_dsn;
         crash_config.memfault_project_key = config.memfault_project_key;
@@ -86,6 +103,7 @@ int main(int argc, char *argv[])
         braillatron::telemetry::install_crash_reporter(crash_config);
 
         braillatron::telemetry::HomingService homing(config);
+        homing.set_moonraker_client(moonraker_ptr);
         if (hardware.motion_enabled) {
             const int32_t target_y = read_target_y_line(config.coordinate_ram_path);
             homing.run_boot_homing(target_y);
@@ -93,6 +111,7 @@ int main(int argc, char *argv[])
         }
 
         braillatron::telemetry::TelemetrySentinel sentinel(config);
+        sentinel.set_moonraker_client(moonraker_ptr);
 
         sentinel.start([](const braillatron::telemetry::TelemetrySnapshot &snapshot) {
             std::cerr << "[telemetry] soc=" << static_cast<unsigned>(snapshot.battery_percent)

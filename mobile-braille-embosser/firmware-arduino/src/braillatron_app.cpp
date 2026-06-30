@@ -6,6 +6,7 @@
 #include "mpu6050_isr.h"
 #include "protocol_rx.h"
 #include "protocol_tx.h"
+#include "telemetry_handler.h"
 #include "watchdog.h"
 
 #include "protocol.h"
@@ -51,6 +52,7 @@ static void broadcast_active_fault(uint32_t now_ms)
 void braillatron_setup(void)
 {
     fail_safes_init();
+    telemetry_handler_init();
     protocol_tx_init();
     protocol_rx_init();
     keyboard_buttons_init();

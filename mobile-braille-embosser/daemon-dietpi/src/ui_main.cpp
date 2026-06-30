@@ -67,6 +67,8 @@ int main(int argc, char *argv[])
             resolve_config_path(base, hardware.matrix_map_config);
         resolved_hardware.telemetry_config =
             resolve_config_path(base, hardware.telemetry_config);
+        resolved_hardware.klipper_config =
+            resolve_config_path(base, hardware.klipper_config);
 
         braillatron::keyboard::KeyboardConfig keyboard_config =
             braillatron::keyboard::load_keyboard_config(

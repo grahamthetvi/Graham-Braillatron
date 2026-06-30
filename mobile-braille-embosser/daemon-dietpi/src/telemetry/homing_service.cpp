@@ -1,5 +1,7 @@
 #include "homing_service.h"
 
+#include "../motion/moonraker_client.h"
+
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -18,10 +20,25 @@ HomingService::HomingService(TelemetryConfig config)
 {
 }
 
+void HomingService::set_moonraker_client(motion::MoonrakerClient *client)
+{
+    moonraker_ = client;
+    limit_sensors_.set_moonraker_client(client);
+}
+
 void HomingService::run_boot_homing(int32_t target_y_line_index)
 {
     target_y_ = target_y_line_index;
     state_ = HomingState::Reversing;
+
+    if (moonraker_ != nullptr && moonraker_->ping()) {
+        std::cerr << "[homing] issuing Klipper G28 Y via Moonraker\n";
+        if (moonraker_->home_y()) {
+            state_ = HomingState::Complete;
+            return;
+        }
+        std::cerr << "[homing] Klipper G28 Y failed; falling back to GPIO poll\n";
+    }
 
     constexpr int kMaxReverseSteps = 200;
     for (int step = 0; step < kMaxReverseSteps; ++step) {

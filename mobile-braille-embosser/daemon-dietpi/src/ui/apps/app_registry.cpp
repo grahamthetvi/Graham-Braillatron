@@ -78,6 +78,7 @@ AppRegistry::AppRegistry()
     register_app(make_podcasts_app());
     register_app(make_radio_app());
     register_app(make_gmail_app());
+    register_app(make_factory_test_app());
     register_app(make_quick_status_inline());
     register_app(make_timer_inline());
     register_app(make_morse_output_inline());

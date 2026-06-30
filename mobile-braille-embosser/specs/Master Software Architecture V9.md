@@ -50,11 +50,11 @@ Whenever focus changes or a word is announced, the Output Hub distributes conten
 
 The legacy 4×4 switch matrix, steering diodes, and external 10 kΩ pull-ups are **retired**. Production uses direct-pin wiring (Skeleton Prototype V5.1 Build Guide, Part 3.1): one side of each Cherry MX switch ties to a common ground bus; the other routes to a dedicated Arduino Micro input pin (`INPUT_PULLUP`, active LOW). One pin per key gives inherent N-key rollover with no ghosting and no diodes.
 
-1. **Scanning:** The Arduino samples all 13 key pins once per millisecond from a non-blocking main loop (no `delay()`, no heavy ISR work that could starve the freefall interrupt).
+1. **Scanning:** The Arduino samples all **12 physical key** pins once per millisecond from a non-blocking main loop (no `delay()`, no heavy ISR work that could starve the freefall interrupt).
 2. **Debounce:** Per-key software integrator (15 ms threshold for Cherry MX): counter charges while pressed and discharges while released; debounced state flips only at the rails.
 3. **Chord assembly:** On first debounced dot key-down, a 40 ms integration window opens; all dot presses within the window aggregate into one chord. Function keys bypass the window and transmit immediately on edge.
 
-**The 13 keys:** 6 Braille dots, D-pad Up/Down, Backspace, Enter, Shift/TTS, Speech, Menu.
+**The 12 physical keys:** 6 Braille dots, D-pad Up/Down, Backspace, Enter, Shift/TTS, Speech. **Menu** is software-only (`BRAILLATRON_KEY_MENU` in protocol; backtick on bench keyboards).
 
 ---
 
@@ -88,6 +88,7 @@ Take primary control of embosser head and paper feed. Launched from the main app
 | **Network & Devices** | Wi-Fi scan/connect via wpa_supplicant (`wpa_cli`) | `apps/network_app.cpp` |
 | **Bluetooth Setup** | Bluetooth scan; pair by name or MAC via `bluetoothctl` | `apps/bluetooth_setup_app.cpp` |
 | **Settings** | TTS rate/volume, braille grade, dictation toggle, accounts | `output_hub.cpp` settings submenu |
+| **Factory Test** | PIN-gated assembly diagnostics: motors, speaker, sensors, haptics, MotionGate | `apps/factory_test_app.cpp` |
 
 Framework: `app_registry.cpp`, `app_session.h`, `ui_context.h`.
 
@@ -134,7 +135,7 @@ Module: `homing_service.cpp` in `braillatron-sentinel`; status at `/run/braillat
 
 ### 3.4 App Switching (Forward Feed)
 
-When switching Standalone apps: reverse to paper-edge sensor (TCRT5000), measure page, feed to fresh page. Module: `paper_separator.cpp`.
+When switching Standalone apps: reverse to paper-edge sensor (TCRT5000), measure page, feed to a **fresh page (33 lines)** on 100 lb cardstock (0.5 in perf spacing). Module: `paper_separator.cpp`.
 
 ---
 
@@ -143,9 +144,9 @@ When switching Standalone apps: reverse to paper-edge sensor (TCRT5000), measure
 Low-level, high-frequency physical I/O is offloaded to the Arduino Micro so OS scheduling jitter cannot affect real-time safety.
 
 ```
-[13 Direct-Pin Keys]     [MPU6050 Accelerometer]
+[12 Direct-Pin Keys]     [MPU6050 Accelerometer]
          │                          │
-         ▼ (1 kHz polling)           ▼ (hardware interrupt, INT0)
+         ▼ (1 kHz polling)           ▼ (hardware interrupt, INT6 / D7)
 ┌─────────────────────────────────────────────────────────────┐
 │                 ARDUINO MICRO CO-PROCESSOR                  │
 │  - 15 ms integrator debounce                                │
@@ -160,12 +161,12 @@ Low-level, high-frequency physical I/O is offloaded to the Arduino Micro so OS s
 
 ### 4.1 Scan, Debounce & Chord Assembly
 
-The main loop samples all 13 pins at 1 kHz. ISRs are reserved for the MPU6050 freefall interlock so keyboard work cannot starve safety.
+The main loop samples all **12 physical key** pins at 1 kHz. ISRs are reserved for the MPU6050 freefall interlock so keyboard work cannot starve safety. Menu is invoked via software overlay (backtick), not a physical GPIO.
 
 - **Scan:** Each key read from its dedicated pin (`INPUT_PULLUP`, active LOW). No row strobing or diode network.
 - **Debounce:** Independent integrator per key; 15 ms threshold at 1 ms ticks.
 - **Chords:** First debounced dot key-down starts a 40 ms window; additional dots aggregate into a raw dot bitmask (`dot_mask`, bits 0–5 = dots 1–6). When the window expires, the locked mask is sent as `BRAILLATRON_OP_CHORD`. The Pi translates the mask to characters (`chord_engine` on Pi; liblouis Grade 2 support stays host-side).
-- **Function keys:** D-pad, Backspace, Enter, Shift/TTS, Speech, Menu send edge-triggered `BRAILLATRON_OP_KEYBOARD_MATRIX` frames immediately (no chord window).
+- **Function keys:** D-pad, Backspace, Enter, Shift/TTS, Speech send edge-triggered `BRAILLATRON_OP_KEYBOARD_MATRIX` frames immediately (no chord window). **Menu** is software-only (backtick / overlay), not a physical GPIO.
 
 ### 4.2 Wire Protocol (Version 1)
 
@@ -214,18 +215,19 @@ Implementation: `firmware-arduino/src/watchdog.cpp`, `fail_safes.cpp`.
 ```
 [USB-C PD Input] → [IP2368 PD Charger] → [4S 30A BMS w/ Balancer] (14.8 V nominal)
          │
-         ├─ (15 A motor fuse, 85 °C thermal fuse) ──► [IRLZ44N MOSFET] ──► [15 A star terminal]
-         │                                              ▲ Arduino gate control
-         │                                              └──► 8× TMC2209 VMOT + star ground
+         ├─ (15 A motor fuse, 85 °C thermal fuse) ──► Monster8 VIN+
+         │         Monster8 VIN− ──► [IRLZ44N Drain] ──► [IRLZ44N Source] ──► star ground
+         │                                    ▲ Arduino D12 → TC4420 → Gate (low-side cut)
+         │                                    └──► 8× TMC2209 VMOT on Monster8
          │
          └─ (3–5 A logic fuse) ──► [TPS5430 5 V buck] ──┬──► Orange Pi 3B
                                                           └──► Arduino Micro
                                                                     │
-Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 4 Ω 3 W speaker
+Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 8 Ω 3 W speaker
 ```
 
 - **Logic rail:** TPS5430 buck from battery to filtered 5 V for Orange Pi and Arduino.
-- **Motor rail:** 14.8 V through IRLZ44N (TC4420 gate driver) to TMC2209 VMOT; Arduino controls the gate.
+- **Motor rail:** 14.8 V to Monster8 VIN+; **IRLZ44N low-side** on VIN− return (Drain → VIN−, Source → star ground); TC4420 gate driver from Arduino D12.
 - **Audio isolation:** MAX98357A powered from 5 V with local 470 µF + 0.1 µF at VDD/GND to keep Class D switching noise off the logic bus.
 - **Battery telemetry:** LTC2944 on system I2C tracks capacity, current, and voltage (see §6.3).
 - **High-current routing:** Motor VMOT and returns use off-board dual-row terminal blocks (up to 15 A), not prototype-board traces.
@@ -234,33 +236,26 @@ Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 
 ### 5.2 Real-Time Hardware Interlock (MPU6050)
 
 - **Sensor:** MPU6050 on Arduino hardware I2C (SDA/SCL); freefall thresholds configured in hardware registers (`FF_THR` / `FF_DUR`) at boot.
-- **Interrupt:** MPU6050 INT → Arduino INT0 (Pin 3), active high.
-- **Gate drive:** IRLZ44N in series on the 14.8 V stepper/solenoid rail; TC4420 drives the gate from a dedicated Arduino GPIO.
+- **Interrupt:** MPU6050 INT → Arduino **D7** (INT6), active high. **Do not wire INT to D3** — D3 is SCL.
+- **Gate drive:** IRLZ44N **low-side** on Monster8 VIN− return (see [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) §2.7); TC4420 drives the gate from Arduino D12.
 
 **Sub-10 ms isolation loop:**
 
 1. Freefall detected → MPU6050 INT pin goes high immediately.
-2. INT0 ISR runs (bypasses keyboard polling).
+2. INT6 ISR runs (bypasses keyboard polling).
 3. ISR pulls gate driver low, cutting VMOT in under 10 ms.
-4. ISR transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL` so the Pi pauses the motion queue and alerts the user.
+4. ISR transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL`.
+5. Pi `keyboard_service` blocks **MotionGate** and issues Klipper **M112** via Moonraker when Klipper is enabled; Output Hub alerts the user.
 
-### 5.3 Dual-Bus TMC2209 UART Daisy Chain
+### 5.3 Dual-Bus TMC2209 UART Daisy Chain — RETIRED (Option A)
 
-The RK3566 cannot expose eight independent driver UART lines. Eight TMC2209 drivers daisy-chain across two UART buses with 1N4148 steering diodes and MS1/MS2 address wiring:
+**Canonical motion path:** MKS Monster8 V2 + Klipper over USB ([Skeleton Prototype V5.1 Build Guide](specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md)). The Pi-native UART4/UART9 daisy chain below is **not wired** on new builds.
 
 ```
-Orange Pi UART4 ──┬──► TMC2209 Driver 1 (addr 0)
-                  ├──► TMC2209 Driver 2 (addr 1)
-                  ├──► TMC2209 Driver 3 (addr 2)
-                  └──► TMC2209 Driver 4 (addr 3)
-
-Orange Pi UART9 ──┬──► TMC2209 Driver 5 (addr 0)
-                  ├──► TMC2209 Driver 6 (addr 1)
-                  ├──► TMC2209 Driver 7 (addr 2)
-                  └──► TMC2209 Driver 8 (addr 3)
+[RETIRED]
+Orange Pi UART4 ──► TMC2209 drivers 1–4
+Orange Pi UART9 ──► TMC2209 drivers 5–8
 ```
-
-Wiring detail: Skeleton Prototype V5.1 Build Guide.
 
 ### 5.4 Staggered Embossing Head
 
@@ -283,7 +278,7 @@ The motion controller must not fire all solenoids simultaneously. Row A fires as
 | Constraint | Risk | Mitigation |
 |------------|------|------------|
 | Heavy stepper EMI | Audio instability, SoC noise | Digital I2S audio (MAX98357A); local 470 µF + 0.1 µF on amp VDD/GND |
-| RK3566 pin limits | Cannot wire 8 independent driver UARTs | Dual-bus single-wire UART daisy chain with diodes + MS1/MS2 addresses |
+| RK3566 pin limits | Cannot wire 8 independent driver UARTs | **MKS Monster8 V2 + Klipper over USB** — Pi issues motion via Moonraker, not Pi UART (§5.3) |
 | Sudden power loss | eMMC/SD corruption | Read-only root + tmpfs volatile mounts; atomic writes to `/data`; `braillatron-sync.timer` |
 | Drop during motion | Head/solenoid damage | MPU6050 hardware interrupt → sub-10 ms IRLZ44N cut + SAFETY broadcast |
 | Driver thermal runaway | Fire / hardware damage | Unified heatsink + 85 °C thermal fuse on motor rail |
@@ -370,22 +365,23 @@ Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so
 | Subsystem | Standardized Part |
 |-----------|-------------------|
 | SBC | Orange Pi 3B (4 GB LPDDR4, RK3566, WiFi/BT) |
+| Motion controller | MKS Monster8 V2 (Klipper MCU, USB to Pi) |
 | Co-processor | Arduino Micro (ATmega32U4, 5 V, native USB) |
 | PD input / charge | IP2368 USB-C PD charger |
 | Battery | 4S LiPo (14.8 V) BMS with active balancing |
 | Logic power | TPS5430 synchronous buck (5 V) |
-| Safety interlock | IRLZ44N N-channel MOSFET + TC4420 gate driver |
+| Safety interlock | IRLZ44N N-channel MOSFET (low-side on Monster8 VIN−) + TC4420 gate driver |
 | Battery gas gauge | LTC2944 (I2C coulomb counter) |
 | Audio amp | MAX98357A I2S Class D mono (Rockchip I2S1 bypass) |
-| Internal speaker | 4 Ω 3 W or 8 Ω 2 W enclosed capsule (foam-isolated) |
+| Internal speaker | 8 Ω 3 W enclosed capsule (foam-isolated) |
 | Audio filter | 470 µF low-ESR electrolytic + 0.1 µF ceramic at amp VDD/GND |
 | Haptic driver | DRV2605L I2C |
 | Haptic actuator | LRA (linear resonant actuator) |
 | Paper edge sensor | TCRT5000 reflective IR |
 | Y-axis homing | TCST2103 optical slot (transmissive) |
-| Stepper drivers | 8× TMC2209 (dual UART daisy chain, §5.3) |
+| Stepper drivers | 8× TMC2209 on Monster8 (slots 0–7, §5.3) |
 | Freefall sensor | MPU6050 (Arduino I2C + INT0) |
-| Keyboard switches | 13× Cherry MX (direct pin, §1.3) |
+| Keyboard switches | 12× Cherry MX (direct pin, §1.3) |
 
 ---
 
@@ -407,6 +403,7 @@ Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so
 | Calculator Nemeth | Implemented | `calculator_app.cpp` |
 | Transcriber pipeline | Implemented | `transcriber_app.cpp`, Vosk backend |
 | Morse learning / output | Implemented | `morse_encoder.cpp`, inline + standalone apps |
+| Factory Test app | Implemented | `factory_test_app.cpp` |
 | Network Wi-Fi | Implemented (wpa_supplicant / `wpa_cli`) | `network_app.cpp` |
 | connectd sidecar | Implemented (needs device validation) | `connect/`, `braillatron-connectd.service` |
 | YouTube audio app | Implemented (needs device validation) | `youtube_app.cpp`, `youtube_backend.cpp` |

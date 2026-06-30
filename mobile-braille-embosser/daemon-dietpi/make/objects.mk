@@ -38,7 +38,7 @@ REMOTE_DISPLAY_TEST_OBJS := \
 PLATFORM_OBJS := $(call module_objs,src/platform,audio_output_self_test.cpp)
 NET_OBJS := $(call module_objs,src/net,wikipedia_self_test.cpp)
 KINEMATICS_OBJS := $(call module_objs,src/kinematics,)
-MOTION_OBJS := $(call module_objs,src/motion,)
+MOTION_OBJS := $(call module_objs,src/motion,moonraker_self_test.cpp)
 HAPTICS_OBJS := $(call module_objs,src/haptics,)
 
 DOCUMENT_OBJS := \
@@ -106,6 +106,13 @@ CONNECT_TEST_OBJS := \
 
 MOTION_TEST_OBJS := $(KINEMATICS_OBJS) src/motion_gate.o src/motion_self_test.o
 
+MOONRAKER_TEST_OBJS := \
+	src/motion/klipper_config.o \
+	src/motion/moonraker_client.o \
+	src/connect/subprocess.o \
+	src/connect/json_utils.o \
+	src/motion/moonraker_self_test.o
+
 MOTION_GATE_SYNC_TEST_OBJS := \
 	src/motion_gate.o \
 	src/telemetry/telemetry_bridge.o \
@@ -145,6 +152,10 @@ TELEMETRY_OBJS := \
 	../shared/protocol.o \
 	src/hardware/hardware_config.o \
 	src/motion_gate.o \
+	src/motion/klipper_config.o \
+	src/motion/moonraker_client.o \
+	src/connect/subprocess.o \
+	src/connect/json_utils.o \
 	src/telemetry/crash_reporter.o \
 	src/telemetry/drv2605l.o \
 	src/telemetry/homing_service.o \
@@ -245,10 +256,11 @@ GMAIL_TEST_OBJS := \
 CALCULATOR_TEST_OBJS := \
 	src/ui/apps/calculator_self_test.o
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(MOTION_GATE_SYNC_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(REMOTE_DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(WORTHWHILE_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CALCULATOR_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS) $(DISPLAYD_OBJS))
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(MOONRAKER_TEST_OBJS) $(MOTION_GATE_SYNC_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(REMOTE_DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(WORTHWHILE_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CALCULATOR_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS) $(DISPLAYD_OBJS))
 
 CHECK_TEST_BINS := \
 	braillatron-motion-test \
+	braillatron-moonraker-test \
 	braillatron-motion-gate-sync-test \
 	braillatron-host-chord-test \
 	braillatron-wikipedia-test \
@@ -272,7 +284,7 @@ CHECK_TEST_BINS := \
 	braillatron-calculator-test
 
 ALL_BINS := \
-	braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-motion-gate-sync-test \
+	braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-moonraker-test braillatron-motion-gate-sync-test \
 	braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test \
 	braillatron-display-test braillatron-remote-display-test braillatron-liblouis-test \
 	braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test \

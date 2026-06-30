@@ -161,6 +161,11 @@ uint8_t KeyboardService::held_dot_mask() const
     return chord_.held_dot_mask();
 }
 
+uint16_t KeyboardService::last_matrix_state() const
+{
+    return last_matrix_state_;
+}
+
 bool KeyboardService::serial_connected() const
 {
     return serial_started_.load() && serial_.is_connected();
@@ -347,6 +352,7 @@ void KeyboardService::poll_evdev()
 
 void KeyboardService::handle_key_state(uint16_t key_state)
 {
+    last_matrix_state_ = key_state;
     chord_.on_key_state(key_state);
 
     while (auto edge = chord_.poll_control_edge()) {

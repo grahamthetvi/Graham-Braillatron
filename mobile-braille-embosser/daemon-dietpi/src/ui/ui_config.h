@@ -33,6 +33,9 @@ struct UiConfig {
     uint32_t status_probe_interval_ms = 10000;
     uint32_t heartbeat_interval_ms = 1000;
     uint32_t transcriber_queue_limit = 8;
+
+    bool dev_mode = true;
+    std::string factory_pin = "1234";
 };
 
 UiConfig load_ui_config(const std::string &path);

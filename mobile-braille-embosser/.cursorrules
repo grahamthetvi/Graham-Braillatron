@@ -25,13 +25,13 @@
   - *Enter Key*: Affixed right of the D-pad.
   - *Shift / TTS Control Key*: Located beneath Enter. Functions as a global low-latency hardware interrupt to instantly pause/resume audio speech synthesis streams.
   - *Speech Button*: Acts as a global Push-to-Talk (PTT) gate for the local Vosk Speech-to-Text (STT) audio capture engine buffer.
-  - *Menu Button*: Hardware override that forces the global UI overlay layout to open.
+  - *Menu*: Software overlay via backtick (`) — no dedicated physical key on skeleton V5.1.
 - **Peripheral / Assistive Mappings**:
   - QWERTY (USB/Bluetooth): Mirror desktop access patterns (Windows Key = Menu, Win + H = Dictation).
   - Refreshable Displays (Mantis Q40): Integrated over USB/Bluetooth sockets leveraging direct BRLTTY or serial socket abstractions.
 
 ### 3.2 Production Keyboard Driver (Direct Pin Topology)
-- **Electrical Layout**: Direct-pin wiring — one dedicated Arduino Micro GPIO per Cherry MX switch (13 keys). Common ground bus; INPUT_PULLUP active LOW. Inherent NKRO; no diode matrix required.
+- **Electrical Layout**: Direct-pin wiring — one dedicated Arduino Micro GPIO per Cherry MX switch (**12 physical keys**). Common ground bus; INPUT_PULLUP active LOW. **Menu** is software-only (backtick overlay), not a 13th switch. Firmware may reserve A5 in the protocol map but leave it unwired on skeleton V5.1.
 - **Processing Architecture Split**:
   - *Arduino Micro*: Non-blocking 1 kHz main-loop scan (no delay()). Per-key 15 ms integrator debounce. 40 ms temporal chord assembly window for Braille dots; function keys transmit immediately as edge-triggered frames over USB CDC @ 115200 bps.
   - *Orange Pi 3B*: Receives CHORD or KEYBOARD_MATRIX frames via `shared/protocol.h`. Host-side liblouis back-translates dot masks to ASCII (Grade 2 / Nemeth table selectable in ui.conf).
@@ -66,9 +66,9 @@
 ### 3.5 System Safety Interlocks & Telemetry
 - **Hardware Freefall Protection**:
   - On system boot, the Arduino Micro configures the hardware freefall threshold (`FF_THR`) and duration (`FF_DUR`) registers on an autonomous MPU6050 accelerometer.
-  - The MPU6050 physical INT pin is tied directly to the Arduino's INT0 hardware interrupt line (Pin 3).
-  - Because INT0 holds structural priority over the 1 kHz matrix scanning loop, any $0g$ state instant-trips an isolated ISR. The Arduino bypasses all standard software state validation loops and drops Pin 4 LOW in **< 10 ms**.
-  - Pin 4 interfaces with a high-current **TC4420 gate driver** switching an **IRLZ44N N-Channel Power MOSFET**, instantly cutting all power to the 14.8V stepper rail to stop physical travel prior to an impact drop.
+  - The MPU6050 physical INT pin is tied to Arduino **D7** (INT6 / PE6) — **not D3** (D3 is I2C SCL).
+  - Because the MPU interrupt holds priority over the 1 kHz keyboard scan loop, any $0g$ state instant-trips an isolated ISR. The Arduino bypasses all standard software state validation loops and pulls **D12** LOW in **< 10 ms**.
+  - D12 interfaces with a high-current **TC4420 gate driver** switching an **IRLZ44N N-Channel Power MOSFET** (low-side on Monster8 VIN-), instantly cutting the 14.8 V stepper rail. The Pi should also send **Klipper M112** on freefall SAFETY frames.
 - **Battery & Thermal Management**:
   - An LTC2944 gas gauge monitors a 4S Lithium battery pack (regulated via a 5V/5A TPS5430 synchronous buck module, distributed via dual-row 15A terminal blocks) over I2C.
   - If capacity cross-evaluates below **5%**, the telemetry daemon blocks further motion, instantly flushes active RAM text caches to permanent `.brf` file layouts, triggers a specific structural shutdown haptic notification via a **DRV2605L driver** pulsing a **10 mm LRA motor**, and executes a graceful Linux command shutdown.

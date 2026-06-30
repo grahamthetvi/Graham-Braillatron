@@ -7,10 +7,19 @@
 #include "../../documents/paper_separator.h"
 #include "../../motion/motion_service.h"
 
+#include <memory>
 #include <string>
+
+namespace braillatron::motion {
+class KlipperMotionBridge;
+}
 
 namespace braillatron::connect {
 class ConnectClient;
+}
+
+namespace braillatron::keyboard {
+class KeyboardService;
 }
 
 namespace braillatron::ui {
@@ -31,6 +40,10 @@ struct UiContext {
     AppRegistry *registry = nullptr;
     connect::ConnectClient *connect = nullptr;
     TimerService *timer = nullptr;
+    motion::KlipperMotionBridge *klipper = nullptr;
+    keyboard::KeyboardService *keyboard = nullptr;
+    bool dev_mode = true;
+    std::string factory_pin;
 };
 
 } // namespace braillatron::ui

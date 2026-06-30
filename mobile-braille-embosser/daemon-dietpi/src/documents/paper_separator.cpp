@@ -26,7 +26,7 @@ void PaperSeparator::separate_to_fresh_page()
         }
     }
 
-    constexpr int32_t kFreshPageLines = 30;
+    constexpr int32_t kFreshPageLines = 33;
     for (int32_t i = 0; i < kFreshPageLines; ++i) {
         feed_(1);
     }

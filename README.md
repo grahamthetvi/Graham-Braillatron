@@ -28,6 +28,7 @@ Graham Braillatron/
 | Wi‑Fi and network setup (Pi) | [Pi SD Image Guide — Wi‑Fi and network connectivity](mobile-braille-embosser/specs/Pi%20SD%20Image%20Software%20Build%20Guide.md#wi-fi-and-network-connectivity) |
 | connectd + app bring-up checklist | [Connectivity Follow-Up Checklist](mobile-braille-embosser/specs/Connectivity%20Follow-Up%20Checklist.md) |
 | Software architecture | [Master Software Architecture V9](mobile-braille-embosser/specs/Master%20Software%20Architecture%20V9.md) |
+| Prototype wiring & BOM | [Skeleton Prototype V5.1 Build Guide](mobile-braille-embosser/specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) |
 | Serial protocol | [shared/protocol.md](mobile-braille-embosser/shared/protocol.md) |
 | Arduino firmware build | [firmware-arduino/README.md](mobile-braille-embosser/firmware-arduino/README.md) |
 

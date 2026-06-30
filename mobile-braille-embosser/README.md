@@ -17,7 +17,7 @@ This guide gets you from a fresh clone to a working UI on a Linux dev machine us
 | Braille dots → letters | Needs liblouis (see below) |
 | Offline apps (Timer, Dictionary, Spelling, Contacts) | Yes — core logic covered by `make check` self-tests |
 | connectd network apps (YouTube, Music, Weather, …) | Partial — UI + IPC self-tests; playback/API needs connectd + network on Pi |
-| Motion / embossing | No (`motion_enabled=false` in skeleton config) |
+| Motion / embossing | No on a dev PC (no Klipper/Moonraker); see **motion_enabled** below |
 | TTS / braille display / STT | Stub backends log to stderr unless you build with `BRAILLATRON_A11Y=1` |
 
 All UI feedback is printed to the terminal as `[ui]`, `[tts]`, `[braille]`, and `[display]` lines. You do not need speakers or a refreshable display to develop. With `make display`, navigation chrome also renders in the terminal via ncurses when stdout is a TTY.
@@ -247,7 +247,8 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 
 | File | Purpose |
 | --- | --- |
-| `hardware.conf` | Serial device, `allow_missing_arduino`, motion enable |
+| `hardware.conf` | Serial device, `allow_missing_arduino`, `motion_enabled`, Klipper config path |
+| `klipper.conf` | Moonraker URL, emboss stepper names, feed speeds |
 | `keyboard.conf` | Serial + evdev bench input |
 | `evdev_map.conf` | USB key → logical key map (edit for non-QWERTY layouts) |
 | `ui.conf` | TTS, braille, STT, haptics toggles, visual display toggle, document dictation |
@@ -255,6 +256,17 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 | `remote-display.conf` | displayd HTTP/WebSocket listener, pairing, LAN access (`/data/braillatron/settings/` on Pi) |
 
 Production paths on the Pi are under `/etc/braillatron/`. App-specific configs (`dictionary.conf`, `spelling.conf`, `music.conf`, `weather.conf`, `gmail.conf`, etc.) are installed by `deploy/install.sh`. See the [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) for deployment, **testing on the Pi** (no GUI, journal + TTS), bench keyboard setup, and rebuild/update steps.
+
+### `motion_enabled` — dev bench vs Pi deploy
+
+Two flags gate motion; both must be set for embossing on hardware:
+
+| Setting | Dev PC / keyboard bench | Pi with Monster8 wired |
+| --- | --- | --- |
+| `hardware.conf` `motion_enabled` | Leave `false` (C++ default) or omit — no homing, no sentinel motion | `true` (shipped in repo `config/hardware.conf`) |
+| `klipper.conf` `enabled` | `false` (default) — no Moonraker connection | `true` after Moonraker responds on `:7125` |
+
+On a dev PC, `braillatron-ui` runs without Klipper; kinematics self-tests (`make motion-test`) exercise math only. On the Pi, `braillatron-sentinel` performs boot homing when `motion_enabled=true`, and `braillatron-ui` bridges emboss commands to Moonraker when `klipper.conf` is enabled. Set `motion_enabled=false` on a Pi bench without Monster8 to skip homing and motor tests.
 
 ### Pi rebuild (`deploy/install.sh`)
 
@@ -274,6 +286,18 @@ sudo braillatron-install-vosk-model    # re-download STT model to /data
 On a read-only root, remount first: `sudo braillatron-remount-rw`. Full first-time setup still uses `sudo bash deploy/bootstrap-dietpi.sh`, which runs the same Vosk steps plus package install and appliance mode.
 
 Network apps require `braillatron-connectd` running (started by `braillatron.target` on the Pi). On-device bring-up: [Connectivity Follow-Up Checklist](specs/Connectivity%20Follow-Up%20Checklist.md).
+
+## Klipper / Moonraker (Monster8 Option A)
+
+Production motion uses **MKS Monster8 V2 + Klipper over USB**, not Pi UART step pulses. See [Skeleton Prototype V5.1 Build Guide](specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md).
+
+1. Flash Monster8 with Klipper firmware; copy [`klipper/printer.cfg`](klipper/printer.cfg) to `~/printer_data/config/printer.cfg` on the Pi.
+2. Set `[mcu] serial` to your USB ID: `ls /dev/serial/by-id/usb-Klipper_*`
+3. Install and start Moonraker (default `http://127.0.0.1:7125`).
+4. Deploy configs with `sudo bash deploy/install.sh`; set `klipper.conf` `enabled=true` in `/etc/braillatron/`.
+5. `braillatron-ui` connects to Moonraker for emboss G-code, homing, and M112 on freefall; `braillatron-sentinel` polls Klipper endstops when GPIO limit paths are empty.
+
+Factory diagnostics: launch **Factory Test** from the app list (PIN `1234` when `dev_mode=false` in `ui.conf`).
 
 ## Wi‑Fi on the Pi
 
