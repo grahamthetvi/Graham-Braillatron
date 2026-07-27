@@ -6,8 +6,6 @@
 
 #include "../output_hub.h"
 
-#include "../../motion/motion_service.h"
-
 #include <memory>
 #include <string>
 
@@ -253,7 +251,7 @@ private:
     {
         const bool emboss_enabled =
             ctx.output != nullptr && ctx.output->ui_config().embosser_enabled;
-        if (!emboss_enabled || ctx.motion == nullptr || ctx.braille == nullptr) {
+        if (!emboss_enabled || !emboss_hardware_ready(ctx)) {
             if (advance_paper) {
                 announce(ctx, "Embossing not available");
             }

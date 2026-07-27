@@ -282,12 +282,12 @@ private:
             return;
         }
         if (key == keyboard::ControlKey::Backspace) {
-            ctx.connect->request("music.stop");
-            if (ctx.output != nullptr) {
-                ctx.output->set_media_playing(false);
-            }
+            // Leave playing screen; keep audio for quick-settings controls.
+            held_skip_.reset();
             phase_ = Phase::Tracks;
-            announce(ctx, "Playback stopped");
+            announce_over_media(
+                ctx, "Tracks. Playback continues. Hold Shift to hear speech while playing. "
+                     "Menu for pause or stop.");
             return;
         }
         if (key == keyboard::ControlKey::Enter) {
@@ -297,7 +297,7 @@ private:
                 if (ctx.output != nullptr) {
                     ctx.output->set_media_paused(paused);
                 }
-                announce(ctx, paused ? "Paused" : "Playing " + now_playing_);
+                announce_over_media(ctx, paused ? "Paused" : "Playing " + now_playing_);
             }
             return;
         }
@@ -347,7 +347,8 @@ private:
             }
             announce(ctx, "Playing " + track.title +
                                ". Enter pause. Hold dots 1-2-3 skip back, 4-5-6 skip forward. "
-                               "Up previous track. Down next track. Backspace stop.");
+                               "Up previous track. Down next track. Backspace returns to list; "
+                               "playback continues. Menu to stop.");
         } else {
             announce(ctx, "Playback failed");
         }

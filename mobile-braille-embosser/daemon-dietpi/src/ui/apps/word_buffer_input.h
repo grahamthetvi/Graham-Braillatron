@@ -16,7 +16,8 @@ public:
     void push_chord(uint8_t dot_mask, const documents::BrailleTranslationService *braille_input);
     bool pop_chord(const documents::BrailleTranslationService *braille_input);
     const std::string &preview() const;
-    std::string commit_word(const documents::BrailleTranslationService *braille_input);
+    std::string commit_word(const documents::BrailleTranslationService *braille_input,
+                            bool uncontracted = false);
 
 private:
     void rebuild_preview(const documents::BrailleTranslationService *braille_input);

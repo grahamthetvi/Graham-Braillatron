@@ -44,7 +44,8 @@ bool is_async_command(const std::string &cmd)
            cmd == "podcasts.download" || cmd == "radio.list_stations" || cmd == "radio.play" ||
            cmd == "radio.search" || cmd == "library.search" ||
            cmd == "library.download" || cmd == "worthwhile.search" || cmd == "worthwhile.recent" ||
-           cmd == "worthwhile.download" || cmd == "gmail.start_link" || cmd == "gmail.list_inbox" ||
+           cmd == "worthwhile.download" || cmd == "gmail.start_link" ||
+           cmd == "gmail.start_imap_link" || cmd == "gmail.list_inbox" ||
            cmd == "gmail.read_message" || cmd == "gmail.send" || cmd == "gmail.reply" ||
            cmd == "gmail.archive" || cmd == "gmail.delete" || cmd == "gmail.star";
 }

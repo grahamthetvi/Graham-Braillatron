@@ -51,6 +51,8 @@ private:
     void rescan_evdev_devices();
     void poll_evdev();
     void handle_key_state(uint16_t key_state);
+    void update_restart_combos(uint16_t key_state, uint64_t now_ms);
+    bool combo_swallows_control(ControlKey key) const;
     void handle_chord(uint8_t dot_mask);
     void handle_safety(const braillatron_safety_broadcast_t &payload);
     void handle_control_edge(const ControlEdge &edge);
@@ -79,6 +81,11 @@ private:
     uint8_t last_announced_fault_ = 0;
     uint8_t last_announced_severity_ = 0;
     uint16_t last_matrix_state_ = 0;
+
+    uint64_t ui_restart_combo_start_ms_ = 0;
+    uint64_t system_reboot_combo_start_ms_ = 0;
+    bool ui_restart_combo_fired_ = false;
+    bool system_reboot_combo_fired_ = false;
 
     std::atomic<bool> running_ {false};
     std::atomic<bool> serial_started_ {false};

@@ -46,6 +46,21 @@ bool test_countdown_alert()
     return true;
 }
 
+bool test_countdown_seconds()
+{
+    braillatron::ui::TimerService timer(temp_state_path());
+    std::string alert;
+    timer.set_alert_handler([&alert](const std::string &message) { alert = message; });
+    timer.set_countdown_seconds(10);
+    timer.start_countdown();
+    expect_true(timer.remaining_seconds() == 10, "ten second countdown");
+    timer.tick(1000);
+    timer.tick(11000);
+    expect_true(!timer.running(), "ten second countdown finishes");
+    expect_true(alert.find("finished") != std::string::npos, "ten second alert fired");
+    return true;
+}
+
 bool test_stopwatch_and_pause()
 {
     braillatron::ui::TimerService timer(temp_state_path());
@@ -90,6 +105,7 @@ bool test_state_persistence()
 int main()
 {
     test_countdown_alert();
+    test_countdown_seconds();
     test_stopwatch_and_pause();
     test_state_persistence();
 

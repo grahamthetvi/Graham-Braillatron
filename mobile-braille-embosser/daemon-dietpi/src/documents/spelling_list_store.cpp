@@ -44,14 +44,27 @@ std::string json_escape(const std::string &value)
     return out;
 }
 
-std::string parse_json_string(const std::string &json, const std::string &key)
+size_t find_json_key(const std::string &json, const std::string &key)
 {
-    const std::string needle = "\"" + key + "\":\"";
+    const std::string needle = "\"" + key + "\":";
     const size_t pos = json.find(needle);
     if (pos == std::string::npos) {
+        return std::string::npos;
+    }
+    size_t i = pos + needle.size();
+    while (i < json.size() && std::isspace(static_cast<unsigned char>(json[i]))) {
+        ++i;
+    }
+    return i;
+}
+
+std::string parse_json_string(const std::string &json, const std::string &key)
+{
+    const size_t value_pos = find_json_key(json, key);
+    if (value_pos == std::string::npos || value_pos >= json.size() || json[value_pos] != '"') {
         return {};
     }
-    const size_t start = pos + needle.size();
+    const size_t start = value_pos + 1;
     const size_t end = json.find('"', start);
     if (end == std::string::npos) {
         return {};
@@ -62,12 +75,11 @@ std::string parse_json_string(const std::string &json, const std::string &key)
 std::vector<std::string> parse_json_string_array(const std::string &json, const std::string &key)
 {
     std::vector<std::string> values;
-    const std::string needle = "\"" + key + "\":[";
-    const size_t pos = json.find(needle);
-    if (pos == std::string::npos) {
+    const size_t value_pos = find_json_key(json, key);
+    if (value_pos == std::string::npos || value_pos >= json.size() || json[value_pos] != '[') {
         return values;
     }
-    size_t i = pos + needle.size();
+    size_t i = value_pos + 1;
     while (i < json.size()) {
         while (i < json.size() && json[i] != '"' && json[i] != ']') {
             ++i;
@@ -156,8 +168,17 @@ void SpellingListStore::refresh()
                 continue;
             }
             SpellingList list;
-            if (load_json_file(entry.path().string(), &list) ||
-                load_csv_file(entry.path().string(), &list)) {
+            const std::string path = entry.path().string();
+            const std::string ext = entry.path().extension().string();
+            bool loaded = false;
+            if (ext == ".json") {
+                loaded = load_json_file(path, &list);
+            } else if (ext == ".csv" || ext == ".txt") {
+                loaded = load_csv_file(path, &list);
+            } else {
+                loaded = load_json_file(path, &list) || load_csv_file(path, &list);
+            }
+            if (loaded) {
                 lists_.push_back(std::move(list));
             }
         }

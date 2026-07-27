@@ -98,6 +98,7 @@ public:
     }
 
     bool buffers_braille_words() const override { return phase_ == Phase::PinEntry; }
+    bool masks_typing_echo() const override { return phase_ == Phase::PinEntry; }
 
     void on_enter(UiContext &ctx) override
     {

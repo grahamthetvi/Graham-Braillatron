@@ -1,6 +1,7 @@
 #include "motion_service.h"
 
 #include "../documents/liblouis_bridge.h"
+#include "../motion_gate.h"
 
 #include <iostream>
 
@@ -52,12 +53,18 @@ const kinematics::PaperPosition &MotionService::paper() const
 
 void MotionService::emboss_dot_mask(uint8_t dot_mask)
 {
+    if (braillatron::MotionGate::is_blocked()) {
+        return;
+    }
     controller_.emboss(dot_mask);
 }
 
 void MotionService::emboss_text(const std::string &plain,
                                 const documents::BrailleTranslationService &braille)
 {
+    if (braillatron::MotionGate::is_blocked()) {
+        return;
+    }
     const std::string translated = braille.translate_forward(plain);
     for (unsigned char ch : translated) {
         const uint8_t mask = documents::braille_char_to_dot_mask(static_cast<wchar_t>(ch));
@@ -71,12 +78,18 @@ void MotionService::emboss_text(const std::string &plain,
 
 void MotionService::advance_line()
 {
+    if (braillatron::MotionGate::is_blocked()) {
+        return;
+    }
     controller_.advance_line_10mm();
     paper_.advance_line();
 }
 
 void MotionService::feed_lines(int32_t delta)
 {
+    if (braillatron::MotionGate::is_blocked()) {
+        return;
+    }
     if (delta > 0) {
         for (int32_t i = 0; i < delta; ++i) {
             advance_line();

@@ -4,6 +4,7 @@
 #include "app_registry.h"
 #include "app_session.h"
 #include "app_util.h"
+#include "held_audio_skip.h"
 #include "ui_context.h"
 
 #include "../output_hub.h"
@@ -123,18 +124,16 @@ public:
         if (ctx.registry != nullptr) {
             ctx.registry->clear_busy();
         }
-        if (ctx.connect != nullptr) {
-            ctx.connect->request("youtube.stop");
-        }
-        if (ctx.output != nullptr) {
-            ctx.output->set_media_playing(false);
-        }
+        // Keep shared mpv playing so quick-settings controls work after leave.
         reset_session();
         announce(ctx, "YouTube closed");
     }
 
     void on_poll(UiContext &ctx) override
     {
+        if (phase_ == Phase::Playing && ctx.connect != nullptr) {
+            held_skip_.poll(steady_now_ms(), ctx.connect);
+        }
         if (!pending_announce_.empty()) {
             announce(ctx, pending_announce_);
             pending_announce_.clear();
@@ -157,10 +156,16 @@ public:
         }
         if (event.type == "youtube.playing" && ctx.output != nullptr) {
             ctx.output->set_media_playing(true);
+            ctx.output->set_media_paused(false);
         }
     }
 
-    void on_chord(uint8_t, UiContext &) override {}
+    void on_chord(uint8_t dot_mask, UiContext &) override
+    {
+        if (phase_ == Phase::Playing && is_skip_chord(dot_mask)) {
+            return;
+        }
+    }
 
     bool buffers_braille_words() const override { return phase_ == Phase::Search; }
 
@@ -405,6 +410,7 @@ private:
             return;
         }
         if (key == keyboard::ControlKey::Backspace) {
+            held_skip_.reset();
             ctx.connect->request("youtube.stop");
             if (ctx.output != nullptr) {
                 ctx.output->set_media_playing(false);
@@ -415,6 +421,18 @@ private:
             announce(ctx, "Playback stopped.");
             if (!results_.empty()) {
                 announce_result(ctx);
+            }
+            return;
+        }
+        if (key == keyboard::ControlKey::Enter) {
+            const std::string response = ctx.connect->request("youtube.pause");
+            if (braillatron::connect::json_get_bool(response, "ok", false)) {
+                const bool paused =
+                    braillatron::connect::json_get_bool(response, "paused", false);
+                if (ctx.output != nullptr) {
+                    ctx.output->set_media_paused(paused);
+                }
+                announce(ctx, paused ? "Paused" : "Playing");
             }
         }
     }
@@ -495,10 +513,14 @@ private:
             "youtube.play", "\"url\":\"" + braillatron::connect::json_escape(item.url) + "\"");
         if (braillatron::connect::json_get_bool(response, "ok", false)) {
             phase_ = Phase::Playing;
+            held_skip_.reset();
             if (ctx.output != nullptr) {
                 ctx.output->set_media_playing(true);
+                ctx.output->set_media_paused(false);
             }
-            announce(ctx, "Playing " + truncate_for_tts(item.title) + ". Backspace to stop.");
+            announce(ctx, "Playing " + truncate_for_tts(item.title) +
+                               ". Enter pause. Hold dots 1-2-3 skip back, 4-5-6 skip forward. "
+                               "Backspace stop.");
         } else {
             const std::string error = braillatron::connect::json_get_string(response, "error");
             if (error.empty()) {
@@ -540,6 +562,7 @@ private:
     std::string pending_announce_;
     bool cookies_ready_ = false;
     bool personalized_feed_ = false;
+    HeldAudioSkip held_skip_;
 };
 
 } // namespace

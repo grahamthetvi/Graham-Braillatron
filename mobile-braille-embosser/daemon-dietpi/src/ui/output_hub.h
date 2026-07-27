@@ -57,11 +57,18 @@ public:
     void announce_focus(const std::string &label, bool at_boundary);
     void announce_list_focus(const AccessibleElement &element, bool at_boundary);
     void announce_spoken(const std::string &message);
+    /** Barge-in speech for typed letters/words (no toast spam). */
+    void announce_typing(const std::string &message);
+    /** Speak even while media is playing (navigation / confirmations). */
+    void announce_over_media(const std::string &message);
     void announce_status_report(const platform::DeviceStatusReport &report);
     void announce_quick_status();
 
     void on_shift_tts_toggle(bool pressed);
     void on_speech_ptt_gate(bool open);
+    /** Stop push-to-talk capture and discard the in-flight transcript. */
+    void cancel_dictation();
+    bool dictation_active() const { return dictation_active_; }
     void on_menu_overlay(bool open);
     void on_menu_move(bool up);
     void on_menu_activate();
@@ -85,6 +92,7 @@ public:
     void play_boundary_haptic();
     void request_shutdown();
     void request_restart();
+    void request_ui_restart();
     void open_shutdown_confirm();
     void open_restart_confirm();
     void open_settings_menu();
@@ -94,6 +102,7 @@ public:
     void sync_chrome(bool at_boundary);
     void tick_display_scroll(uint64_t now_ms);
     void tick_remote_display(uint64_t now_ms);
+    void tick_shift_tts(uint64_t now_ms);
     void rebuild_display_backend();
     void set_pairing_code_overlay(const std::string &code);
     void clear_pairing_code_overlay();
@@ -112,11 +121,14 @@ public:
     void release_backends();
 
 private:
-    void emit(const std::string &message, bool update_display_toast = true);
+    void emit(const std::string &message, bool update_display_toast = true,
+              bool speak_over_media = false);
     void note_toast_changed(uint64_t now_ms);
     void update_toast_scroll_offset(uint64_t now_ms);
     void persist_ui_config();
     void toggle_bool(bool &field, const char *name);
+    void handle_shift_tap();
+    void toggle_speech_mute();
     void render_chrome();
     void sync_remote_display_publisher();
     void persist_remote_display_config();
@@ -143,7 +155,13 @@ private:
     bool media_shift_paused_ = false;
     bool low_battery_announced_ = false;
     bool tts_paused_ = false;
+    bool tts_muted_ = false;
+    bool shift_down_ = false;
+    bool shift_hold_fired_ = false;
+    uint64_t shift_press_ms_ = 0;
     bool dictation_active_ = false;
+    bool suppress_stt_transcripts_ = false;
+    SttBackend::TranscriptHandler stt_user_handler_;
     bool signal_link_pending_ = false;
     bool gmail_link_pending_ = false;
 

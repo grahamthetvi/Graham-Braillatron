@@ -36,10 +36,7 @@ public:
         } else if (key == keyboard::ControlKey::DpadDown) {
             ctx.motion->feed_lines(1);
         }
-        if (ctx.coords != nullptr) {
-            ctx.coords->mutable_state().y_line_index = ctx.motion->paper().y_line_index();
-            ctx.coords->save();
-        }
+        sync_coords_from_motion(ctx);
     }
 };
 

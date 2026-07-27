@@ -429,6 +429,20 @@ GmailConfig load_gmail_config(const std::string &path)
                                 cfg.export_dir = value;
                             } else if (key == "user_agent") {
                                 cfg.user_agent = value;
+                            } else if (key == "auth_mode") {
+                                cfg.auth_mode = value;
+                            } else if (key == "imap_host") {
+                                cfg.imap_host = value;
+                            } else if (key == "imap_port") {
+                                cfg.imap_port = static_cast<uint32_t>(std::stoul(value));
+                            } else if (key == "imap_password_path") {
+                                cfg.imap_password_path = value;
+                            } else if (key == "imap_incoming_name") {
+                                cfg.imap_incoming_name = value;
+                            } else if (key == "smtp_host") {
+                                cfg.smtp_host = value;
+                            } else if (key == "smtp_port") {
+                                cfg.smtp_port = static_cast<uint32_t>(std::stoul(value));
                             }
                         },
                         config);

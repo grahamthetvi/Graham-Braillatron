@@ -360,12 +360,14 @@ private:
         if (key != keyboard::ControlKey::Enter || lines_.empty()) {
             return;
         }
-        if (ctx.motion != nullptr && ctx.braille != nullptr && config_.emboss_enabled) {
-            const auto &entry = entries_[entry_index_];
-            const std::string text = entry.word + ". " + entry.definition;
-            ctx.motion->emboss_text(text, *ctx.braille);
-            announce(ctx, "Embossing definition");
+        if (!config_.emboss_enabled || !emboss_hardware_ready(ctx)) {
+            announce(ctx, "Embossing not available");
+            return;
         }
+        const auto &entry = entries_[entry_index_];
+        const std::string text = entry.word + ". " + entry.definition;
+        ctx.motion->emboss_text(text, *ctx.braille);
+        announce(ctx, "Embossing definition");
     }
 
     void open_definition_text(UiContext &ctx)

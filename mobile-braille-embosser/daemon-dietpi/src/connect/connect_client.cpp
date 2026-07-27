@@ -3,6 +3,7 @@
 #include "connect_async.h"
 #include "json_utils.h"
 
+#include <cctype>
 #include <cstring>
 #include <fstream>
 #include <sys/socket.h>
@@ -15,6 +16,16 @@ ConnectClient::ConnectClient(std::string socket_path, std::string event_path)
     : socket_path_(std::move(socket_path))
     , event_path_(std::move(event_path))
 {
+    // Start at EOF so we only see events emitted after this process starts
+    // (avoids replaying historical weather alerts on every UI restart).
+    std::ifstream in(event_path_);
+    if (in.is_open()) {
+        in.seekg(0, std::ios::end);
+        const auto pos = in.tellg();
+        if (pos > 0) {
+            event_offset_ = static_cast<size_t>(pos);
+        }
+    }
 }
 
 std::string ConnectClient::request_with_payload(const std::string &payload)
@@ -117,17 +128,85 @@ void ConnectClient::poll_events(const std::function<void(const ConnectEvent &)> 
         if (line.empty()) {
             continue;
         }
+
+        // EventWriter should emit one JSON object per line. If a legacy multi-line
+        // payload was written, keep reading until braces balance.
+        auto brace_balance = [](const std::string &text) {
+            int depth = 0;
+            bool in_string = false;
+            bool escape = false;
+            for (char ch : text) {
+                if (in_string) {
+                    if (escape) {
+                        escape = false;
+                    } else if (ch == '\\') {
+                        escape = true;
+                    } else if (ch == '"') {
+                        in_string = false;
+                    }
+                    continue;
+                }
+                if (ch == '"') {
+                    in_string = true;
+                } else if (ch == '{') {
+                    ++depth;
+                } else if (ch == '}') {
+                    --depth;
+                }
+            }
+            return depth;
+        };
+
+        while (brace_balance(line) > 0) {
+            std::string more;
+            if (!std::getline(in, more)) {
+                break;
+            }
+            event_offset_ += more.size() + 1;
+            line.push_back('\n');
+            line += more;
+        }
+
         ConnectEvent event;
         event.type = json_get_string(line, "event");
         const size_t data_pos = line.find("\"data\":");
         if (data_pos != std::string::npos) {
             size_t start = data_pos + 7;
+            while (start < line.size() &&
+                   std::isspace(static_cast<unsigned char>(line[start]))) {
+                ++start;
+            }
             if (start < line.size() && line[start] == '"') {
                 event.data_json = json_get_string(line, "data");
-            } else {
-                const size_t end = line.find_last_of('}');
-                if (end != std::string::npos && start < end) {
-                    event.data_json = line.substr(start, end - start + 1);
+            } else if (start < line.size() && line[start] == '{') {
+                int depth = 0;
+                bool in_string = false;
+                bool escape = false;
+                for (size_t i = start; i < line.size(); ++i) {
+                    const char ch = line[i];
+                    if (in_string) {
+                        if (escape) {
+                            escape = false;
+                        } else if (ch == '\\') {
+                            escape = true;
+                        } else if (ch == '"') {
+                            in_string = false;
+                        }
+                        continue;
+                    }
+                    if (ch == '"') {
+                        in_string = true;
+                        continue;
+                    }
+                    if (ch == '{') {
+                        ++depth;
+                    } else if (ch == '}') {
+                        --depth;
+                        if (depth == 0) {
+                            event.data_json = line.substr(start, i - start + 1);
+                            break;
+                        }
+                    }
                 }
             }
         }

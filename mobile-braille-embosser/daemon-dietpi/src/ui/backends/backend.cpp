@@ -8,6 +8,7 @@
 #include "../../telemetry/drv2605l.h"
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -76,10 +77,35 @@ public:
     // blocking connect. The worker logs to stderr if the daemon is unreachable.
     bool available() const override { return true; }
 
-    void speak(const std::string &text) override { enqueue(Command {CommandType::Speak, text, 0}); }
+    // UI speech barges in: drop queued utterances, cancel whatever is playing,
+    // then speak. Rapid menu / settings cycling must not build a backlog.
+    void speak(const std::string &text) override
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (shutting_down_) {
+                return;
+            }
+            drop_pending_speaks_locked();
+            queue_.push_back(Command {CommandType::Stop, {}, 0});
+            queue_.push_back(Command {CommandType::Speak, text, 0});
+        }
+        cv_.notify_all();
+    }
     void pause() override { enqueue(Command {CommandType::Pause, {}, 0}); }
     void resume() override { enqueue(Command {CommandType::Resume, {}, 0}); }
-    void stop() override { enqueue(Command {CommandType::Stop, {}, 0}); }
+    void stop() override
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (shutting_down_) {
+                return;
+            }
+            drop_pending_speaks_locked();
+            queue_.push_back(Command {CommandType::Stop, {}, 0});
+        }
+        cv_.notify_all();
+    }
 
     void set_rate(int rate) override
     {
@@ -101,6 +127,15 @@ private:
         std::string text;
         int value;
     };
+
+    void drop_pending_speaks_locked()
+    {
+        queue_.erase(std::remove_if(queue_.begin(), queue_.end(),
+                                    [](const Command &command) {
+                                        return command.type == CommandType::Speak;
+                                    }),
+                     queue_.end());
+    }
 
     void enqueue(Command command)
     {
@@ -136,6 +171,8 @@ private:
         switch (command.type) {
         case CommandType::Speak:
             if (connect()) {
+                // Cancel in-flight speech so Speech Dispatcher does not queue behind it.
+                spd_cancel(connection_);
                 spd_say(connection_, SPD_MESSAGE, command.text.c_str());
             } else {
                 std::cerr << "[tts] " << command.text << "\n";

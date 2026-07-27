@@ -165,8 +165,10 @@ Mappings live in `daemon-dietpi/config/evdev_map.conf`. Defaults emulate the phy
 | **Enter** | Activate focused app / menu item |
 | **Backspace** | Delete typed text / back out of menu |
 | **`** (grave) | Toggle global menu overlay |
-| **Tab** | Pause / resume speech (press and release) |
+| **Tab** | Speech control: short press stops current speech (next announcement speaks); hold ~0.5s toggles speech mute |
 | **Right Super** (hold) | Push-to-talk dictation gate |
+| **Backspace + Enter** (hold ~2s) | Restart UI (`systemctl restart braillatron-ui`) |
+| **Tab + Right Super** (hold ~2s) | Reboot the whole system |
 | **F** | Braille dot 1 |
 | **D** | Braille dot 2 |
 | **S** | Braille dot 3 |
@@ -222,7 +224,7 @@ BRAILLATRON_CONFIG=config ./braillatron-ui
 
 Speech Dispatcher, BRLTTY, and Vosk can still be absent at runtime — the UI falls back to stderr logging for those backends while liblouis handles dot translation.
 
-**Braille input code** and **Braille grade** are separate `ui.conf` settings (open **`** → Settings). **Braille input code** (`braille_input_table`) selects UEB Math vs Nemeth for keyboard chord back-translation. **Braille grade** (`braille_table`) cycles emboss/output forward translation and refreshable braille through UEB G1/G2 combined with UEB Math or Nemeth: `ueb_g1_math`, `ueb_g1_nemeth`, `ueb_g2_math`, `ueb_g2_nemeth`. On systems where the literary+Nemeth composite table fails to compile, Nemeth presets fall back to the matching UEB literary table (override the Nemeth overlay with `LOUIS_NEMETH_TABLE`, default `en-us-mathtext.ctb`).
+**Braille input code** and **Braille grade** are separate `ui.conf` settings (open **`** → Settings). **Braille input code** (`braille_input_table`) selects UEB Math vs Nemeth for keyboard chord back-translation. **Braille grade** (`braille_table`) cycles emboss/output forward translation and refreshable braille through UEB G1/G2 combined with UEB Math or Nemeth: `ueb_g1_math`, `ueb_g1_nemeth`, `ueb_g2_math`, `ueb_g2_nemeth`. Nemeth presets prefer a UEB literary table plus `nemethdefs.cti` (override with `LOUIS_NEMETH_TABLE`); if no overlay compiles, they fall back to the matching UEB literary table alone.
 
 On a fully provisioned Pi image, bootstrap installs these libraries automatically and enables **appliance mode** (boot straight into Braillatron, SSH for dev). See [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md).
 
@@ -254,6 +256,48 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 | `ui.conf` | TTS, braille, STT, haptics toggles, visual display toggle, document dictation |
 | `display.conf` | Display backends (`auto`/`spi`/`fb`/`ncurses`/`stub`), spidev, fbdev, GPIO, remote publisher, HDMI opt-in |
 | `remote-display.conf` | displayd HTTP/WebSocket listener, pairing, LAN access (`/data/braillatron/settings/` on Pi) |
+| `localsend.conf` | LocalSend receive-only sidecar (`enabled`, port `53317`, HTTP) |
+
+### LocalSend setup (receive files from phone/PC)
+
+Braillatron runs a **receive-only** LocalSend listener as device **Braillatron** on port **53317** (HTTP, encryption off).
+
+1. Install [LocalSend](https://localsend.org) on your phone or computer.
+2. Put the phone on the **same Wi‑Fi/LAN** as the Pi (or use the Pi’s Ethernet IP).
+3. In LocalSend **settings**, turn **encryption / HTTPS off** (use HTTP).  
+   Or add the device manually: `<pi-ip>:53317`.
+4. Send files to **Braillatron**. They auto-accept.
+
+Where files land:
+
+| What you send | Destination on the Pi |
+| --- | --- |
+| `cookies.txt` / YouTube cookies | `/data/braillatron/credentials/incoming/` |
+| `imap.ini` / school email app password | `/data/braillatron/credentials/incoming/` |
+| EPUB, TXT, BRF, M4B, ZIP | `/data/braillatron/library/import/` |
+| MP3, FLAC, M4A, … | `/data/braillatron/music/` |
+| OPML / podcast XML | `/data/braillatron/podcasts/import/` |
+| CSV / JSON word lists | `/data/braillatron/spelling/custom/` |
+
+On the device, open the **LocalSend** app for spoken step-by-step setup (Enter advances). Service: `braillatron-localsend`.
+
+### School email (IMAP + app password)
+
+Google consumer Gmail can still use **Settings → Accounts → Link Gmail** (OAuth device flow). School accounts that only allow IMAP + app passwords use this path instead:
+
+1. On a PC, create `imap.ini` (never commit this file):
+   ```
+   email=student@school.edu
+   password=your-app-password
+   # optional if auto-detect is wrong:
+   # imap_host=outlook.office365.com
+   ```
+2. Send `imap.ini` to the device with LocalSend, or copy to `/data/braillatron/credentials/incoming/imap.ini` (or install directly as `/data/braillatron/credentials/gmail/imap.ini` mode `0600`).
+3. On the device: **Settings → Accounts → Link IMAP email**. Success announces “IMAP linked as …”.
+4. Check **IMAP status**. Open the **Gmail** app to list/read inbox (IMAP when linked).
+5. Helper: `sudo braillatron-install-gmail-imap` prepares the credentials directory.
+
+`gmail.conf` `auth_mode=auto` prefers IMAP when credentials are present. Send/reply over SMTP is not wired yet for the IMAP path.
 
 Production paths on the Pi are under `/etc/braillatron/`. App-specific configs (`dictionary.conf`, `spelling.conf`, `music.conf`, `weather.conf`, `gmail.conf`, etc.) are installed by `deploy/install.sh`. See the [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md) for deployment, **testing on the Pi** (no GUI, journal + TTS), bench keyboard setup, and rebuild/update steps.
 

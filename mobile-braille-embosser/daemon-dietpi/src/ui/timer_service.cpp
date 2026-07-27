@@ -126,6 +126,13 @@ void TimerService::set_alert_handler(AlertHandler handler)
 void TimerService::set_countdown_minutes(int minutes)
 {
     countdown_minutes_ = minutes < 1 ? 1 : minutes;
+    countdown_seconds_ = countdown_minutes_ * 60;
+}
+
+void TimerService::set_countdown_seconds(int seconds)
+{
+    countdown_seconds_ = seconds < 1 ? 1 : seconds;
+    countdown_minutes_ = (countdown_seconds_ + 59) / 60;
 }
 
 void TimerService::begin_mode(TimerMode mode, int duration_sec)
@@ -143,7 +150,9 @@ void TimerService::begin_mode(TimerMode mode, int duration_sec)
 
 void TimerService::start_countdown()
 {
-    begin_mode(TimerMode::Countdown, countdown_minutes_ * 60);
+    const int duration =
+        countdown_seconds_ > 0 ? countdown_seconds_ : countdown_minutes_ * 60;
+    begin_mode(TimerMode::Countdown, duration);
 }
 
 void TimerService::start_stopwatch()
@@ -302,6 +311,7 @@ void TimerService::save_state() const
         << "  \"active\":" << (active_ ? "true" : "false") << ",\n"
         << "  \"paused\":" << (paused_ ? "true" : "false") << ",\n"
         << "  \"countdown_minutes\":" << countdown_minutes_ << ",\n"
+        << "  \"countdown_seconds\":" << countdown_seconds_ << ",\n"
         << "  \"duration_sec\":" << duration_sec_ << ",\n"
         << "  \"remaining_sec\":" << remaining_sec_ << ",\n"
         << "  \"elapsed_sec\":" << elapsed_sec_ << ",\n"
@@ -326,6 +336,10 @@ void TimerService::load_state()
     active_ = parse_bool_field(json, "active", false);
     paused_ = parse_bool_field(json, "paused", false);
     countdown_minutes_ = parse_int_field(json, "countdown_minutes", countdown_minutes_);
+    countdown_seconds_ = parse_int_field(json, "countdown_seconds", countdown_minutes_ * 60);
+    if (countdown_seconds_ <= 0) {
+        countdown_seconds_ = countdown_minutes_ * 60;
+    }
     duration_sec_ = parse_int_field(json, "duration_sec", duration_sec_);
     remaining_sec_ = parse_int_field(json, "remaining_sec", remaining_sec_);
     elapsed_sec_ = parse_int_field(json, "elapsed_sec", elapsed_sec_);

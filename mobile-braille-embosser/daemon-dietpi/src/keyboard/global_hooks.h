@@ -21,9 +21,14 @@ void set_output_hub(ui::OutputHub *hub);
 void set_app_registry(ui::AppRegistry *registry);
 void set_keyboard_service(keyboard::KeyboardService *service);
 uint8_t held_dot_mask();
+uint16_t held_key_state();
 
 void on_shift_tts_toggle(bool pressed);
 void on_speech_ptt_gate(bool open);
+/** Cancel active dictation when any non-Speech key/chord is pressed. */
+void cancel_dictation_on_input();
+void on_ui_restart_combo();
+void on_system_reboot_combo();
 
 bool menu_overlay_open();
 void on_menu_overlay(bool open);

@@ -136,6 +136,14 @@ struct GmailConfig {
     uint32_t inbox_limit = 25;
     std::string export_dir = "/data/braillatron/documents/gmail";
     std::string user_agent = "Braillatron/1.0 (accessibility device)";
+    // IMAP + app-password path for school accounts (alongside Google OAuth).
+    std::string auth_mode = "auto"; // auto | oauth | imap
+    std::string imap_host;          // empty → infer from email domain
+    uint32_t imap_port = 993;
+    std::string imap_password_path = "/data/braillatron/credentials/gmail/imap.ini";
+    std::string imap_incoming_name = "imap.ini";
+    std::string smtp_host; // optional; empty disables IMAP send
+    uint32_t smtp_port = 587;
 };
 
 ConnectConfig load_connect_config(const std::string &path);

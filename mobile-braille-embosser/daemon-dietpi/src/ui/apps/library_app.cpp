@@ -119,7 +119,6 @@ enum class MenuChoice {
 enum class PublicSourceChoice {
     Gutendex,
     OpenLibrary,
-    InternetArchive,
     LibriVox,
 };
 
@@ -245,6 +244,12 @@ public:
     {
         return phase_ == Phase::SearchQuery || phase_ == Phase::WorthwhileSearch ||
                phase_ == Phase::RenameEntry;
+    }
+
+    bool buffers_uncontracted_braille_words() const override
+    {
+        // Public-source search must stay literal ASCII (G2 was turning "cats" into "cas.").
+        return phase_ == Phase::SearchQuery || phase_ == Phase::WorthwhileSearch;
     }
 
     bool browse_list_active() const override
@@ -517,7 +522,7 @@ private:
             break;
         case Phase::PublicSources:
             breadcrumb_ = "Public sources";
-            items = {"Project Gutenberg", "Open Library", "Internet Archive", "LibriVox"};
+            items = {"Project Gutenberg", "Open Library", "LibriVox"};
             browse_.set_items(std::move(items), 0);
             break;
         case Phase::LocalList:
@@ -632,8 +637,8 @@ private:
 
     static bool is_audio_format(const std::string &format)
     {
-        return format == "mp3" || format == "m4a" || format == "ogg" || format == "flac" ||
-               format == "wav";
+        return format == "mp3" || format == "m4a" || format == "m4b" || format == "ogg" ||
+               format == "flac" || format == "wav" || format == "aac";
     }
 
     static std::string format_book_label(const documents::LibraryBook &book)
@@ -723,8 +728,7 @@ private:
             phase_ = Phase::PublicSources;
             rebuild_browse();
             sync_chrome(ctx);
-            announce(ctx,
-                     "Public sources. Project Gutenberg, Open Library, Internet Archive, LibriVox.");
+            announce(ctx, "Public sources. Project Gutenberg, Open Library, LibriVox.");
             announce_browse_focus(ctx, false);
             return;
         }
@@ -766,9 +770,6 @@ private:
             break;
         case static_cast<size_t>(PublicSourceChoice::OpenLibrary):
             begin_source_search(ctx, "openlibrary", "Open Library");
-            break;
-        case static_cast<size_t>(PublicSourceChoice::InternetArchive):
-            begin_source_search(ctx, "archive", "Internet Archive");
             break;
         case static_cast<size_t>(PublicSourceChoice::LibriVox):
             begin_source_search(ctx, "librivox", "LibriVox");
@@ -1498,9 +1499,10 @@ private:
             }
             rebuild_browse();
             sync_chrome(ctx);
-            announce(ctx, "Playing " + book.title +
+            announce_over_media(ctx, "Playing " + book.title +
                                ". Enter pause. Hold dots 1-2-3 skip back, 4-5-6 skip forward. "
-                               "Backspace stop.");
+                               "Backspace returns to list. Hold Shift to hear speech while playing. "
+                               "Menu to stop.");
             return;
         }
 
@@ -1533,22 +1535,19 @@ private:
 
     void handle_audio_playing(keyboard::ControlKey key, UiContext &ctx)
     {
-        if (ctx.connect == nullptr) {
-            return;
-        }
         if (key == keyboard::ControlKey::Backspace) {
-            ctx.connect->request("music.stop");
-            if (ctx.output != nullptr) {
-                ctx.output->set_media_playing(false);
-            }
-            now_playing_audio_.clear();
+            // Leave the playing screen but keep audio going (quick settings still control it).
+            // Must speak over media — normal TTS is muted while audiobooks play.
+            held_skip_.reset();
             phase_ = Phase::LocalList;
             rebuild_browse();
             sync_chrome(ctx);
-            announce(ctx, "Playback stopped");
-            if (!local_books_.empty()) {
-                announce_local_book(ctx);
-            }
+            announce_over_media(
+                ctx, "Local library. Playback continues. Hold Shift to hear speech while playing. "
+                     "Menu for pause or stop. Backspace for Library menu.");
+            return;
+        }
+        if (ctx.connect == nullptr) {
             return;
         }
         if (key == keyboard::ControlKey::Enter) {
@@ -1558,7 +1557,7 @@ private:
                 if (ctx.output != nullptr) {
                     ctx.output->set_media_paused(paused);
                 }
-                announce(ctx, paused ? "Paused" : "Playing");
+                announce_over_media(ctx, paused ? "Paused" : "Playing");
             }
             return;
         }

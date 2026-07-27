@@ -20,6 +20,13 @@ namespace {
 // requiring a specific daemon start order.
 constexpr uint64_t kEvdevRescanIntervalMs = 2000;
 
+// Hold both keys ~2s: recovery shortcuts that should not fire from brief presses.
+constexpr uint64_t kRestartComboHoldMs = 2000;
+constexpr uint16_t kUiRestartComboMask =
+    static_cast<uint16_t>(BRAILLATRON_KEY_BACKSPACE | BRAILLATRON_KEY_ENTER);
+constexpr uint16_t kSystemRebootComboMask =
+    static_cast<uint16_t>(BRAILLATRON_KEY_SHIFT_TTS | BRAILLATRON_KEY_SPEECH);
+
 const char *fault_block_reason(uint8_t fault_code)
 {
     switch (fault_code) {
@@ -144,6 +151,7 @@ void KeyboardService::poll()
     }
 
     poll_evdev();
+    update_restart_combos(last_matrix_state_, now_ms());
 }
 
 FocusNavigator &KeyboardService::focus_nav()
@@ -308,6 +316,7 @@ void KeyboardService::poll_evdev()
         for (const EvdevKeyEvent &event : events) {
             if (const auto text_ch = evdev_keymap_.text_for_code(event.code)) {
                 if (event.pressed) {
+                    hooks::cancel_dictation_on_input();
                     if (hooks::standalone_app_active() || hooks::inline_app_active()) {
                         hooks::on_app_text(std::string(1, *text_ch));
                     } else {
@@ -353,15 +362,69 @@ void KeyboardService::poll_evdev()
 void KeyboardService::handle_key_state(uint16_t key_state)
 {
     last_matrix_state_ = key_state;
+    update_restart_combos(key_state, now_ms());
     chord_.on_key_state(key_state);
 
     while (auto edge = chord_.poll_control_edge()) {
+        if (combo_swallows_control(edge->key)) {
+            continue;
+        }
         handle_control_edge(*edge);
     }
 }
 
+void KeyboardService::update_restart_combos(uint16_t key_state, uint64_t now)
+{
+    const bool ui_combo = (key_state & kUiRestartComboMask) == kUiRestartComboMask;
+    if (ui_combo) {
+        if (ui_restart_combo_start_ms_ == 0) {
+            ui_restart_combo_start_ms_ = now;
+        } else if (!ui_restart_combo_fired_ && now - ui_restart_combo_start_ms_ >= kRestartComboHoldMs) {
+            ui_restart_combo_fired_ = true;
+            hooks::on_ui_restart_combo();
+        }
+    } else {
+        ui_restart_combo_start_ms_ = 0;
+        ui_restart_combo_fired_ = false;
+    }
+
+    const bool reboot_combo = (key_state & kSystemRebootComboMask) == kSystemRebootComboMask;
+    if (reboot_combo) {
+        if (system_reboot_combo_start_ms_ == 0) {
+            system_reboot_combo_start_ms_ = now;
+            hooks::cancel_dictation_on_input();
+        } else if (!system_reboot_combo_fired_
+                   && now - system_reboot_combo_start_ms_ >= kRestartComboHoldMs) {
+            system_reboot_combo_fired_ = true;
+            hooks::on_system_reboot_combo();
+        }
+    } else {
+        system_reboot_combo_start_ms_ = 0;
+        system_reboot_combo_fired_ = false;
+    }
+}
+
+bool KeyboardService::combo_swallows_control(ControlKey key) const
+{
+    const uint16_t state = last_matrix_state_;
+    if ((state & kUiRestartComboMask) == kUiRestartComboMask
+        && (key == ControlKey::Backspace || key == ControlKey::Enter)) {
+        return true;
+    }
+    if ((state & kSystemRebootComboMask) == kSystemRebootComboMask
+        && (key == ControlKey::ShiftTts || key == ControlKey::Speech)) {
+        return true;
+    }
+    return false;
+}
+
 void KeyboardService::handle_chord(uint8_t dot_mask)
 {
+    // Dot chords and space commits both count as "any button" for dictation.
+    if (dot_mask != 0) {
+        hooks::cancel_dictation_on_input();
+    }
+
     std::optional<std::string> text;
     if (braille_service_ != nullptr) {
         text = braille_service_->translate_backward_dots(dot_mask);
@@ -379,12 +442,16 @@ void KeyboardService::handle_chord(uint8_t dot_mask)
         }
         if (hooks::app_defers_chord_text()) {
             if (dot_mask == 0 && text.has_value()) {
+                hooks::cancel_dictation_on_input();
                 hooks::on_app_text(*text);
             }
             return;
         }
 
         if (text.has_value()) {
+            if (dot_mask == 0) {
+                hooks::cancel_dictation_on_input();
+            }
             hooks::on_app_text(*text);
         } else if (dot_mask != 0) {
             hooks::on_chord_unrecognized(dot_mask);
@@ -393,6 +460,9 @@ void KeyboardService::handle_chord(uint8_t dot_mask)
     }
 
     if (text.has_value()) {
+        if (dot_mask == 0) {
+            hooks::cancel_dictation_on_input();
+        }
         focus_.on_text(*text);
     } else if (dot_mask != 0) {
         hooks::on_chord_unrecognized(dot_mask);
@@ -422,6 +492,11 @@ void KeyboardService::handle_safety(const braillatron_safety_broadcast_t &payloa
 void KeyboardService::handle_control_edge(const ControlEdge &edge)
 {
     const bool menu_open = hooks::menu_overlay_open();
+
+    // Any non-Speech key press abandons an in-progress dictation take.
+    if (edge.pressed && edge.key != ControlKey::Speech) {
+        hooks::cancel_dictation_on_input();
+    }
 
     switch (edge.key) {
     case ControlKey::DpadUp:

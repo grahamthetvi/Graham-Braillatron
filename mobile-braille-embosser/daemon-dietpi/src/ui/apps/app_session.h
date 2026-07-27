@@ -37,6 +37,11 @@ public:
     virtual void on_chord(uint8_t dot_mask, UiContext &ctx) = 0;
     virtual void on_text(const std::string &text, UiContext &ctx) = 0;
     virtual bool buffers_braille_words() const { return false; }
+    // When true with buffers_braille_words(), commit letter-cells with Grade 1
+    // (uncontracted) so search queries are not mangled by G2 contractions.
+    virtual bool buffers_uncontracted_braille_words() const { return false; }
+    // When true, typing echo says "star" instead of the literal character.
+    virtual bool masks_typing_echo() const { return false; }
     virtual void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) = 0;
     virtual void on_menu_action(const std::string &action, UiContext &ctx)
     {

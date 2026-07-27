@@ -57,7 +57,8 @@ public:
             return;
         }
 
-        const char *cmd = forward ? "music.skip_forward" : "music.skip_backward";
+        // Shared mpv seek — works for Music, Library audiobooks, YouTube, Podcasts.
+        const char *cmd = forward ? "media.skip_forward" : "media.skip_backward";
         if (braillatron::connect::json_get_bool(connect->request(cmd), "ok", false)) {
             last_skip_ms_ = now_ms;
         }

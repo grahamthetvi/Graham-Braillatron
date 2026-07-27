@@ -27,7 +27,26 @@ public:
         if (ctx.brf != nullptr) {
             ctx.brf->save();
             const std::string text = ctx.brf->full_text();
-            if (!text.empty()) {
+            // Save & Exit archives Document text into Library. Skip trivial scraps
+            // (e.g. a single spelling-test word) so they do not clutter Local library.
+            const std::string trimmed = [&text]() {
+                size_t start = 0;
+                while (start < text.size() &&
+                       (text[start] == ' ' || text[start] == '\t' || text[start] == '\n' ||
+                        text[start] == '\r')) {
+                    ++start;
+                }
+                size_t end = text.size();
+                while (end > start &&
+                       (text[end - 1] == ' ' || text[end - 1] == '\t' || text[end - 1] == '\n' ||
+                        text[end - 1] == '\r')) {
+                    --end;
+                }
+                return text.substr(start, end - start);
+            }();
+            const bool worth_saving = trimmed.size() >= 24 ||
+                                      (trimmed.find(' ') != std::string::npos && trimmed.size() >= 12);
+            if (worth_saving) {
                 documents::LibraryStore store(library_config());
                 store.refresh();
                 if (store.save_document_text(text)) {
@@ -35,9 +54,7 @@ public:
                 }
             }
         }
-        if (ctx.coords != nullptr) {
-            ctx.coords->save();
-        }
+        sync_coords_from_motion(ctx);
         if (ctx.registry != nullptr) {
             ctx.registry->exit();
         }

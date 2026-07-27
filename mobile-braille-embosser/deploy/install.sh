@@ -95,15 +95,24 @@ install -m 755 "${ROOT}/deploy/import-kaikki-dictionary.py" "${PREFIX}/bin/brail
 install -m 755 "${ROOT}/deploy/install-dictionary-data.sh" "${PREFIX}/bin/braillatron-install-dictionary-data"
 install -m 755 "${ROOT}/deploy/install-spelling-data.sh" "${PREFIX}/bin/braillatron-install-spelling-data"
 install -m 755 "${ROOT}/deploy/install-gmail-oauth.sh" "${PREFIX}/bin/braillatron-install-gmail-oauth"
+install -m 755 "${ROOT}/deploy/install-gmail-imap.sh" "${PREFIX}/bin/braillatron-install-gmail-imap"
 install -m 755 "${ROOT}/deploy/install-vosk-lib.sh" "${PREFIX}/bin/braillatron-install-vosk-lib"
 install -m 755 "${ROOT}/deploy/install-vosk-model.sh" "${PREFIX}/bin/braillatron-install-vosk-model"
 install -m 755 "${ROOT}/deploy/show-pairing-code.sh" "${PREFIX}/bin/braillatron-show-pairing-code"
+install -m 755 "${ROOT}/deploy/os/braillatron-remote-keys.py" "${PREFIX}/bin/braillatron-remote-keys"
+install -m 755 "${ROOT}/deploy/os/braillatron-localsend-receive.py" "${PREFIX}/bin/braillatron-localsend-receive"
 install -m 755 "${ROOT}/deploy/verify-install.sh" "${PREFIX}/bin/braillatron-verify-install"
 install -m 755 "${ROOT}/deploy/verify-hdmi-bootstrap.sh" "${PREFIX}/bin/braillatron-verify-hdmi-bootstrap"
 install -m 755 "${ROOT}/deploy/verify-display-bootstrap.sh" "${PREFIX}/bin/braillatron-verify-display-bootstrap"
+# Ship Kaikki-derived offline DB so first boot does not require a multi-GB stream.
+install -d /usr/share/braillatron/dictionary
+if [[ -f "${ROOT}/deploy/data/dictionary/en.sqlite" ]]; then
+  install -m 644 "${ROOT}/deploy/data/dictionary/en.sqlite" /usr/share/braillatron/dictionary/en.sqlite
+fi
 bash "${ROOT}/deploy/install-dictionary-data.sh"
 bash "${ROOT}/deploy/install-spelling-data.sh"
 bash "${ROOT}/deploy/install-gmail-oauth.sh"
+bash "${ROOT}/deploy/install-gmail-imap.sh"
 
 install -m 755 "${ROOT}/deploy/os/braillatron-console-ready.sh" /usr/local/sbin/braillatron-console-ready.sh
 install -m 755 "${ROOT}/deploy/os/braillatron-tty1-launch.sh" /usr/local/sbin/braillatron-tty1-launch.sh
@@ -113,6 +122,7 @@ install -m 755 "${ROOT}/deploy/os/braillatron-fb-repaint.sh" /usr/local/sbin/bra
 install -m 755 "${ROOT}/deploy/os/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
 
 install -m 644 "${ROOT}/deploy/systemd/braillatron-dictionary-data.service" "${SYSTEMD_DIR}/"
+install -m 644 "${ROOT}/deploy/systemd/braillatron-localsend.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-ui.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-sentinel.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-connectd.service" "${SYSTEMD_DIR}/"

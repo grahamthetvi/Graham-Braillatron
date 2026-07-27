@@ -909,6 +909,12 @@ std::string LibraryStore::detect_format(const std::string &path) const
     if (has_extension(lower, ".m4a")) {
         return "m4a";
     }
+    if (has_extension(lower, ".m4b")) {
+        return "m4b";
+    }
+    if (has_extension(lower, ".aac")) {
+        return "aac";
+    }
     if (has_extension(lower, ".ogg")) {
         return "ogg";
     }

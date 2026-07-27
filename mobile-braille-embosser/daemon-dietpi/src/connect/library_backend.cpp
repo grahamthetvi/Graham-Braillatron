@@ -840,7 +840,7 @@ std::string LibraryBackend::status() const
     }
     return "{\"ok\":true,\"enabled\":" + std::string(config_.enabled ? "true" : "false") +
            ",\"local_count\":" + std::to_string(count) +
-           ",\"sources\":[\"gutendex\",\"openlibrary\",\"archive\",\"librivox\"]}";
+           ",\"sources\":[\"gutendex\",\"openlibrary\",\"librivox\"]}";
 }
 
 } // namespace braillatron::connect

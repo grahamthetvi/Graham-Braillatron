@@ -139,6 +139,26 @@ std::string ConnectService::media_set_pause(bool pause)
     return "{\"ok\":true,\"paused\":" + std::string(pause ? "true" : "false") + "}";
 }
 
+std::string ConnectService::media_skip(double delta_seconds)
+{
+    if (!mpv_.ensure_started()) {
+        return "{\"ok\":false,\"error\":\"mpv unavailable\"}";
+    }
+    if (!mpv_.ipc().seek_relative(delta_seconds)) {
+        return "{\"ok\":false,\"error\":\"seek failed\"}";
+    }
+    return "{\"ok\":true}";
+}
+
+std::string ConnectService::media_stop()
+{
+    if (!mpv_.ensure_started()) {
+        return "{\"ok\":false,\"error\":\"mpv unavailable\"}";
+    }
+    mpv_.ipc().stop();
+    return "{\"ok\":true}";
+}
+
 std::string ConnectService::execute_command(const std::string &cmd, const std::string &request)
 {
     if (cmd == "ping") {
@@ -149,13 +169,24 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
         return "{\"ok\":true,\"youtube_cookies\":" +
                std::string(youtube_cookies ? "true" : "false") + ",\"signal_linked\":" +
                std::string(signal_.is_linked() ? "true" : "false") + ",\"gmail_linked\":" +
-               std::string(gmail_.is_linked() ? "true" : "false") + "}";
+               std::string(gmail_.is_linked() ? "true" : "false") + ",\"gmail_oauth_linked\":" +
+               std::string(gmail_.is_oauth_linked() ? "true" : "false") + ",\"imap_linked\":" +
+               std::string(gmail_.is_imap_linked() ? "true" : "false") + "}";
     }
     if (cmd == "media.pause") {
         return media_pause_toggle();
     }
     if (cmd == "media.set_pause") {
         return media_set_pause(json_get_bool(request, "pause", true));
+    }
+    if (cmd == "media.skip_forward") {
+        return media_skip(30.0);
+    }
+    if (cmd == "media.skip_backward") {
+        return media_skip(-30.0);
+    }
+    if (cmd == "media.stop") {
+        return media_stop();
     }
     if (cmd == "youtube.search") {
         return youtube_.search(json_get_string(request, "query"));
@@ -357,6 +388,9 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     if (cmd == "gmail.start_link") {
         return gmail_.run_link_workflow();
     }
+    if (cmd == "gmail.start_imap_link") {
+        return gmail_.run_imap_link_workflow();
+    }
     if (cmd == "gmail.list_inbox") {
         return gmail_.list_inbox();
     }
@@ -383,6 +417,9 @@ std::string ConnectService::execute_command(const std::string &cmd, const std::s
     }
     if (cmd == "gmail.unlink") {
         return gmail_.unlink();
+    }
+    if (cmd == "gmail.unlink_imap") {
+        return gmail_.unlink_imap();
     }
     return "{\"ok\":false,\"error\":\"unknown cmd\"}";
 }
@@ -480,6 +517,8 @@ std::string ConnectService::handle_request(const std::string &request)
                 result = worthwhile_ptr->download(json_get_string(request, "item_id"));
             } else if (cmd == "gmail.start_link") {
                 result = gmail_ptr->run_link_workflow();
+            } else if (cmd == "gmail.start_imap_link") {
+                result = gmail_ptr->run_imap_link_workflow();
             } else if (cmd == "gmail.list_inbox") {
                 result = gmail_ptr->list_inbox();
             } else if (cmd == "gmail.read_message") {

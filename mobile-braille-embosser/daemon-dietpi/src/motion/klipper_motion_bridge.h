@@ -25,12 +25,16 @@ public:
     bool paper_edge_active() const;
 
 private:
-    void on_row_strike(uint8_t pin_mask, int64_t travel_microsteps);
+    // Scheduler passes absolute carriage position at strike time; convert to
+    // relative Moonraker moves from the last commanded absolute position.
+    void on_row_strike(uint8_t pin_mask, int64_t absolute_microsteps);
 
     KlipperConfig config_;
     MotionService &motion_;
     MoonrakerClient client_;
     bool ready_ = false;
+    int64_t last_x_microsteps_ = 0;
+    bool have_last_x_ = false;
 };
 
 } // namespace braillatron::motion

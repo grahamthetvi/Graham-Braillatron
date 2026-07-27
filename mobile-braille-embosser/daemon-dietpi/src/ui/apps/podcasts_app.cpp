@@ -2,10 +2,12 @@
 #include "../../connect/json_utils.h"
 #include "app_session.h"
 #include "app_util.h"
+#include "held_audio_skip.h"
 #include "ui_context.h"
 
 #include "../output_hub.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -59,18 +61,20 @@ public:
 
     void on_exit(UiContext &ctx) override
     {
-        if (ctx.connect != nullptr) {
-            ctx.connect->request("podcasts.stop");
-        }
-        if (ctx.output != nullptr) {
-            ctx.output->set_media_playing(false);
-        }
+        // Keep shared mpv playing so quick-settings controls work after leave.
         reset_session();
         announce(ctx, "Podcasts closed");
     }
 
     void on_poll(UiContext &ctx) override
     {
+        if (phase_ == Phase::Playing && ctx.connect != nullptr) {
+            const uint64_t now_ms = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count());
+            held_skip_.poll(now_ms, ctx.connect);
+        }
         if (pending_load_feeds_) {
             pending_load_feeds_ = false;
             load_feeds(ctx);
@@ -83,10 +87,14 @@ public:
                                      "\"");
             if (braillatron::connect::json_get_bool(response, "ok", false)) {
                 phase_ = Phase::Playing;
+                held_skip_.reset();
                 if (ctx.output != nullptr) {
                     ctx.output->set_media_playing(true);
+                    ctx.output->set_media_paused(false);
                 }
-                pending_announce_ = "Playing " + pending_play_episode_title_;
+                pending_announce_ =
+                    "Playing " + pending_play_episode_title_ +
+                    ". Enter pause. Hold dots 1-2-3 skip back, 4-5-6 skip forward. Backspace stop.";
             } else {
                 pending_announce_ = "Playback failed";
             }
@@ -109,10 +117,17 @@ public:
         }
         if (event.type == "podcasts.playing" && ctx.output != nullptr) {
             ctx.output->set_media_playing(true);
+            ctx.output->set_media_paused(false);
         }
     }
 
-    void on_chord(uint8_t, UiContext &) override {}
+    void on_chord(uint8_t dot_mask, UiContext &) override
+    {
+        if (phase_ == Phase::Playing && is_skip_chord(dot_mask)) {
+            return;
+        }
+    }
+
     void on_text(const std::string &, UiContext &) override {}
 
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
@@ -289,12 +304,25 @@ private:
             return;
         }
         if (key == keyboard::ControlKey::Backspace) {
+            held_skip_.reset();
             ctx.connect->request("podcasts.stop");
             if (ctx.output != nullptr) {
                 ctx.output->set_media_playing(false);
             }
             phase_ = Phase::Episodes;
             announce(ctx, "Playback stopped");
+            return;
+        }
+        if (key == keyboard::ControlKey::Enter) {
+            const std::string response = ctx.connect->request("podcasts.pause");
+            if (braillatron::connect::json_get_bool(response, "ok", false)) {
+                const bool paused =
+                    braillatron::connect::json_get_bool(response, "paused", false);
+                if (ctx.output != nullptr) {
+                    ctx.output->set_media_paused(paused);
+                }
+                announce(ctx, paused ? "Paused" : "Playing");
+            }
         }
     }
 
@@ -332,10 +360,14 @@ private:
             "\"episode_id\":\"" + braillatron::connect::json_escape(episode.id) + "\"");
         if (braillatron::connect::json_get_bool(response, "ok", false)) {
             phase_ = Phase::Playing;
+            held_skip_.reset();
             if (ctx.output != nullptr) {
                 ctx.output->set_media_playing(true);
+                ctx.output->set_media_paused(false);
             }
-            announce(ctx, "Playing " + episode.title);
+            announce(ctx, "Playing " + episode.title +
+                               ". Enter pause. Hold dots 1-2-3 skip back, 4-5-6 skip forward. "
+                               "Backspace stop.");
         } else {
             announce(ctx, "Playback failed");
         }
@@ -352,6 +384,7 @@ private:
     bool pending_start_playback_ = false;
     std::string pending_play_episode_id_;
     std::string pending_play_episode_title_;
+    HeldAudioSkip held_skip_;
 };
 
 } // namespace

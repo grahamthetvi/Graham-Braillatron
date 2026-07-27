@@ -3,6 +3,7 @@
 #include "json_utils.h"
 #include "subprocess.h"
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
@@ -10,6 +11,7 @@
 #include <iomanip>
 #include <sstream>
 #include <thread>
+#include <vector>
 
 namespace braillatron::connect {
 
@@ -119,6 +121,110 @@ std::string decode_base64url(const std::string &input)
     return output;
 }
 
+std::string trim_copy(const std::string &value)
+{
+    size_t start = 0;
+    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+        ++start;
+    }
+    size_t end = value.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return value.substr(start, end - start);
+}
+
+std::string to_lower_copy(std::string value)
+{
+    for (char &ch : value) {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return value;
+}
+
+std::string header_value_from_rfc822(const std::string &raw, const std::string &name)
+{
+    const std::string needle = name + ":";
+    std::istringstream stream(raw);
+    std::string line;
+    std::string value;
+    bool collecting = false;
+    while (std::getline(stream, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (collecting) {
+            if (!line.empty() && (line[0] == ' ' || line[0] == '\t')) {
+                value += ' ';
+                value += trim_copy(line);
+                continue;
+            }
+            break;
+        }
+        if (line.size() >= needle.size() &&
+            to_lower_copy(line.substr(0, needle.size())) == to_lower_copy(needle)) {
+            value = trim_copy(line.substr(needle.size()));
+            collecting = true;
+        }
+        if (line.empty()) {
+            break;
+        }
+    }
+    return value;
+}
+
+std::string plain_body_from_rfc822(const std::string &raw)
+{
+    const size_t sep = raw.find("\r\n\r\n");
+    const size_t sep2 = raw.find("\n\n");
+    size_t body_start = std::string::npos;
+    if (sep != std::string::npos && (sep2 == std::string::npos || sep <= sep2)) {
+        body_start = sep + 4;
+    } else if (sep2 != std::string::npos) {
+        body_start = sep2 + 2;
+    }
+    if (body_start == std::string::npos || body_start >= raw.size()) {
+        return {};
+    }
+    std::string body = raw.substr(body_start);
+    while (!body.empty() && (body.back() == '\n' || body.back() == '\r' || body.back() == ' ')) {
+        body.pop_back();
+    }
+    return body;
+}
+
+std::vector<std::string> parse_imap_search_uids(const std::string &response)
+{
+    std::vector<std::string> uids;
+    const size_t pos = response.find("* SEARCH");
+    if (pos == std::string::npos) {
+        return uids;
+    }
+    size_t i = pos + 8;
+    while (i < response.size() && !std::isdigit(static_cast<unsigned char>(response[i]))) {
+        ++i;
+    }
+    std::string current;
+    for (; i < response.size(); ++i) {
+        const unsigned char ch = static_cast<unsigned char>(response[i]);
+        if (std::isdigit(ch)) {
+            current.push_back(static_cast<char>(ch));
+        } else if (!current.empty()) {
+            uids.push_back(current);
+            current.clear();
+            if (ch == '\n' || ch == '\r') {
+                break;
+            }
+        } else if (ch == '\n' || ch == '\r') {
+            break;
+        }
+    }
+    if (!current.empty()) {
+        uids.push_back(current);
+    }
+    return uids;
+}
+
 std::string encode_base64url(const std::string &input)
 {
     static const char *kAlphabet =
@@ -163,13 +269,49 @@ GmailBackend::GmailBackend(GmailConfig config, EventWriter *events)
     ensure_directory(config_.credentials_dir);
 }
 
-bool GmailBackend::is_linked() const
+bool GmailBackend::is_oauth_linked() const
 {
     std::string access;
     std::string refresh;
     uint64_t expires = 0;
     std::string email;
     return load_token(access, refresh, expires, email) && !refresh.empty();
+}
+
+bool GmailBackend::is_imap_linked() const
+{
+    std::string email;
+    std::string password;
+    std::string host_override;
+    return load_imap_credentials(email, password, host_override);
+}
+
+bool GmailBackend::is_linked() const
+{
+    const std::string mode = to_lower_copy(config_.auth_mode);
+    if (mode == "oauth") {
+        return is_oauth_linked();
+    }
+    if (mode == "imap") {
+        return is_imap_linked();
+    }
+    return is_oauth_linked() || is_imap_linked();
+}
+
+GmailBackend::Transport GmailBackend::active_transport() const
+{
+    const std::string mode = to_lower_copy(config_.auth_mode);
+    if (mode == "oauth") {
+        return Transport::Oauth;
+    }
+    if (mode == "imap") {
+        return Transport::Imap;
+    }
+    // auto: prefer IMAP when linked so school accounts win over stale OAuth.
+    if (is_imap_linked()) {
+        return Transport::Imap;
+    }
+    return Transport::Oauth;
 }
 
 std::string GmailBackend::load_client_id() const
@@ -229,11 +371,18 @@ std::string GmailBackend::link_status() const
     if (!config_.enabled) {
         return "{\"ok\":false,\"error\":\"gmail disabled\"}";
     }
+    const bool oauth_linked = is_oauth_linked();
+    const bool imap_linked = is_imap_linked();
     const bool linked = is_linked();
     const bool pending = link_watch_active_.load();
+    const std::string transport =
+        active_transport() == Transport::Imap ? "imap" : "oauth";
     std::ostringstream out;
-    out << "{\"ok\":true,\"linked\":" << (linked ? "true" : "false") << ",\"link_pending\":"
-        << (pending ? "true" : "false");
+    out << "{\"ok\":true,\"linked\":" << (linked ? "true" : "false")
+        << ",\"oauth_linked\":" << (oauth_linked ? "true" : "false")
+        << ",\"imap_linked\":" << (imap_linked ? "true" : "false")
+        << ",\"auth_mode\":\"" << json_escape(config_.auth_mode) << "\",\"transport\":\""
+        << transport << "\",\"link_pending\":" << (pending ? "true" : "false");
     if (!pending_user_code_.empty()) {
         out << ",\"user_code\":\"" << json_escape(pending_user_code_) << "\"";
     }
@@ -245,6 +394,15 @@ std::string GmailBackend::link_status() const
     uint64_t expires = 0;
     std::string email;
     if (load_token(access, refresh, expires, email) && !email.empty()) {
+        out << ",\"oauth_email\":\"" << json_escape(email) << "\"";
+    }
+    std::string imap_email;
+    std::string imap_password;
+    std::string host_override;
+    if (load_imap_credentials(imap_email, imap_password, host_override) && !imap_email.empty()) {
+        out << ",\"imap_email\":\"" << json_escape(imap_email) << "\"";
+        out << ",\"email\":\"" << json_escape(imap_email) << "\"";
+    } else if (!email.empty()) {
         out << ",\"email\":\"" << json_escape(email) << "\"";
     }
     out << "}";
@@ -336,7 +494,7 @@ std::string GmailBackend::run_link_workflow()
     if (!config_.enabled) {
         return "{\"ok\":false,\"error\":\"gmail disabled\"}";
     }
-    if (is_linked()) {
+    if (is_oauth_linked()) {
         std::string access;
         std::string refresh;
         uint64_t expires = 0;
@@ -575,6 +733,14 @@ std::string GmailBackend::list_inbox()
     if (!is_linked()) {
         return "{\"ok\":false,\"error\":\"gmail not linked\"}";
     }
+    if (active_transport() == Transport::Imap) {
+        return list_inbox_imap();
+    }
+    return list_inbox_oauth();
+}
+
+std::string GmailBackend::list_inbox_oauth()
+{
     std::string access;
     if (!ensure_access_token(access)) {
         return "{\"ok\":false,\"error\":\"gmail token unavailable\"}";
@@ -622,6 +788,14 @@ std::string GmailBackend::read_message(const std::string &message_id)
     if (message_id.empty()) {
         return "{\"ok\":false,\"error\":\"missing message_id\"}";
     }
+    if (active_transport() == Transport::Imap) {
+        return read_message_imap(message_id);
+    }
+    return read_message_oauth(message_id);
+}
+
+std::string GmailBackend::read_message_oauth(const std::string &message_id)
+{
     std::string access;
     if (!ensure_access_token(access)) {
         return "{\"ok\":false,\"error\":\"gmail token unavailable\"}";
@@ -657,6 +831,9 @@ std::string GmailBackend::send_message(const std::string &to, const std::string 
     if (to.empty() || body.empty()) {
         return "{\"ok\":false,\"error\":\"missing to or body\"}";
     }
+    if (active_transport() == Transport::Imap) {
+        return "{\"ok\":false,\"error\":\"IMAP send requires SMTP setup (coming soon); use OAuth Gmail for send\"}";
+    }
     std::string access;
     if (!ensure_access_token(access)) {
         return "{\"ok\":false,\"error\":\"gmail token unavailable\"}";
@@ -676,6 +853,9 @@ std::string GmailBackend::reply_message(const std::string &message_id, const std
 {
     if (!config_.enabled || message_id.empty() || body.empty()) {
         return "{\"ok\":false,\"error\":\"invalid reply request\"}";
+    }
+    if (active_transport() == Transport::Imap) {
+        return "{\"ok\":false,\"error\":\"IMAP reply requires SMTP setup (coming soon)\"}";
     }
     std::string access;
     if (!ensure_access_token(access)) {
@@ -713,6 +893,9 @@ std::string GmailBackend::archive_message(const std::string &message_id)
     if (!config_.enabled || message_id.empty()) {
         return "{\"ok\":false,\"error\":\"invalid archive request\"}";
     }
+    if (active_transport() == Transport::Imap) {
+        return "{\"ok\":false,\"error\":\"IMAP archive not supported yet\"}";
+    }
     std::string access;
     if (!ensure_access_token(access)) {
         return "{\"ok\":false,\"error\":\"gmail token unavailable\"}";
@@ -732,6 +915,23 @@ std::string GmailBackend::delete_message(const std::string &message_id)
     if (!config_.enabled || message_id.empty()) {
         return "{\"ok\":false,\"error\":\"invalid delete request\"}";
     }
+    if (active_transport() == Transport::Imap) {
+        std::string email;
+        std::string password;
+        std::string host_override;
+        if (!load_imap_credentials(email, password, host_override)) {
+            return "{\"ok\":false,\"error\":\"IMAP credentials missing\"}";
+        }
+        const std::string host = resolve_imap_host(email, host_override);
+        const std::string response =
+            imap_curl("INBOX", "UID STORE " + message_id + " +FLAGS (\\Deleted)", email, password,
+                      host);
+        (void)imap_curl("INBOX", "EXPUNGE", email, password, host);
+        if (response.empty()) {
+            return "{\"ok\":false,\"error\":\"IMAP delete failed\"}";
+        }
+        return "{\"ok\":true}";
+    }
     std::string access;
     if (!ensure_access_token(access)) {
         return "{\"ok\":false,\"error\":\"gmail token unavailable\"}";
@@ -749,6 +949,22 @@ std::string GmailBackend::star_message(const std::string &message_id)
 {
     if (!config_.enabled || message_id.empty()) {
         return "{\"ok\":false,\"error\":\"invalid star request\"}";
+    }
+    if (active_transport() == Transport::Imap) {
+        std::string email;
+        std::string password;
+        std::string host_override;
+        if (!load_imap_credentials(email, password, host_override)) {
+            return "{\"ok\":false,\"error\":\"IMAP credentials missing\"}";
+        }
+        const std::string host = resolve_imap_host(email, host_override);
+        const std::string response =
+            imap_curl("INBOX", "UID STORE " + message_id + " +FLAGS (\\Flagged)", email, password,
+                      host);
+        if (response.empty()) {
+            return "{\"ok\":false,\"error\":\"IMAP star failed\"}";
+        }
+        return "{\"ok\":true}";
     }
     std::string access;
     if (!ensure_access_token(access)) {
@@ -772,7 +988,278 @@ std::string GmailBackend::unlink()
     link_watch_active_ = false;
     pending_user_code_.clear();
     pending_verification_url_.clear();
-    return "{\"ok\":true,\"linked\":false}";
+    return "{\"ok\":true,\"linked\":" + std::string(is_linked() ? "true" : "false") +
+           ",\"oauth_linked\":false,\"imap_linked\":" +
+           std::string(is_imap_linked() ? "true" : "false") + "}";
+}
+
+std::string GmailBackend::unlink_imap()
+{
+    if (file_exists(config_.imap_password_path)) {
+        run_command("rm -f " + shell_escape(config_.imap_password_path));
+    }
+    return "{\"ok\":true,\"linked\":" + std::string(is_linked() ? "true" : "false") +
+           ",\"imap_linked\":false,\"oauth_linked\":" +
+           std::string(is_oauth_linked() ? "true" : "false") + "}";
+}
+
+bool GmailBackend::load_imap_credentials(std::string &email, std::string &password,
+                                         std::string &imap_host_override) const
+{
+    email.clear();
+    password.clear();
+    imap_host_override.clear();
+    if (!file_exists(config_.imap_password_path)) {
+        return false;
+    }
+    std::ifstream file(config_.imap_password_path);
+    if (!file.is_open()) {
+        return false;
+    }
+    std::string line;
+    while (std::getline(file, line)) {
+        line = trim_copy(line);
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) {
+            continue;
+        }
+        const std::string key = trim_copy(line.substr(0, eq));
+        const std::string value = trim_copy(line.substr(eq + 1));
+        if (key == "email" || key == "username" || key == "user") {
+            email = value;
+        } else if (key == "password" || key == "app_password") {
+            password = value;
+        } else if (key == "imap_host" || key == "host") {
+            imap_host_override = value;
+        }
+    }
+    return !email.empty() && !password.empty();
+}
+
+std::string GmailBackend::resolve_imap_host(const std::string &email,
+                                            const std::string &host_override) const
+{
+    if (!host_override.empty()) {
+        return host_override;
+    }
+    if (!config_.imap_host.empty()) {
+        return config_.imap_host;
+    }
+    const size_t at = email.find('@');
+    if (at == std::string::npos || at + 1 >= email.size()) {
+        return "imap.gmail.com";
+    }
+    const std::string domain = to_lower_copy(email.substr(at + 1));
+    if (domain == "gmail.com" || domain == "googlemail.com") {
+        return "imap.gmail.com";
+    }
+    if (domain == "outlook.com" || domain == "hotmail.com" || domain == "live.com" ||
+        domain == "office365.com") {
+        return "outlook.office365.com";
+    }
+    if (domain == "yahoo.com") {
+        return "imap.mail.yahoo.com";
+    }
+    if (domain == "icloud.com" || domain == "me.com" || domain == "mac.com") {
+        return "imap.mail.me.com";
+    }
+    // Many schools use Microsoft 365; default to Outlook host, override via imap.ini.
+    return "outlook.office365.com";
+}
+
+std::string GmailBackend::imap_curl(const std::string &mailbox_path,
+                                    const std::string &custom_request, const std::string &email,
+                                    const std::string &password, const std::string &host) const
+{
+    std::ostringstream url;
+    url << "imaps://" << host;
+    if (config_.imap_port != 993) {
+        url << ':' << config_.imap_port;
+    }
+    url << '/' << mailbox_path;
+    std::ostringstream cmd;
+    cmd << "curl -sS --connect-timeout 20 --max-time 90 --url " << shell_escape(url.str())
+        << " --user " << shell_escape(email + ":" + password);
+    if (!custom_request.empty()) {
+        cmd << " -X " << shell_escape(custom_request);
+    }
+    cmd << " 2>/dev/null";
+    return run_command(cmd.str());
+}
+
+bool GmailBackend::imap_login_ok(const std::string &email, const std::string &password,
+                                 const std::string &host) const
+{
+    const std::string response = imap_curl("", "LIST \"\" INBOX", email, password, host);
+    if (response.empty()) {
+        return false;
+    }
+    const std::string lower = to_lower_copy(response);
+    if (lower.find("authentication failed") != std::string::npos ||
+        lower.find("invalid credentials") != std::string::npos ||
+        lower.find("login failed") != std::string::npos ||
+        lower.find("access denied") != std::string::npos ||
+        (lower.find("authenti") != std::string::npos &&
+         lower.find("fail") != std::string::npos)) {
+        return false;
+    }
+    return response.find("INBOX") != std::string::npos ||
+           response.find("* LIST") != std::string::npos ||
+           lower.find(" ok ") != std::string::npos || lower.find("\nok ") != std::string::npos;
+}
+
+bool GmailBackend::import_imap_credentials_from_incoming()
+{
+    const std::vector<std::string> candidates = {
+        "/data/braillatron/credentials/incoming/" + config_.imap_incoming_name,
+        "/data/braillatron/credentials/incoming/gmail-imap.ini",
+        "/data/braillatron/credentials/incoming/school-email.ini",
+        "/data/braillatron/credentials/incoming/imap.ini",
+    };
+    for (const std::string &incoming : candidates) {
+        if (!file_exists(incoming)) {
+            continue;
+        }
+        ensure_directory(config_.credentials_dir);
+        const std::string tmp = config_.imap_password_path + ".tmp";
+        if (!atomic_move_file(incoming, tmp) && !atomic_move_file(incoming, config_.imap_password_path)) {
+            // Fall back to copy if move across mount fails.
+            run_command("cp " + shell_escape(incoming) + " " + shell_escape(tmp));
+            run_command("rm -f " + shell_escape(incoming));
+        }
+        if (file_exists(tmp)) {
+            run_command("chmod 600 " + shell_escape(tmp));
+            if (!atomic_move_file(tmp, config_.imap_password_path)) {
+                run_command("mv -f " + shell_escape(tmp) + " " +
+                            shell_escape(config_.imap_password_path));
+            }
+        }
+        run_command("chmod 700 " + shell_escape(config_.credentials_dir));
+        run_command("chmod 600 " + shell_escape(config_.imap_password_path));
+        return file_exists(config_.imap_password_path);
+    }
+    return false;
+}
+
+std::string GmailBackend::run_imap_link_workflow()
+{
+    if (!config_.enabled) {
+        return "{\"ok\":false,\"error\":\"gmail disabled\"}";
+    }
+
+    import_imap_credentials_from_incoming();
+
+    std::string email;
+    std::string password;
+    std::string host_override;
+    if (!load_imap_credentials(email, password, host_override)) {
+        std::ostringstream out;
+        out << "{\"ok\":true,\"linked\":false,\"imap_linked\":false,"
+               "\"needs_credentials\":true,"
+               "\"instructions\":\"Create imap.ini with email= and password= (app password). "
+               "Send via LocalSend or copy to /data/braillatron/credentials/incoming/imap.ini, "
+               "then choose Link IMAP email again. Optional imap_host= for non-Outlook schools.\"}";
+        return out.str();
+    }
+
+    const std::string host = resolve_imap_host(email, host_override);
+    if (!imap_login_ok(email, password, host)) {
+        if (events_ != nullptr) {
+            events_->emit("gmail.imap_link_failed",
+                          "{\"error\":\"IMAP login failed\",\"email\":\"" + json_escape(email) +
+                              "\"}");
+        }
+        return "{\"ok\":false,\"error\":\"IMAP login failed\",\"email\":\"" + json_escape(email) +
+               "\",\"imap_host\":\"" + json_escape(host) + "\"}";
+    }
+
+    if (events_ != nullptr) {
+        events_->emit("gmail.imap_link_completed",
+                      "{\"email\":\"" + json_escape(email) + "\",\"imap_host\":\"" +
+                          json_escape(host) + "\"}");
+    }
+    return "{\"ok\":true,\"linked\":true,\"imap_linked\":true,\"email\":\"" + json_escape(email) +
+           "\",\"imap_host\":\"" + json_escape(host) + "\"}";
+}
+
+std::string GmailBackend::list_inbox_imap()
+{
+    std::string email;
+    std::string password;
+    std::string host_override;
+    if (!load_imap_credentials(email, password, host_override)) {
+        return "{\"ok\":false,\"error\":\"IMAP credentials missing\"}";
+    }
+    const std::string host = resolve_imap_host(email, host_override);
+    const std::string search = imap_curl("INBOX", "UID SEARCH ALL", email, password, host);
+    auto uids = parse_imap_search_uids(search);
+    if (uids.empty()) {
+        return "{\"ok\":true,\"messages\":[],\"transport\":\"imap\"}";
+    }
+
+    const size_t limit = static_cast<size_t>(config_.inbox_limit);
+    if (uids.size() > limit) {
+        uids.erase(uids.begin(), uids.end() - static_cast<std::ptrdiff_t>(limit));
+    }
+    std::reverse(uids.begin(), uids.end()); // newest first when UIDs ascend
+
+    std::ostringstream out;
+    out << "{\"ok\":true,\"transport\":\"imap\",\"messages\":[";
+    bool first = true;
+    for (const std::string &uid : uids) {
+        const std::string raw =
+            imap_curl("INBOX/;UID=" + uid, "", email, password, host);
+        if (raw.empty()) {
+            continue;
+        }
+        const std::string from = header_value_from_rfc822(raw, "From");
+        const std::string subject = header_value_from_rfc822(raw, "Subject");
+        std::string snippet = plain_body_from_rfc822(raw);
+        if (snippet.size() > 160) {
+            snippet = snippet.substr(0, 160);
+        }
+        for (char &ch : snippet) {
+            if (ch == '\n' || ch == '\r') {
+                ch = ' ';
+            }
+        }
+        if (!first) {
+            out << ',';
+        }
+        first = false;
+        out << "{\"id\":\"" << json_escape(uid) << "\",\"from\":\"" << json_escape(from)
+            << "\",\"subject\":\"" << json_escape(subject.empty() ? "(no subject)" : subject)
+            << "\",\"snippet\":\"" << json_escape(snippet) << "\"}";
+    }
+    out << "]}";
+    return out.str();
+}
+
+std::string GmailBackend::read_message_imap(const std::string &message_id)
+{
+    std::string email;
+    std::string password;
+    std::string host_override;
+    if (!load_imap_credentials(email, password, host_override)) {
+        return "{\"ok\":false,\"error\":\"IMAP credentials missing\"}";
+    }
+    const std::string host = resolve_imap_host(email, host_override);
+    const std::string raw =
+        imap_curl("INBOX/;UID=" + message_id, "", email, password, host);
+    if (raw.empty()) {
+        return "{\"ok\":false,\"error\":\"IMAP message fetch failed\"}";
+    }
+    const std::string from = header_value_from_rfc822(raw, "From");
+    const std::string subject = header_value_from_rfc822(raw, "Subject");
+    const std::string body = plain_body_from_rfc822(raw);
+    std::ostringstream out;
+    out << "{\"ok\":true,\"transport\":\"imap\",\"message\":{\"id\":\"" << json_escape(message_id)
+        << "\",\"thread_id\":\"\",\"from\":\"" << json_escape(from) << "\",\"subject\":\""
+        << json_escape(subject) << "\",\"body\":\"" << json_escape(body) << "\"}}";
+    return out.str();
 }
 
 } // namespace braillatron::connect

@@ -53,7 +53,12 @@ public:
 private:
     AppSession *focused_app() const;
     bool word_buffer_active() const;
+    bool word_buffer_uncontracted() const;
     void deliver_text(AppSession *app, const std::string &text);
+    void echo_typed_chord(uint8_t dot_mask);
+    void echo_typed_text(const std::string &text);
+    void echo_typed_commit(const std::string &word);
+    void echo_typed_deleted(const std::string &preview_before);
 
     UiContext ctx_;
     std::vector<std::unique_ptr<AppSession>> apps_;

@@ -35,15 +35,23 @@ void KlipperMotionBridge::attach_row_strike_handlers()
     });
 }
 
-void KlipperMotionBridge::on_row_strike(uint8_t pin_mask, int64_t travel_microsteps)
+void KlipperMotionBridge::on_row_strike(uint8_t pin_mask, int64_t absolute_microsteps)
 {
     if (!ready_ || MotionGate::is_blocked()) {
         return;
     }
 
-    const double mm = braillatron::kinematics::microsteps_to_mm(travel_microsteps);
-    if (std::abs(mm) >= 0.001) {
-        client_.move_x_relative_mm(mm, config_.x_move_speed_mm_s);
+    // EmbossScheduler passes absolute travel-log position, not a relative delta.
+    if (!have_last_x_) {
+        last_x_microsteps_ = absolute_microsteps;
+        have_last_x_ = true;
+    } else {
+        const int64_t delta = absolute_microsteps - last_x_microsteps_;
+        last_x_microsteps_ = absolute_microsteps;
+        const double mm = braillatron::kinematics::microsteps_to_mm(delta);
+        if (std::abs(mm) >= 0.001) {
+            client_.move_x_relative_mm(mm, config_.x_move_speed_mm_s);
+        }
     }
 
     for (unsigned bit = 0; bit < 6; ++bit) {

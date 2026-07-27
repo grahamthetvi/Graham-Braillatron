@@ -29,6 +29,7 @@ public:
     int elapsed_seconds() const { return elapsed_sec_; }
 
     void set_countdown_minutes(int minutes);
+    void set_countdown_seconds(int seconds);
     void start_countdown();
     void start_stopwatch();
     void start_pomodoro();
@@ -53,6 +54,7 @@ private:
     bool paused_ = false;
     uint64_t last_tick_ms_ = 0;
     int countdown_minutes_ = 5;
+    int countdown_seconds_ = 5 * 60;
     int duration_sec_ = 0;
     int remaining_sec_ = 0;
     int elapsed_sec_ = 0;

@@ -1,0 +1,16 @@
+[Unit]
+Description=Braillatron LocalSend receive sidecar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=BRAILLATRON_DATA=/data/braillatron
+Environment=BRAILLATRON_LOCALSEND_ALIAS=Braillatron
+Environment=BRAILLATRON_LOCALSEND_PORT=53317
+ExecStart=/usr/local/bin/braillatron-localsend-receive
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=braillatron.target

@@ -60,14 +60,18 @@ void WordBufferInput::rebuild_preview(const documents::BrailleTranslationService
     }
 }
 
-std::string WordBufferInput::commit_word(const documents::BrailleTranslationService *braille_input)
+std::string WordBufferInput::commit_word(const documents::BrailleTranslationService *braille_input,
+                                         bool uncontracted)
 {
     if (pending_chords_.empty()) {
         return {};
     }
 
     std::string word;
-    if (braille_input != nullptr) {
+    if (uncontracted) {
+        rebuild_preview(braille_input);
+        word = pending_preview_;
+    } else if (braille_input != nullptr) {
         if (const auto translated = braille_input->translate_backward_cells(pending_chords_)) {
             word = *translated;
         }

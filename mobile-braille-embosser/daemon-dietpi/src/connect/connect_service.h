@@ -38,6 +38,8 @@ private:
     std::string cmd_from_request(const std::string &request) const;
     std::string media_pause_toggle();
     std::string media_set_pause(bool pause);
+    std::string media_skip(double delta_seconds);
+    std::string media_stop();
 
     ConnectConfig connect_config_;
     EventWriter events_;

@@ -14,7 +14,7 @@ namespace {
 
 enum class SetupPhase {
     PickMode,
-    SetMinutes,
+    SetDuration,
     Ready,
 };
 
@@ -28,11 +28,11 @@ public:
     {
         phase_ = SetupPhase::PickMode;
         mode_index_ = 0;
-        minutes_ = ctx.timer != nullptr && ctx.timer->remaining_seconds() > 0
-                       ? ctx.timer->remaining_seconds() / 60
-                       : 5;
-        if (minutes_ < 1) {
-            minutes_ = 5;
+        seconds_ = ctx.timer != nullptr && ctx.timer->remaining_seconds() > 0
+                       ? ctx.timer->remaining_seconds()
+                       : 5 * 60;
+        if (seconds_ < 1) {
+            seconds_ = 5 * 60;
         }
         announce_mode(ctx);
     }
@@ -55,7 +55,7 @@ public:
         }
 
         if (key == keyboard::ControlKey::Backspace) {
-            if (phase_ == SetupPhase::SetMinutes) {
+            if (phase_ == SetupPhase::SetDuration) {
                 phase_ = SetupPhase::PickMode;
                 announce_mode(ctx);
                 return;
@@ -71,9 +71,12 @@ public:
             if (phase_ == SetupPhase::PickMode && mode_index_ > 0) {
                 --mode_index_;
                 announce_mode(ctx);
-            } else if (phase_ == SetupPhase::SetMinutes && minutes_ < 120) {
-                ++minutes_;
-                announce_minutes(ctx);
+            } else if (phase_ == SetupPhase::SetDuration && seconds_ < 120 * 60) {
+                seconds_ = seconds_ < 60 ? seconds_ + 1 : seconds_ + 60;
+                if (seconds_ > 120 * 60) {
+                    seconds_ = 120 * 60;
+                }
+                announce_duration(ctx);
             }
             return;
         }
@@ -83,9 +86,12 @@ public:
                 mode_index_ + 1 < static_cast<int>(sizeof(kModes) / sizeof(kModes[0]))) {
                 ++mode_index_;
                 announce_mode(ctx);
-            } else if (phase_ == SetupPhase::SetMinutes && minutes_ > 1) {
-                --minutes_;
-                announce_minutes(ctx);
+            } else if (phase_ == SetupPhase::SetDuration && seconds_ > 1) {
+                seconds_ = seconds_ <= 60 ? seconds_ - 1 : seconds_ - 60;
+                if (seconds_ < 1) {
+                    seconds_ = 1;
+                }
+                announce_duration(ctx);
             }
             return;
         }
@@ -97,15 +103,15 @@ public:
         if (phase_ == SetupPhase::PickMode) {
             selected_mode_ = kModes[static_cast<size_t>(mode_index_)];
             if (selected_mode_ == "Countdown") {
-                phase_ = SetupPhase::SetMinutes;
-                announce_minutes(ctx);
+                phase_ = SetupPhase::SetDuration;
+                announce_duration(ctx);
                 return;
             }
             start_selected_mode(ctx);
             return;
         }
 
-        if (phase_ == SetupPhase::SetMinutes) {
+        if (phase_ == SetupPhase::SetDuration) {
             start_selected_mode(ctx);
         }
     }
@@ -117,18 +123,27 @@ private:
                            ". Enter to choose. Back to exit.");
     }
 
-    void announce_minutes(UiContext &ctx)
+    void announce_duration(UiContext &ctx)
     {
-        announce(ctx, "Countdown minutes: " + std::to_string(minutes_) +
+        if (seconds_ < 60) {
+            announce(ctx, "Countdown seconds: " + std::to_string(seconds_) +
+                               ". Up increases, down decreases. Enter to start.");
+            return;
+        }
+        announce(ctx, "Countdown minutes: " + std::to_string(seconds_ / 60) +
                            ". Up increases, down decreases. Enter to start.");
     }
 
     void start_selected_mode(UiContext &ctx)
     {
         if (selected_mode_ == "Countdown") {
-            ctx.timer->set_countdown_minutes(minutes_);
+            ctx.timer->set_countdown_seconds(seconds_);
             ctx.timer->start_countdown();
-            announce(ctx, "Countdown started for " + std::to_string(minutes_) + " minutes.");
+            if (seconds_ < 60) {
+                announce(ctx, "Countdown started for " + std::to_string(seconds_) + " seconds.");
+            } else {
+                announce(ctx, "Countdown started for " + std::to_string(seconds_ / 60) + " minutes.");
+            }
         } else if (selected_mode_ == "Stopwatch") {
             ctx.timer->start_stopwatch();
             announce(ctx, "Stopwatch started.");
@@ -145,7 +160,7 @@ private:
     static constexpr const char *kModes[] = {"Countdown", "Stopwatch", "Pomodoro"};
     SetupPhase phase_ = SetupPhase::PickMode;
     int mode_index_ = 0;
-    int minutes_ = 5;
+    int seconds_ = 5 * 60;
     std::string selected_mode_ = "Countdown";
 };
 

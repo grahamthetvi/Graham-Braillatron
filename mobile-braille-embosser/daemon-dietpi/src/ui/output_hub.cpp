@@ -1,6 +1,7 @@
 #include "output_hub.h"
 
 #include "../documents/liblouis_bridge.h"
+#include "../keyboard/global_hooks.h"
 #include "../motion/motion_service.h"
 #include "../platform/audio_output.h"
 #include "../platform/network_util.h"
@@ -361,24 +362,19 @@ void OutputHub::tick_remote_display(uint64_t now_ms)
     (void)now_ms;
 }
 
-void OutputHub::emit(const std::string &message, bool update_display_toast)
+void OutputHub::emit(const std::string &message, bool update_display_toast, bool speak_over_media)
 {
     std::cerr << "[ui] " << message << "\n";
-
-    if (media_playing_ && ui_config_.tts_enabled) {
-        if (update_display_toast && ui_config_.display_enabled && display_ != nullptr) {
-            chrome_model_.toast = message;
-            note_toast_changed(static_cast<uint64_t>(
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now().time_since_epoch())
-                    .count()));
-            render_chrome();
-        }
-        return;
-    }
+    // Navigation/focus/menu speech always speaks, including during media playback
+    // (students multitask). speak_over_media remains for callers that previously
+    // opted in; media is not muted here — ALSA dmix mixes TTS with mpv.
+    (void)speak_over_media;
 
     if (ui_config_.tts_enabled && tts_ != nullptr) {
-        tts_->speak(message);
+        if (!tts_muted_) {
+            tts_paused_ = false;
+            tts_->speak(message);
+        }
     }
 
     if (remote_display_enabled_) {
@@ -414,16 +410,17 @@ void OutputHub::emit(const std::string &message, bool update_display_toast)
 
 void OutputHub::announce_startup(const platform::DeviceStatusReport &report)
 {
-    emit("Braillatron ready");
-
+    std::string message = "Braillatron ready";
     const std::vector<std::string> missing = report.missing_user_messages();
     if (missing.empty()) {
-        emit("All devices connected");
+        message += ". All devices connected";
     } else {
-        for (const std::string &message : missing) {
-            emit(message);
+        for (const std::string &item : missing) {
+            message += ". ";
+            message += item;
         }
     }
+    emit(message);
 
     if (ui_config_.stt_enabled && stt_ != nullptr) {
         stt_->preload();
@@ -476,6 +473,12 @@ void OutputHub::announce_message(const std::string &message)
     emit(message);
 }
 
+void OutputHub::announce_over_media(const std::string &message)
+{
+    stop();
+    emit(message, true, true);
+}
+
 void OutputHub::stop()
 {
     if (ui_config_.tts_enabled && tts_ != nullptr) {
@@ -522,6 +525,15 @@ void OutputHub::announce_list_focus(const AccessibleElement &element, bool at_bo
 
 void OutputHub::announce_spoken(const std::string &message)
 {
+    emit(message, false);
+}
+
+void OutputHub::announce_typing(const std::string &message)
+{
+    if (message.empty()) {
+        return;
+    }
+    stop();
     emit(message, false);
 }
 
@@ -615,16 +627,83 @@ void OutputHub::on_shift_tts_toggle(bool pressed)
         return;
     }
 
+    const auto now_ms = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+
     if (pressed) {
-        tts_->pause();
-        tts_paused_ = true;
-        emit("Speech paused");
-    } else {
-        tts_->resume();
+        shift_down_ = true;
+        shift_hold_fired_ = false;
+        shift_press_ms_ = now_ms;
+        return;
+    }
+
+    // Released.
+    shift_down_ = false;
+    if (shift_hold_fired_) {
+        return;
+    }
+    handle_shift_tap();
+}
+
+void OutputHub::tick_shift_tts(uint64_t now_ms)
+{
+    if (!shift_down_ || shift_hold_fired_) {
+        return;
+    }
+    if (!ui_config_.tts_enabled || tts_ == nullptr) {
+        return;
+    }
+    // While media is playing, Shift still uses press/release for media pause.
+    if (media_playing_) {
+        return;
+    }
+    // Shift+Speech is the system reboot combo — consume the Shift hold so we
+    // neither mute nor stop-speech when the combo is abandoned.
+    if ((hooks::held_key_state() & BRAILLATRON_KEY_SPEECH) != 0) {
+        shift_hold_fired_ = true;
+        return;
+    }
+
+    constexpr uint64_t kHoldMs = 450;
+    if (now_ms - shift_press_ms_ < kHoldMs) {
+        return;
+    }
+    shift_hold_fired_ = true;
+    toggle_speech_mute();
+}
+
+void OutputHub::handle_shift_tap()
+{
+    // Stop the current utterance; the next queued announcement speaks normally.
+    if (tts_ != nullptr) {
+        tts_->stop();
+    }
+    tts_paused_ = true;
+    sync_chrome(false);
+    play_boundary_haptic();
+}
+
+void OutputHub::toggle_speech_mute()
+{
+    if (tts_muted_) {
+        tts_muted_ = false;
         tts_paused_ = false;
-        emit("Speech resumed");
+        sync_chrome(false);
+        emit("Speech on");
+        return;
+    }
+
+    tts_muted_ = true;
+    tts_paused_ = true;
+    if (tts_ != nullptr) {
+        tts_->stop();
+        // Confirmation is allowed through once before mute fully sticks for later emits.
+        tts_->speak("Speech muted");
     }
     sync_chrome(false);
+    play_boundary_haptic();
 }
 
 void OutputHub::on_speech_ptt_gate(bool open)
@@ -633,15 +712,35 @@ void OutputHub::on_speech_ptt_gate(bool open)
         return;
     }
 
-    if (stt_ != nullptr) {
-        stt_->set_ptt_open(open);
-    }
-
     if (open) {
+        // A fresh Speech press always resumes listening, even if an earlier
+        // key cancelled while Speech was still held.
+        suppress_stt_transcripts_ = false;
         dictation_active_ = true;
+        if (stt_ != nullptr) {
+            stt_->set_ptt_open(true);
+        }
         emit("Dictation listening");
     } else {
         dictation_active_ = false;
+        if (stt_ != nullptr) {
+            stt_->set_ptt_open(false);
+        }
+    }
+    sync_chrome(false);
+}
+
+void OutputHub::cancel_dictation()
+{
+    if (!dictation_active_) {
+        return;
+    }
+
+    // Drop the closing final result from the capture thread.
+    suppress_stt_transcripts_ = true;
+    dictation_active_ = false;
+    if (stt_ != nullptr) {
+        stt_->set_ptt_open(false);
     }
     sync_chrome(false);
 }
@@ -798,10 +897,13 @@ void OutputHub::on_connect_event(const connect::ConnectEvent &event)
     if (event.type == "signal.link_pending") {
         signal_link_pending_ = true;
         const std::string uri = connect::json_get_string(event.data_json, "uri");
-        emit("Open Signal on your phone. Linked Devices. Link New Device.");
+        std::string message =
+            "Open Signal on your phone. Linked Devices. Link New Device.";
         if (!uri.empty() && uri.rfind("sgnl://", 0) == 0) {
-            emit(uri);
+            message += " ";
+            message += uri;
         }
+        emit(message);
         return;
     }
 
@@ -821,13 +923,16 @@ void OutputHub::on_connect_event(const connect::ConnectEvent &event)
         gmail_link_pending_ = true;
         const std::string user_code = connect::json_get_string(event.data_json, "user_code");
         const std::string url = connect::json_get_string(event.data_json, "verification_url");
-        emit("Link Gmail at google.com/device");
+        std::string message = "Link Gmail at google.com/device";
         if (!user_code.empty()) {
-            emit("User code: " + user_code);
+            message += ". User code: ";
+            message += user_code;
         }
         if (!url.empty()) {
-            emit(url);
+            message += ". ";
+            message += url;
         }
+        emit(message);
         return;
     }
 
@@ -841,6 +946,17 @@ void OutputHub::on_connect_event(const connect::ConnectEvent &event)
     if (event.type == "gmail.link_failed") {
         gmail_link_pending_ = false;
         emit("Gmail link not completed. Try again.");
+        return;
+    }
+
+    if (event.type == "gmail.imap_link_completed") {
+        const std::string email = connect::json_get_string(event.data_json, "email");
+        emit(email.empty() ? "IMAP linked" : "IMAP linked as " + email);
+        return;
+    }
+
+    if (event.type == "gmail.imap_link_failed") {
+        emit("IMAP link failed. Check app password and host.");
         return;
     }
 
@@ -860,7 +976,11 @@ void OutputHub::on_connect_event(const connect::ConnectEvent &event)
     if (event.type == "weather.alert") {
         const std::string message = connect::json_get_string(event.data_json, "message");
         play_boundary_haptic();
-        announce_message(message.empty() ? "Weather alert" : "Weather alert. " + message);
+        if (message.empty()) {
+            announce_message("Weather alert");
+        } else {
+            announce_message(message);
+        }
         return;
     }
 
@@ -1023,9 +1143,16 @@ void OutputHub::set_media_paused(bool paused)
 
 void OutputHub::set_stt_transcript_handler(SttBackend::TranscriptHandler handler)
 {
-    if (stt_ != nullptr) {
-        stt_->set_transcript_handler(std::move(handler));
+    stt_user_handler_ = std::move(handler);
+    if (stt_ == nullptr) {
+        return;
     }
+    stt_->set_transcript_handler([this](const std::string &text, bool is_final) {
+        if (suppress_stt_transcripts_ || !stt_user_handler_) {
+            return;
+        }
+        stt_user_handler_(text, is_final);
+    });
 }
 
 void OutputHub::set_morse_passive(bool enabled)
@@ -1057,6 +1184,16 @@ void OutputHub::request_restart()
 {
     emit("Restarting");
     telemetry::request_clean_reboot();
+}
+
+void OutputHub::request_ui_restart()
+{
+    emit("Restarting UI");
+    // Brief pause so TTS can start before systemctl stops this process.
+    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    if (!telemetry::request_ui_restart()) {
+        emit("UI restart failed");
+    }
 }
 
 std::vector<MenuItem> OutputHub::build_power_confirm_items(
@@ -1181,9 +1318,11 @@ void OutputHub::toggle_bool(bool &field, const char *name)
     field = !field;
     persist_ui_config();
 
-    if (name == std::string("Speech to Text") && !field && stt_ != nullptr) {
-        stt_->set_ptt_open(false);
-        dictation_active_ = false;
+    if (name == std::string("Speech to Text") && !field) {
+        cancel_dictation();
+        if (stt_ != nullptr) {
+            stt_->set_ptt_open(false);
+        }
     }
 
     if (name == std::string("Visual display")) {
@@ -1666,10 +1805,12 @@ std::vector<MenuItem> OutputHub::build_accounts_menu()
                     }
                     if (connect::json_get_bool(response, "ok", false)) {
                         const std::string uri = connect::json_get_string(response, "uri");
+                        std::string message =
+                            "Approve link on phone. Completion will be announced automatically.";
                         if (!uri.empty() && uri.rfind("sgnl://", 0) == 0) {
-                            emit(uri);
+                            message = uri + ". " + message;
                         }
-                        emit("Approve link on phone. Completion will be announced automatically.");
+                        emit(message);
                     } else {
                         signal_link_pending_ = false;
                         emit("Signal link failed to start");
@@ -1710,10 +1851,12 @@ std::vector<MenuItem> OutputHub::build_accounts_menu()
                     }
                     if (connect::json_get_bool(response, "ok", false)) {
                         const std::string user_code = connect::json_get_string(response, "user_code");
+                        std::string message =
+                            "Visit google.com/device and approve. Completion will be announced.";
                         if (!user_code.empty()) {
-                            emit("User code: " + user_code);
+                            message = "User code: " + user_code + ". " + message;
                         }
-                        emit("Visit google.com/device and approve. Completion will be announced.");
+                        emit(message);
                     } else {
                         gmail_link_pending_ = false;
                         emit("Gmail link failed to start");
@@ -1733,6 +1876,47 @@ std::vector<MenuItem> OutputHub::build_accounts_menu()
                 const std::string status = connect_client_->request("accounts.status");
                 const bool linked = connect::json_get_bool(status, "gmail_linked", false);
                 emit(linked ? "Gmail linked" : "Gmail not linked");
+            },
+        },
+        MenuItem {
+            "Link IMAP email",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                connect_client_->request_async(
+                    "gmail.start_imap_link", "", [this](const std::string &response) {
+                        if (connect::json_get_bool(response, "linked", false) ||
+                            connect::json_get_bool(response, "imap_linked", false)) {
+                            const std::string email = connect::json_get_string(response, "email");
+                            emit(email.empty() ? "IMAP linked" : "IMAP linked as " + email);
+                            return;
+                        }
+                        if (connect::json_get_bool(response, "needs_credentials", false)) {
+                            emit("Send imap.ini via LocalSend with email and app password, then try "
+                                 "again.");
+                            return;
+                        }
+                        const std::string error = connect::json_get_string(response, "error");
+                        emit(error.empty() ? "IMAP link failed" : error);
+                    });
+            },
+        },
+        MenuItem {
+            "IMAP status",
+            {},
+            [this](MenuOverlay &mo) {
+                (void)mo;
+                if (connect_client_ == nullptr) {
+                    emit("Connectivity client unavailable");
+                    return;
+                }
+                const std::string status = connect_client_->request("accounts.status");
+                const bool linked = connect::json_get_bool(status, "imap_linked", false);
+                emit(linked ? "IMAP linked" : "IMAP not linked");
             },
         },
     };

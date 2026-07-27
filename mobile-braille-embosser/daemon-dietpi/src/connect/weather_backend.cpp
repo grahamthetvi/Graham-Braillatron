@@ -1372,9 +1372,12 @@ std::string WeatherBackend::build_alerts_json(const std::string &cache_json) con
             out << ',';
         }
         first = false;
-        out << "\n  {\"type\":\"" << json_escape(type) << "\",\"message\":\""
+        out << "{\"type\":\"" << json_escape(type) << "\",\"message\":\""
             << json_escape(message) << "\"}";
     };
+
+    const std::string location = json_get_string(cache_json, "location");
+    const std::string area = location.empty() ? std::string("your area") : location;
 
     const size_t current_key = cache_json.find("\"current\"");
     if (current_key != std::string::npos) {
@@ -1394,20 +1397,25 @@ std::string WeatherBackend::build_alerts_json(const std::string &cache_json) con
             const double precip = precip_str.empty() ? 0.0 : std::stod(precip_str);
 
             if (code >= 95) {
-                append_alert("thunderstorm", "Thunderstorm warning for current conditions");
+                append_alert("thunderstorm",
+                             "Thunderstorm warning for " + area);
             } else if (code >= 80) {
-                append_alert("heavy_rain", "Heavy rain or showers expected now");
+                append_alert("heavy_rain",
+                             "Heavy rain or showers expected now in " + area);
             }
             if (wind >= config_.alert_wind_threshold_kmh) {
-                append_alert("high_wind", "High wind warning. Wind " + wind_str +
-                                              " kilometers per hour");
+                append_alert("high_wind",
+                             "High wind warning for " + area + ". Wind " + wind_str +
+                                 " kilometers per hour");
             }
             if (precip >= static_cast<double>(config_.alert_precip_threshold_pct)) {
                 append_alert("high_precip",
-                             "High precipitation chance. " + precip_str + " percent");
+                             "High precipitation chance for " + area + ". " + precip_str +
+                                 " percent");
             }
             if (uv >= static_cast<double>(config_.alert_uv_threshold)) {
-                append_alert("high_uv", "High UV index. UV " + uv_str);
+                append_alert("high_uv",
+                             "High UV index for " + area + ". UV " + uv_str);
             }
         }
     }
@@ -1426,19 +1434,20 @@ std::string WeatherBackend::build_alerts_json(const std::string &cache_json) con
             const std::string label = json_get_string(item, "label");
             if (code >= 95) {
                 append_alert("thunderstorm",
-                             "Thunderstorm expected at " + (label.empty() ? "soon" : label));
+                             "Thunderstorm expected at " +
+                                 (label.empty() ? "soon" : label) + " for " + area);
                 break;
             }
             if (precip >= static_cast<double>(config_.alert_precip_threshold_pct)) {
-                append_alert("high_precip", "High rain chance at " +
-                                                (label.empty() ? "soon" : label) + ". " +
-                                                precip_str + " percent");
+                append_alert("high_precip",
+                             "High rain chance at " + (label.empty() ? "soon" : label) +
+                                 " for " + area + ". " + precip_str + " percent");
                 break;
             }
         }
     }
 
-    out << "\n]";
+    out << ']';
     return out.str();
 }
 
@@ -1449,7 +1458,7 @@ void WeatherBackend::evaluate_and_emit_alerts(const std::string &cache_json)
     }
 
     const std::string alerts_json = build_alerts_json(cache_json);
-    if (alerts_json == "[]" || alerts_json == "[\n]") {
+    if (alerts_json == "[]") {
         last_alert_signature_.clear();
         return;
     }

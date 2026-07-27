@@ -1,6 +1,7 @@
 #include "app_registry.h"
 
 #include "all_apps.h"
+#include "app_util.h"
 #include "../output_hub.h"
 
 #include "../../connect/connect_client.h"
@@ -26,33 +27,91 @@ std::vector<const AppSession *> standalone_apps_sorted(
     return standalone;
 }
 
-void insert_media_playback_menu_item(std::vector<MenuItem> &items, UiContext &ctx, size_t index)
+void insert_media_playback_menu_items(std::vector<MenuItem> &items, UiContext &ctx, size_t index)
 {
     if (ctx.output == nullptr || !ctx.output->media_playing()) {
         return;
     }
-    const std::string label =
+
+    auto insert_at = [&](size_t at, MenuItem item) {
+        const size_t clamped = std::min(at, items.size());
+        items.insert(items.begin() + static_cast<std::ptrdiff_t>(clamped), std::move(item));
+    };
+
+    const std::string pause_label =
         ctx.output->media_paused() ? "Resume playback" : "Pause playback";
-    items.insert(items.begin() + static_cast<std::ptrdiff_t>(index),
-                 MenuItem {
-                     label,
-                     {},
-                     [&ctx](MenuOverlay &mo) {
-                         if (ctx.connect == nullptr || ctx.output == nullptr) {
-                             return;
-                         }
-                         const std::string response = ctx.connect->request("media.pause");
-                         if (braillatron::connect::json_get_bool(response, "ok", false)) {
-                             const bool paused =
-                                 braillatron::connect::json_get_bool(response, "paused", false);
-                             ctx.output->set_media_paused(paused);
-                             ctx.output->announce_message(paused ? "Playback paused"
-                                                                 : "Playback resumed");
-                         }
-                         mo.close();
-                         ctx.output->sync_chrome(false);
-                     },
-                 });
+    insert_at(index,
+              MenuItem {
+                  pause_label,
+                  {},
+                  [&ctx](MenuOverlay &mo) {
+                      if (ctx.connect == nullptr || ctx.output == nullptr) {
+                          return;
+                      }
+                      const std::string response = ctx.connect->request("media.pause");
+                      if (braillatron::connect::json_get_bool(response, "ok", false)) {
+                          const bool paused =
+                              braillatron::connect::json_get_bool(response, "paused", false);
+                          ctx.output->set_media_paused(paused);
+                          ctx.output->announce_message(paused ? "Playback paused"
+                                                              : "Playback resumed");
+                      }
+                      mo.close();
+                      ctx.output->sync_chrome(false);
+                  },
+              });
+    insert_at(index + 1,
+              MenuItem {
+                  "Skip back 30 seconds",
+                  {},
+                  [&ctx](MenuOverlay &mo) {
+                      if (ctx.connect != nullptr) {
+                          ctx.connect->request("media.skip_backward");
+                          if (ctx.output != nullptr) {
+                              ctx.output->announce_message("Skipped back");
+                          }
+                      }
+                      mo.close();
+                      if (ctx.output != nullptr) {
+                          ctx.output->sync_chrome(false);
+                      }
+                  },
+              });
+    insert_at(index + 2,
+              MenuItem {
+                  "Skip forward 30 seconds",
+                  {},
+                  [&ctx](MenuOverlay &mo) {
+                      if (ctx.connect != nullptr) {
+                          ctx.connect->request("media.skip_forward");
+                          if (ctx.output != nullptr) {
+                              ctx.output->announce_message("Skipped forward");
+                          }
+                      }
+                      mo.close();
+                      if (ctx.output != nullptr) {
+                          ctx.output->sync_chrome(false);
+                      }
+                  },
+              });
+    insert_at(index + 3,
+              MenuItem {
+                  "Stop playback",
+                  {},
+                  [&ctx](MenuOverlay &mo) {
+                      if (ctx.connect != nullptr) {
+                          ctx.connect->request("media.stop");
+                      }
+                      if (ctx.output != nullptr) {
+                          ctx.output->set_media_playing(false);
+                          ctx.output->announce_message("Playback stopped");
+                      }
+                      mo.close();
+                      if (ctx.output != nullptr) {
+                          ctx.output->sync_chrome(false);
+                      }
+                  },
+              });
 }
 
 } // namespace
@@ -244,6 +303,7 @@ void AppRegistry::on_chord(uint8_t dot_mask)
     if (word_buffer_active()) {
         if (dot_mask != 0) {
             word_buffer_.push_chord(dot_mask, ctx_.braille_input);
+            echo_typed_chord(dot_mask);
             if (ctx_.output != nullptr) {
                 ctx_.output->sync_chrome(false);
             }
@@ -265,16 +325,22 @@ void AppRegistry::on_text(const std::string &text)
     if (word_buffer_active()) {
         for (char ch : text) {
             if (ch == ' ') {
-                const std::string word = word_buffer_.commit_word(ctx_.braille_input);
+                const std::string word =
+                    word_buffer_.commit_word(ctx_.braille_input, word_buffer_uncontracted());
                 if (!word.empty()) {
+                    echo_typed_commit(word);
                     deliver_text(focused_app(), word);
                 }
+                echo_typed_text(" ");
                 deliver_text(focused_app(), " ");
             } else {
-                const std::string word = word_buffer_.commit_word(ctx_.braille_input);
+                const std::string word =
+                    word_buffer_.commit_word(ctx_.braille_input, word_buffer_uncontracted());
                 if (!word.empty()) {
+                    echo_typed_commit(word);
                     deliver_text(focused_app(), word);
                 }
+                echo_typed_text(std::string(1, ch));
                 deliver_text(focused_app(), std::string(1, ch));
             }
         }
@@ -295,17 +361,22 @@ void AppRegistry::on_text(const std::string &text)
 
 void AppRegistry::on_control(keyboard::ControlKey key, bool pressed)
 {
-    if (pressed && key == keyboard::ControlKey::Backspace && word_buffer_active()
-        && word_buffer_.pop_chord(ctx_.braille_input)) {
-        if (ctx_.output != nullptr) {
-            ctx_.output->sync_chrome(false);
+    if (pressed && key == keyboard::ControlKey::Backspace && word_buffer_active()) {
+        const std::string before = word_buffer_.preview();
+        if (word_buffer_.pop_chord(ctx_.braille_input)) {
+            echo_typed_deleted(before);
+            if (ctx_.output != nullptr) {
+                ctx_.output->sync_chrome(false);
+            }
+            return;
         }
-        return;
     }
 
     if (pressed && key == keyboard::ControlKey::Enter && word_buffer_active()) {
-        const std::string word = word_buffer_.commit_word(ctx_.braille_input);
+        const std::string word =
+            word_buffer_.commit_word(ctx_.braille_input, word_buffer_uncontracted());
         if (!word.empty()) {
+            echo_typed_commit(word);
             deliver_text(focused_app(), word);
         }
         if (ctx_.output != nullptr) {
@@ -367,7 +438,7 @@ std::vector<MenuItem> AppRegistry::build_launcher_menu()
             }
         },
     });
-    insert_media_playback_menu_item(items, ctx_, 0);
+    insert_media_playback_menu_items(items, ctx_, 0);
     return items;
 }
 
@@ -537,7 +608,7 @@ std::vector<MenuItem> AppRegistry::build_inline_menu()
     if (active_ != nullptr && active_->menu_has_import_usb()) {
         ++media_index;
     }
-    insert_media_playback_menu_item(items, ctx_, media_index);
+    insert_media_playback_menu_items(items, ctx_, media_index);
 
     if (active_ != nullptr && active_->id() == "brailler") {
         items.push_back(MenuItem {
@@ -585,6 +656,12 @@ bool AppRegistry::word_buffer_active() const
     return app != nullptr && app->buffers_braille_words();
 }
 
+bool AppRegistry::word_buffer_uncontracted() const
+{
+    AppSession *app = focused_app();
+    return app != nullptr && app->buffers_uncontracted_braille_words();
+}
+
 void AppRegistry::clear_word_buffer()
 {
     word_buffer_.clear();
@@ -596,6 +673,69 @@ void AppRegistry::deliver_text(AppSession *app, const std::string &text)
         return;
     }
     app->on_text(text, ctx_);
+}
+
+void AppRegistry::echo_typed_chord(uint8_t dot_mask)
+{
+    AppSession *app = focused_app();
+    if (app != nullptr && app->masks_typing_echo()) {
+        announce_typing(ctx_, "star");
+        return;
+    }
+
+    std::string glyph;
+    if (ctx_.braille_input != nullptr) {
+        if (const auto cell = ctx_.braille_input->translate_backward_dot_uncontracted(dot_mask)) {
+            glyph = *cell;
+        }
+    }
+    if (glyph.empty()) {
+        announce_typing(ctx_, "unknown");
+        return;
+    }
+    announce_typing(ctx_, spoken_typed_text(glyph));
+}
+
+void AppRegistry::echo_typed_text(const std::string &text)
+{
+    if (text.empty()) {
+        return;
+    }
+    AppSession *app = focused_app();
+    if (app != nullptr && app->masks_typing_echo()) {
+        announce_typing(ctx_, "star");
+        return;
+    }
+    announce_typing(ctx_, spoken_typed_text(text));
+}
+
+void AppRegistry::echo_typed_commit(const std::string &word)
+{
+    if (word.empty()) {
+        return;
+    }
+    AppSession *app = focused_app();
+    if (app != nullptr && app->masks_typing_echo()) {
+        return;
+    }
+    announce_typing(ctx_, word);
+}
+
+void AppRegistry::echo_typed_deleted(const std::string &preview_before)
+{
+    AppSession *app = focused_app();
+    if (app != nullptr && app->masks_typing_echo()) {
+        announce_typing(ctx_, "deleted");
+        return;
+    }
+
+    const std::string &after = word_buffer_.preview();
+    if (preview_before.size() > after.size()) {
+        announce_typing(ctx_,
+                        "deleted " + spoken_typed_text(preview_before.substr(after.size())));
+        return;
+    }
+    announce_typing(ctx_, "deleted");
 }
 
 bool AppRegistry::defers_chord_text() const

@@ -1,11 +1,14 @@
 [Unit]
 Description=Ensure Braillatron dictionary database
+Documentation=file:///usr/local/bin/braillatron-install-dictionary-data
 Before=braillatron-ui.service
 After=network-online.target local-fs.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
+# Kaikki English JSONL is multi-GB when streamed; allow long import.
+TimeoutStartSec=0
 ExecStart=/usr/local/bin/braillatron-install-dictionary-data
 RemainAfterExit=yes
 

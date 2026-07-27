@@ -711,7 +711,7 @@ private:
         if (selected_contact_ == nullptr) {
             return;
         }
-        if (!config_.emboss_enabled || ctx.motion == nullptr || ctx.braille == nullptr) {
+        if (!config_.emboss_enabled || !emboss_hardware_ready(ctx)) {
             announce(ctx, "Embossing not available");
             return;
         }

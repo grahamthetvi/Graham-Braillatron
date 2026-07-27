@@ -42,6 +42,14 @@ uint8_t held_dot_mask()
     return g_keyboard_service->held_dot_mask();
 }
 
+uint16_t held_key_state()
+{
+    if (g_keyboard_service == nullptr) {
+        return 0;
+    }
+    return g_keyboard_service->last_matrix_state();
+}
+
 void on_shift_tts_toggle(bool pressed)
 {
     if (g_output_hub != nullptr) {
@@ -53,6 +61,27 @@ void on_speech_ptt_gate(bool open)
 {
     if (g_output_hub != nullptr) {
         g_output_hub->on_speech_ptt_gate(open);
+    }
+}
+
+void cancel_dictation_on_input()
+{
+    if (g_output_hub != nullptr) {
+        g_output_hub->cancel_dictation();
+    }
+}
+
+void on_ui_restart_combo()
+{
+    if (g_output_hub != nullptr) {
+        g_output_hub->request_ui_restart();
+    }
+}
+
+void on_system_reboot_combo()
+{
+    if (g_output_hub != nullptr) {
+        g_output_hub->request_restart();
     }
 }
 

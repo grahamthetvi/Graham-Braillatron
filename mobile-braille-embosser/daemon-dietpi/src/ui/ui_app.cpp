@@ -189,6 +189,7 @@ void UiApp::poll()
     app_registry_.poll(now);
     output_hub_.tick_display_scroll(now);
     output_hub_.tick_remote_display(now);
+    output_hub_.tick_shift_tts(now);
     refresh_status(false);
     telemetry::sync_motion_gate_from_telemetry();
     output_hub_.check_battery_warning();

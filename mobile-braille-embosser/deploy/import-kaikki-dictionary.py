@@ -54,6 +54,9 @@ def main() -> int:
                     (word, str(pos_text), definition),
                 )
                 inserted += 1
+                if inserted % 25000 == 0:
+                    conn.commit()
+                    print(f"… imported {inserted} senses", flush=True)
                 if inserted >= max_rows:
                     break
             if inserted >= max_rows:
@@ -64,7 +67,7 @@ def main() -> int:
 
     conn.commit()
     conn.close()
-    print(f"Imported {inserted} dictionary rows into {db_path}")
+    print(f"Imported {inserted} dictionary rows into {db_path}", flush=True)
     return 0 if inserted > 0 else 1
 
 

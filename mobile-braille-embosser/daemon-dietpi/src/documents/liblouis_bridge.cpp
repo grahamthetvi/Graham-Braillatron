@@ -31,28 +31,55 @@ void ensure_liblouis_initialized()
 }
 #endif
 
-const char *nemeth_overlay_table()
+/** Preferred Nemeth overlays. Full `en-us-mathtext.ctb` conflicts with UEB
+ *  emphasis opcodes on liblouis 3.33+, so try `nemethdefs.cti` first. */
+std::vector<std::string> nemeth_overlay_candidates()
 {
+    std::vector<std::string> candidates;
     const char *override_table = std::getenv("LOUIS_NEMETH_TABLE");
     if (override_table != nullptr && override_table[0] != '\0') {
-        return override_table;
+        candidates.emplace_back(override_table);
     }
-    return "en-us-mathtext.ctb";
+    candidates.emplace_back("nemethdefs.cti");
+    candidates.emplace_back("en-us-mathtext.ctb");
+    return candidates;
+}
+
+const char *nemeth_overlay_table()
+{
+    static const std::string preferred = []() {
+        const auto candidates = nemeth_overlay_candidates();
+        return candidates.empty() ? std::string("nemethdefs.cti") : candidates.front();
+    }();
+    return preferred.c_str();
+}
+
+std::string literary_table_for_preset(BrailleGradePreset preset)
+{
+    switch (preset) {
+    case BrailleGradePreset::UebG1Math:
+    case BrailleGradePreset::UebG1Nemeth:
+        return "en-ueb-g1.ctb";
+    case BrailleGradePreset::UebG2Math:
+    case BrailleGradePreset::UebG2Nemeth:
+        return "en-ueb-g2.ctb";
+    }
+    return "en-ueb-g2.ctb";
+}
+
+bool preset_wants_nemeth_overlay(BrailleGradePreset preset)
+{
+    return preset == BrailleGradePreset::UebG1Nemeth ||
+           preset == BrailleGradePreset::UebG2Nemeth;
 }
 
 std::string preset_table_list_string(BrailleGradePreset preset)
 {
-    switch (preset) {
-    case BrailleGradePreset::UebG1Math:
-        return "en-ueb-g1.ctb";
-    case BrailleGradePreset::UebG1Nemeth:
-        return std::string("en-ueb-g1.ctb,") + nemeth_overlay_table();
-    case BrailleGradePreset::UebG2Math:
-        return "en-ueb-g2.ctb";
-    case BrailleGradePreset::UebG2Nemeth:
-        return std::string("en-ueb-g2.ctb,") + nemeth_overlay_table();
+    const std::string literary = literary_table_for_preset(preset);
+    if (!preset_wants_nemeth_overlay(preset)) {
+        return literary;
     }
-    return "en-ueb-g2.ctb";
+    return literary + "," + nemeth_overlay_table();
 }
 
 #ifdef BRAILLATRON_HAS_LIBLOUIS
@@ -73,23 +100,26 @@ std::string resolve_table_list(BrailleGradePreset preset)
 {
     ensure_liblouis_initialized();
 
-    const std::string primary = preset_table_list_string(preset);
-    if (table_list_back_translate_smoke_test(primary)) {
-        return primary;
+    if (!preset_wants_nemeth_overlay(preset)) {
+        return preset_table_list_string(preset);
     }
 
-    if (preset == BrailleGradePreset::UebG1Nemeth ||
-        preset == BrailleGradePreset::UebG2Nemeth) {
-        const std::string literary_fallback = preset == BrailleGradePreset::UebG1Nemeth
-                                                  ? "en-ueb-g1.ctb"
-                                                  : "en-ueb-g2.ctb";
-        std::cerr << "[liblouis] preset " << braille_grade_preset_config_value(preset)
-                  << ": Nemeth overlay unavailable, using literary table "
-                  << literary_fallback << "\n";
-        return literary_fallback;
+    const std::string literary = literary_table_for_preset(preset);
+    const std::vector<std::string> overlays = nemeth_overlay_candidates();
+    for (size_t i = 0; i < overlays.size(); ++i) {
+        const std::string candidate = literary + "," + overlays[i];
+        if (table_list_back_translate_smoke_test(candidate)) {
+            if (i > 0) {
+                std::cerr << "[liblouis] preset " << braille_grade_preset_config_value(preset)
+                          << ": using Nemeth overlay " << overlays[i] << "\n";
+            }
+            return candidate;
+        }
     }
 
-    return primary;
+    std::cerr << "[liblouis] preset " << braille_grade_preset_config_value(preset)
+              << ": Nemeth overlay unavailable, using literary table " << literary << "\n";
+    return literary;
 }
 #else
 std::string resolve_table_list(BrailleGradePreset preset)
@@ -265,12 +295,15 @@ void BrailleTranslationService::set_grade_preset(BrailleGradePreset preset)
 
 void BrailleTranslationService::refresh_table_list()
 {
-    const std::string expected = preset_table_list_string(preset_);
     resolved_table_list_ = resolve_table_list(preset_);
-    nemeth_overlay_active_ =
-        (preset_ == BrailleGradePreset::UebG1Nemeth ||
-         preset_ == BrailleGradePreset::UebG2Nemeth) &&
-        resolved_table_list_ == expected;
+    const bool wants_nemeth = preset_ == BrailleGradePreset::UebG1Nemeth ||
+                              preset_ == BrailleGradePreset::UebG2Nemeth;
+    const char *literary = (preset_ == BrailleGradePreset::UebG1Math ||
+                            preset_ == BrailleGradePreset::UebG1Nemeth)
+                               ? "en-ueb-g1.ctb"
+                               : "en-ueb-g2.ctb";
+    // Overlay is active when Nemeth was requested and we kept more than the literary table.
+    nemeth_overlay_active_ = wants_nemeth && resolved_table_list_ != literary;
 }
 
 void BrailleTranslationService::set_grade_preset_from_config(const std::string &name)

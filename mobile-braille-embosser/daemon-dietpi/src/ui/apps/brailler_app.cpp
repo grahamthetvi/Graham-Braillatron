@@ -80,7 +80,7 @@ public:
         }
         if (ctx.coords != nullptr) {
             ctx.coords->mutable_state().active_app_id.clear();
-            ctx.coords->save();
+            sync_coords_from_motion(ctx);
         }
         announce(ctx, "Brailler closed");
     }
@@ -107,6 +107,7 @@ public:
 
         pending_chords_.push_back(dot_mask);
         rebuild_pending_preview();
+        echo_pending_chord(dot_mask, ctx);
         sync_display(ctx);
     }
 
@@ -123,6 +124,7 @@ public:
                 }
                 const std::string word = commit_pending_word();
                 if (!word.empty()) {
+                    announce_typing(ctx, word);
                     ctx.edit->on_replacement_chord(0, word);
                     sync_display(ctx);
                 }
@@ -132,10 +134,24 @@ public:
 
         for (char ch : text) {
             if (ch == ' ') {
-                append_committed_word(ctx);
+                const std::string word = commit_pending_word();
+                if (!word.empty()) {
+                    announce_typing(ctx, word);
+                    for (char wch : word) {
+                        ctx.brf->append_char(wch);
+                    }
+                }
+                announce_typing(ctx, "space");
                 ctx.brf->append_char(' ');
             } else {
-                append_committed_word(ctx);
+                const std::string word = commit_pending_word();
+                if (!word.empty()) {
+                    announce_typing(ctx, word);
+                    for (char wch : word) {
+                        ctx.brf->append_char(wch);
+                    }
+                }
+                announce_typing(ctx, spoken_typed_char(ch));
                 ctx.brf->append_char(ch);
             }
         }
@@ -157,14 +173,26 @@ public:
 
         if (key == keyboard::ControlKey::Backspace) {
             if (!pending_chords_.empty()) {
+                const std::string before = pending_preview_;
                 pending_chords_.pop_back();
                 rebuild_pending_preview();
+                echo_deleted_pending(before, ctx);
                 sync_display(ctx);
                 return;
             }
             if (ctx.brf != nullptr) {
+                std::string removed;
+                if (!ctx.brf->lines().empty()) {
+                    const std::string &line = ctx.brf->lines().back();
+                    if (!line.empty()) {
+                        removed = spoken_typed_char(line.back());
+                    }
+                }
                 ctx.brf->backspace();
                 ctx.brf->save();
+                if (!removed.empty()) {
+                    announce_typing(ctx, "deleted " + removed);
+                }
                 sync_display(ctx);
             }
             return;
@@ -268,6 +296,31 @@ private:
         for (char ch : word) {
             ctx.brf->append_char(ch);
         }
+    }
+
+    void echo_pending_chord(uint8_t dot_mask, UiContext &ctx)
+    {
+        std::string glyph;
+        if (braille_input_ != nullptr) {
+            if (const auto cell = braille_input_->translate_backward_dot_uncontracted(dot_mask)) {
+                glyph = *cell;
+            }
+        }
+        if (glyph.empty()) {
+            announce_typing(ctx, "unknown");
+            return;
+        }
+        announce_typing(ctx, spoken_typed_text(glyph));
+    }
+
+    void echo_deleted_pending(const std::string &preview_before, UiContext &ctx)
+    {
+        if (preview_before.size() > pending_preview_.size()) {
+            announce_typing(ctx, "deleted " + spoken_typed_text(
+                                                 preview_before.substr(pending_preview_.size())));
+            return;
+        }
+        announce_typing(ctx, "deleted");
     }
 
     void sync_display(UiContext &ctx)

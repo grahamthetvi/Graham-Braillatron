@@ -31,26 +31,44 @@ void HomingService::run_boot_homing(int32_t target_y_line_index)
     target_y_ = target_y_line_index;
     state_ = HomingState::Reversing;
 
+    bool homed = false;
     if (moonraker_ != nullptr && moonraker_->ping()) {
         std::cerr << "[homing] issuing Klipper G28 Y via Moonraker\n";
         if (moonraker_->home_y()) {
-            state_ = HomingState::Complete;
-            return;
-        }
-        std::cerr << "[homing] Klipper G28 Y failed; falling back to GPIO poll\n";
-    }
-
-    constexpr int kMaxReverseSteps = 200;
-    for (int step = 0; step < kMaxReverseSteps; ++step) {
-        const LimitSensorState limits = limit_sensors_.read();
-        if ((limits.limit_status & BRAILLATRON_LIMIT_Y_HOME) != 0) {
-            std::cerr << "[homing] Y-home sensor detected at step " << step << "\n";
-            state_ = HomingState::Complete;
-            return;
+            homed = true;
+        } else {
+            std::cerr << "[homing] Klipper G28 Y failed; falling back to GPIO poll\n";
         }
     }
 
-    std::cerr << "[homing] Y-home not found; marking complete at origin\n";
+    if (!homed) {
+        constexpr int kMaxReverseSteps = 200;
+        for (int step = 0; step < kMaxReverseSteps; ++step) {
+            const LimitSensorState limits = limit_sensors_.read();
+            if ((limits.limit_status & BRAILLATRON_LIMIT_Y_HOME) != 0) {
+                std::cerr << "[homing] Y-home sensor detected at step " << step << "\n";
+                homed = true;
+                break;
+            }
+        }
+    }
+
+    if (!homed) {
+        std::cerr << "[homing] Y-home not found; marking complete at origin\n";
+    }
+
+    // V9 §3.3: after home (Y=0), fast-forward to the saved line index.
+    if (homed && target_y_ > 0 && moonraker_ != nullptr && moonraker_->ping()) {
+        constexpr double kMmPerLine = 10.0;
+        constexpr double kFeedSpeedMmS = 20.0;
+        const double mm = kMmPerLine * static_cast<double>(target_y_);
+        std::cerr << "[homing] restoring paper to y_line_index=" << target_y_
+                  << " (" << mm << " mm)\n";
+        if (!moonraker_->feed_y_mm(mm, kFeedSpeedMmS)) {
+            std::cerr << "[homing] warning: restore feed to saved line failed\n";
+        }
+    }
+
     state_ = HomingState::Complete;
 }
 
