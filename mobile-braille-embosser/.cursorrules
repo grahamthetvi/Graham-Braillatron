@@ -31,7 +31,7 @@
   - Refreshable Displays (Mantis Q40): Integrated over USB/Bluetooth sockets leveraging direct BRLTTY or serial socket abstractions.
 
 ### 3.2 Production Keyboard Driver (Direct Pin Topology)
-- **Electrical Layout**: Direct-pin wiring — one dedicated Arduino Micro GPIO per Cherry MX switch (**12 physical keys**). Common ground bus; INPUT_PULLUP active LOW. **Menu** is software-only (backtick overlay), not a 13th switch. Firmware may reserve A5 in the protocol map but leave it unwired on skeleton V5.1.
+- **Electrical Layout**: Direct-pin wiring — one dedicated Arduino Micro GPIO per Cherry MX switch (**12 physical keys**). Common ground bus; INPUT_PULLUP active LOW. **Menu** is software-only (backtick overlay), not a 13th switch. Firmware does not scan A5.
 - **Processing Architecture Split**:
   - *Arduino Micro*: Non-blocking 1 kHz main-loop scan (no delay()). Per-key 15 ms integrator debounce. 40 ms temporal chord assembly window for Braille dots; function keys transmit immediately as edge-triggered frames over USB CDC @ 115200 bps.
   - *Orange Pi 3B*: Receives CHORD or KEYBOARD_MATRIX frames via `shared/protocol.h`. Host-side liblouis back-translates dot masks to ASCII (Grade 2 / Nemeth table selectable in ui.conf).

@@ -95,6 +95,16 @@ bool MoonrakerClient::emergency_stop()
     return run_gcode("M112");
 }
 
+bool MoonrakerClient::firmware_restart()
+{
+    if (!config_.enabled) {
+        return false;
+    }
+
+    const std::string response = post_json("/printer/firmware_restart", "{}");
+    return response_ok(response);
+}
+
 bool MoonrakerClient::home_y()
 {
     return run_gcode("G28 Y");

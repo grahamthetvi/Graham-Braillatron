@@ -46,8 +46,9 @@ FuelGaugeReading Ltc2944::read()
         return reading;
     }
 
+    const double mv = raw_voltage * config_.ltc2944_mv_per_lsb;
     reading.battery_mv =
-        static_cast<uint16_t>(raw_voltage * config_.ltc2944_mv_per_lsb / 1000.0);
+        static_cast<uint16_t>(std::lround(std::min(mv, 65535.0)));
     reading.charge_counts = raw_charge;
     reading.temperature_c = static_cast<int8_t>(std::lround((raw_temp * 746.3 / 4096.0) - 274.6));
     reading.valid = true;

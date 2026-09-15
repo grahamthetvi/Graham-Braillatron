@@ -47,6 +47,7 @@ enum class TestKind {
     PaperSensors,
     Haptics,
     MotionGate,
+    ResetInterlock,
 };
 
 struct TestItem {
@@ -210,6 +211,7 @@ private:
             {TestKind::PaperSensors, "Paper endstops (Klipper)"},
             {TestKind::Haptics, "DRV2605L haptic pulse"},
             {TestKind::MotionGate, "Motion gate status"},
+            {TestKind::ResetInterlock, "Reset motion interlock"},
         };
 
         std::vector<std::string> labels;
@@ -244,6 +246,7 @@ private:
         }
 
         if (MotionGate::is_blocked() && test_items_[index].kind != TestKind::MotionGate &&
+            test_items_[index].kind != TestKind::ResetInterlock &&
             test_items_[index].kind != TestKind::ArduinoButtons &&
             test_items_[index].kind != TestKind::BatteryStatus &&
             test_items_[index].kind != TestKind::ChargingState &&
@@ -306,6 +309,14 @@ private:
         case TestKind::MotionGate:
             run_motion_gate(ctx);
             break;
+        case TestKind::ResetInterlock:
+            run_reset_interlock(ctx);
+            break;
+        default: {
+            last_result_ = "Unknown factory test";
+            announce(ctx, last_result_);
+            break;
+        }
         }
 
         phase_ = Phase::Menu;
@@ -417,6 +428,28 @@ private:
         } else {
             last_result_ = "Motion gate: clear";
         }
+        announce(ctx, last_result_);
+    }
+
+    void run_reset_interlock(UiContext &ctx)
+    {
+        const char *reason = MotionGate::block_reason();
+        if (MotionGate::is_blocked() && reason != nullptr &&
+            std::string(reason).find("battery") != std::string::npos) {
+            last_result_ = "Cannot clear: battery still critical";
+            announce(ctx, last_result_);
+            return;
+        }
+
+        MotionGate::unblock();
+        MotionGate::request_arduino_clear();
+
+        std::string klipper_note = "Klipper not restarted";
+        if (ctx.klipper != nullptr && ctx.klipper->firmware_restart()) {
+            klipper_note = "Klipper firmware_restart ok";
+        }
+
+        last_result_ = std::string("Motion interlock reset. ") + klipper_note;
         announce(ctx, last_result_);
     }
 

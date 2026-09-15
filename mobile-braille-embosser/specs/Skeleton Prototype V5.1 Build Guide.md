@@ -57,7 +57,7 @@ This V5.1 Prototype Guide is the **canonical wiring document** for the Graham Br
 | Component | Specifications / Description | Qty Required |
 | :---- | :---- | :---- |
 | **Motor Drivers** | TMC2209 StepStick (in Monster8 slots 0–7). | 8 Boards |
-| **X-Axis Carriage** | NEMA 17 slim — **17HS08-1004S** (short body, ~1.0 A). | 1 Motor |
+| **X-Axis Carriage** | NEMA 17 slim — **17HS08-1004S** (short body, ~1.0 A). Belt/pulley **not in this BOM** — `printer.cfg` assumes GT2 / 20T (`rotation_distance: 40`) until measured. | 1 Motor |
 | **Y-Axis Paper Feed** | NEMA 17 — **17HS15-1504S** (~1.5 A). | 1 Motor |
 | **Embossing Actuators** | NEMA 14 steppers, dots 1–6 (Row A: 1,3,5; Row B: 2,4,6). | 6 Motors |
 
@@ -217,7 +217,7 @@ This is a **low-side** switch on the VMOT return. Cutting the return opens the m
 
 ### **3.1 Direct Pin Keyboard (12 Physical Keys)**
 
-Twelve tactile switches — **no 13th physical Menu key**. The system Menu overlay is invoked in software via **backtick (`)** on USB/evdev keyboards or the remote display; the protocol still defines `BRAILLATRON_KEY_MENU` (bit 12) for future use, but **pin A5 is not wired** on this skeleton.
+Twelve tactile switches — **no 13th physical Menu key**. The system Menu overlay is invoked in software via **backtick (`)** on USB/evdev keyboards or the remote display; the protocol still defines `BRAILLATRON_KEY_MENU` (bit 12) for software Menu. **A5 is not wired and is not scanned** (`BUTTON_COUNT=12` in `pins.h`).
 
 | Button | Function | Arduino Pin |
 |--------|----------|-------------|
@@ -227,7 +227,7 @@ Twelve tactile switches — **no 13th physical Menu key**. The system Menu overl
 
 - Common ground bus → Arduino GND.
 - `INPUT_PULLUP`, active LOW, 15 ms debounce, 40 ms chord window.
-- Firmware may still define a 13th logical slot on A5 for protocol compatibility — leave **A5 unwired**.
+- Firmware scans **12** physical keys only. Leave **A5 unwired** (no Menu GPIO).
 
 ### **3.2 MKS Monster8 V2 — Klipper MCU (Tier 2)**
 
@@ -235,7 +235,7 @@ Twelve tactile switches — **no 13th physical Menu key**. The system Menu overl
 
 | Slot | Axis / role | Motor | `run_current` (A RMS) | Notes |
 |------|-------------|-------|------------------------|-------|
-| 0 | X carriage | 17HS08-1004S | **0.85** | Slim NEMA 17, 1.0 A rated |
+| 0 | X carriage | 17HS08-1004S | **0.85** | Slim NEMA 17, 1.0 A rated. `rotation_distance: 40` is an **unverified** GT2/20T assumption. |
 | 1 | Y paper feed | 17HS15-1504S | **1.20** | High-torque NEMA 17, 1.5 A rated |
 | 2 | Emboss dot 1 | NEMA 14 | **0.80** | Row A |
 | 3 | Emboss dot 2 | NEMA 14 | **0.80** | Row B |
@@ -258,10 +258,10 @@ Twelve tactile switches — **no 13th physical Menu key**. The system Menu overl
 
 Wire to Monster8 endstop headers (5 V / GND / SIG):
 
-| Sensor | Klipper name | Monster8 port (example) |
-|--------|--------------|-------------------------|
-| TCST2103 Y home | `y_home` | Y-STOP or dedicated MIN |
-| TCRT5000 paper edge | `paper_edge` | E0-STOP or FIL_RUNOUT |
+| Sensor | Klipper name | Monster8 port |
+|--------|--------------|---------------|
+| TCST2103 Y home | `y_home` | **Y-STOP** (`^PA15` in `klipper/printer.cfg`); used by `G28 Y` |
+| TCRT5000 paper edge | `paper_edge` | **X-STOP** (`^PA14`); queried as rail `"x"` — X is never G28-homed |
 
 **Option A:** limits live on Monster8 only. The Pi reads state via **Moonraker/Klipper API** (`query_endstops`, object status) — not Pi GPIO. Leave `gpio_paper_edge` / `gpio_y_home` empty in `telemetry.conf` unless you duplicate sensors for bench test.
 
@@ -369,18 +369,18 @@ Non-blocking `millis()` state machine — never `delay()` in the main loop (MPU 
 
 ### **4.4 MPU6050 Freefall → Klipper M112**
 
-On INT6 (pin 7) rising edge:
+On INT6 (pin 7) **falling** edge (MPU INT is **active-low, latched**):
 
-1. Arduino ISR pulls D12 LOW → IRLZ44N opens VMOT.
-2. Arduino transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL`.
+1. Arduino ISR pulls D12 LOW → IRLZ44N opens VMOT. The ISR does **not** send UART.
+2. The main loop later transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL`.
 3. Pi handler issues **Klipper M112** via Moonraker and blocks MotionGate.
+4. Recover from Factory Test **Reset motion interlock** (unblocks MotionGate, pulses `CLEAR_FREEFALL` to the Arduino, `firmware_restart` after M112). Do not clear while the pack is still in the 5% shutdown band.
 
 Example ISR outline:
 
 ```cpp
 void handleFreefallEmergency() {
-  digitalWrite(safetyGatePin, LOW);
-  // emit BRAILLATRON_OP_SAFETY frame (see shared/protocol.h)
+  digitalWrite(safetyGatePin, LOW); // ISR: cut VMOT only; loop TX SAFETY later
 }
 ```
 
@@ -434,6 +434,7 @@ When `dev_mode=true` (bench builds), the app opens directly. On production image
 | Paper endstops (Klipper) | Moonraker `query_endstops` (`y_home`, `paper_edge`) |
 | DRV2605L haptic pulse | Output Hub haptic boundary effect |
 | Motion gate status | Reports `MotionGate::block_reason()` when blocked |
+| Reset motion interlock | Unblock MotionGate, clear Arduino freefall latch, Klipper firmware_restart |
 
 Motor and emboss tests are **skipped** when MotionGate is blocked (freefall, comms loss, battery critical, etc.) except for status, telemetry, speaker, and button tests. Charging test: apply USB PD and confirm IP2368 charge LED plus rising cell voltage on LTC2944.
 

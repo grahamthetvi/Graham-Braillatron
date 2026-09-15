@@ -55,8 +55,9 @@ Payload (`braillatron_telemetry_t`):
 | `BRAILLATRON_LIMIT_Y_HOME` (bit 1) | TCST2103 Y-home endstop active |
 | `BRAILLATRON_LIMIT_MOTION_BLOCKED` (bit 2) | SOC &lt; 5 %, safety fault, or policy block |
 | `BRAILLATRON_LIMIT_BATTERY_CRITICAL` (bit 3) | LTC2944 shutdown band — Arduino may cut VMOT |
+| `BRAILLATRON_LIMIT_CLEAR_FREEFALL` (bit 4) | Host requests MPU freefall latch clear (INT must already be inactive) |
 
-The Arduino uses `BRAILLATRON_LIMIT_BATTERY_CRITICAL` in firmware to reinforce the hardware interlock.
+The Arduino uses `BRAILLATRON_LIMIT_BATTERY_CRITICAL` in firmware to reinforce the hardware interlock. `BRAILLATRON_LIMIT_CLEAR_FREEFALL` is a one-shot recover pulse from Factory Test: the Arduino reads MPU `INT_STATUS` and restores VMOT only while D7 is inactive (HIGH).
 
 ## Pi-side SAFETY handling
 

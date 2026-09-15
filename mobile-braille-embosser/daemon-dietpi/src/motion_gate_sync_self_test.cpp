@@ -33,6 +33,19 @@ int main()
     }
 
     std::remove(path.c_str());
+
+    braillatron::MotionGate::unblock();
+    if (braillatron::MotionGate::is_blocked()) {
+        std::cerr << "motion gate sync test: expected MotionGate clear after unblock\n";
+        return 1;
+    }
+
+    braillatron::MotionGate::request_arduino_clear();
+    if (!braillatron::MotionGate::consume_arduino_clear_pulse()) {
+        std::cerr << "motion gate sync test: expected Arduino clear pulse\n";
+        return 1;
+    }
+
     std::cout << "motion gate sync test passed\n";
     return 0;
 }

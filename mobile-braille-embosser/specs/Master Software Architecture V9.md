@@ -41,7 +41,7 @@ Whenever focus changes or a word is announced, the Output Hub distributes conten
 | TTS | eSpeak NG via Speech Dispatcher; MAX98357A I2S + 3.5 mm jack | `output_hub.cpp`, `backend.cpp` |
 | Refreshable Braille | BRLTTY brlapi + liblouis forward translation | `backend.cpp`, `liblouis_bridge.cpp` |
 | Visual Display | ST7789 SPI panel (240×240) + wireless remote browser viewer + ncurses dev fallback; UI chrome | `ui/display/*`, `display/*`, `output_hub.cpp` |
-| Embosser | Solenoid stagger head via `MotionService` | `motion_service.cpp`, `emboss_scheduler.cpp` |
+| Embosser | Six NEMA14 punch steppers (stagger head) via `MotionService` | `motion_service.cpp`, `emboss_scheduler.cpp` |
 | Haptics | DRV2605L LRA; Morse timed pulses | `drv2605l.cpp`, `morse_encoder.cpp` |
 
 **Deaf-blind menu parity:** When TTS is disabled and `deaf_blind_menu_parity` is enabled, the Output Hub embosses full menu text (no abbreviations) in addition to refreshable braille/haptics.
@@ -213,39 +213,43 @@ Implementation: `firmware-arduino/src/watchdog.cpp`, `fail_safes.cpp`.
 ### 5.1 Power Distribution
 
 ```
-[USB-C PD Input] → [IP2368 PD Charger] → [4S 30A BMS w/ Balancer] (14.8 V nominal)
+[USB-C PD Input] → [IP2368 PD Charger] ──parallel──► pack bus (WAGO P+ / star P−)
+[4S pack] → [4S 30A BMS] ──P+/P−──► same pack bus (14.8 V nominal)
          │
-         ├─ (15 A motor fuse, 85 °C thermal fuse) ──► Monster8 VIN+
+         ├─ (15 A motor fuse; production: 85 °C thermal fuse) ──► Monster8 VIN+
          │         Monster8 VIN− ──► [IRLZ44N Drain] ──► [IRLZ44N Source] ──► star ground
          │                                    ▲ Arduino D12 → TC4420 → Gate (low-side cut)
          │                                    └──► 8× TMC2209 VMOT on Monster8
          │
-         └─ (3–5 A logic fuse) ──► [TPS5430 5 V buck] ──┬──► Orange Pi 3B
-                                                          └──► Arduino Micro
+         └─ (5 A logic fuse) ──► [TPS5430 5 V buck] ──┬──► Orange Pi 3B
+                                                      └──► Arduino Micro
                                                                     │
 Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 8 Ω 3 W speaker
 ```
 
+IP2368 **BAT+/BAT− sit in parallel** on the BMS pack bus (canonical: [V5.1 §2.3](Skeleton%20Prototype%20V5.1%20Build%20Guide.md)). Do not wire the charger in series with the load.
+
 - **Logic rail:** TPS5430 buck from battery to filtered 5 V for Orange Pi and Arduino.
 - **Motor rail:** 14.8 V to Monster8 VIN+; **IRLZ44N low-side** on VIN− return (Drain → VIN−, Source → star ground); TC4420 gate driver from Arduino D12.
 - **Audio isolation:** MAX98357A powered from 5 V with local 470 µF + 0.1 µF at VDD/GND to keep Class D switching noise off the logic bus.
-- **Battery telemetry:** LTC2944 on system I2C tracks capacity, current, and voltage (see §6.3).
+- **Battery telemetry:** LTC2944 on system I2C tracks capacity, current, and voltage (see §6.3). Voltage LSB is **1.0803 mV** (70.8 V FS / 65535). Coulomb counting is disabled until a sense resistor is documented.
 - **High-current routing:** Motor VMOT and returns use off-board dual-row terminal blocks (up to 15 A), not prototype-board traces.
-- **Thermal fuse:** Non-resettable 85 °C fuse clamped to a unified aluminum heatsink spanning all eight stepper drivers.
+- **Thermal fuse:** **Production HAT:** non-resettable 85 °C fuse clamped to a unified aluminum heatsink spanning all eight stepper drivers. **Skeleton V5.1:** individual heatsinks; the 85 °C fuse is optional/deferred ([V5.1 §2.6](Skeleton%20Prototype%20V5.1%20Build%20Guide.md)).
 
 ### 5.2 Real-Time Hardware Interlock (MPU6050)
 
 - **Sensor:** MPU6050 on Arduino hardware I2C (SDA/SCL); freefall thresholds configured in hardware registers (`FF_THR` / `FF_DUR`) at boot.
-- **Interrupt:** MPU6050 INT → Arduino **D7** (INT6), active high. **Do not wire INT to D3** — D3 is SCL.
+- **Interrupt:** MPU6050 INT → Arduino **D7** (INT6 / PE6), **active-low, latched**. Firmware attaches `FALLING` (`INT_PIN_CFG=0xA0`). **Do not wire INT to D3** — D3 is SCL.
 - **Gate drive:** IRLZ44N **low-side** on Monster8 VIN− return (see [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) §2.7); TC4420 drives the gate from Arduino D12.
 
 **Sub-10 ms isolation loop:**
 
-1. Freefall detected → MPU6050 INT pin goes high immediately.
+1. Freefall detected → MPU6050 INT pin goes **low** (latched) immediately.
 2. INT6 ISR runs (bypasses keyboard polling).
-3. ISR pulls gate driver low, cutting VMOT in under 10 ms.
-4. ISR transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL`.
+3. ISR pulls gate driver low, cutting VMOT in under 10 ms. The ISR does **not** transmit UART.
+4. The main loop later transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL` (rebroadcast ~1 s).
 5. Pi `keyboard_service` blocks **MotionGate** and issues Klipper **M112** via Moonraker when Klipper is enabled; Output Hub alerts the user.
+6. Recovery is explicit: Factory Test **Reset motion interlock** unblocks MotionGate, pulses `BRAILLATRON_LIMIT_CLEAR_FREEFALL` to the Arduino (clears the MPU latch only while INT is inactive), and issues Moonraker `firmware_restart` after M112.
 
 ### 5.3 Dual-Bus TMC2209 UART Daisy Chain — RETIRED (Option A)
 
@@ -259,13 +263,13 @@ Orange Pi UART9 ──► TMC2209 drivers 5–8
 
 ### 5.4 Staggered Embossing Head
 
-Standard cells: left column dots 1–3, right column dots 4–6. Physical layout:
+Standard cells: left column dots 1–3, right column dots 4–6. Physical actuators are **six NEMA14 steppers** on Monster8 slots 2–7 (`manual_stepper emboss_1…6` in `klipper/printer.cfg`) — not solenoid coils.
 
-- **Row A (top):** Solenoids for dots 1, 3, 5.
-- **Row B (bottom):** Solenoids for dots 2, 4, 6.
+- **Row A (top):** Dots 1, 3, 5 (slots 2, 4, 6).
+- **Row B (bottom):** Dots 2, 4, 6 (slots 3, 5, 7).
 - **Spatial offset:** 2.5 mm along the X-axis (carriage path).
 
-The motion controller must not fire all solenoids simultaneously. Row A fires as solenoids cross the target column; Row B data is buffered and fired after a velocity-derived delay equal to the time to travel 2.5 mm. Module: `emboss_scheduler.cpp`.
+The motion controller must not fire all punches simultaneously. Row A fires as the head crosses the target column; Row B data is buffered and fired after a velocity-derived delay equal to the time to travel 2.5 mm. Module: `emboss_scheduler.cpp`.
 
 ### 5.5 Stepper Drivers, Homing & Paper Sensing
 
@@ -280,8 +284,8 @@ The motion controller must not fire all solenoids simultaneously. Row A fires as
 | Heavy stepper EMI | Audio instability, SoC noise | Digital I2S audio (MAX98357A); local 470 µF + 0.1 µF on amp VDD/GND |
 | RK3566 pin limits | Cannot wire 8 independent driver UARTs | **MKS Monster8 V2 + Klipper over USB** — Pi issues motion via Moonraker, not Pi UART (§5.3) |
 | Sudden power loss | eMMC/SD corruption | Read-only root + tmpfs volatile mounts; atomic writes to `/data`; `braillatron-sync.timer` |
-| Drop during motion | Head/solenoid damage | MPU6050 hardware interrupt → sub-10 ms IRLZ44N cut + SAFETY broadcast |
-| Driver thermal runaway | Fire / hardware damage | Unified heatsink + 85 °C thermal fuse on motor rail |
+| Drop during motion | Head/punch damage | MPU6050 hardware interrupt → sub-10 ms IRLZ44N cut + SAFETY broadcast |
+| Driver thermal runaway | Fire / hardware damage | Production: unified heatsink + 85 °C thermal fuse; skeleton: individual heatsinks, fuse deferred |
 | Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin topology** — one GPIO per key, no matrix (§1.3) |
 
 ---
@@ -380,7 +384,7 @@ Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so
 | Paper edge sensor | TCRT5000 reflective IR |
 | Y-axis homing | TCST2103 optical slot (transmissive) |
 | Stepper drivers | 8× TMC2209 on Monster8 (slots 0–7, §5.3) |
-| Freefall sensor | MPU6050 (Arduino I2C + INT0) |
+| Freefall sensor | MPU6050 (Arduino I2C + INT6 / D7, active-low) |
 | Keyboard switches | 12× Cherry MX (direct pin, §1.3) |
 
 ---

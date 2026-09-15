@@ -91,6 +91,16 @@ bool KlipperMotionBridge::emergency_stop()
     return client_.emergency_stop();
 }
 
+bool KlipperMotionBridge::firmware_restart()
+{
+    if (!config_.enabled) {
+        return false;
+    }
+    ready_ = false;
+    have_last_x_ = false;
+    return client_.firmware_restart();
+}
+
 bool KlipperMotionBridge::paper_edge_active() const
 {
     if (!ready_) {
