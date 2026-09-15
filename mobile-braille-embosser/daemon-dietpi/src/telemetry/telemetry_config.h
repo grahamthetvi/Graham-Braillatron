@@ -22,7 +22,7 @@ struct TelemetryConfig {
 
     uint16_t battery_4s_min_mv = 12000;
     uint16_t battery_4s_max_mv = 16800;
-    double ltc2944_mv_per_lsb = 58.6;
+    double ltc2944_mv_per_lsb = 1.0803;
 
     uint32_t battery_full_charge_counts = 0;
     uint32_t battery_empty_charge_counts = 0;

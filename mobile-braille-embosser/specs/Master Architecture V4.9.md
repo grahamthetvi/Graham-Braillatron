@@ -70,14 +70,14 @@ Block diagram for custom PCB and HAT routing:
 [USB-C PD Input]
          │
          ▼
-[IP2368 PD Charger]
+[IP2368 PD Charger]  (BAT+/BAT− in **parallel** on the pack bus — not series)
          │
          ▼
-[4S 30A BMS w/ Balancer] (14.8 V nominal)
+[4S 30A BMS w/ Balancer] (14.8 V nominal) ── P+/P− ──► WAGO / star
          │
          ├─────────────────────────────────┐
-         ▼ (15 A motor fuse)               ▼ (5 A logic fuse — see V5.1 Part 1 BOM)
-   [85 °C thermal fuse]                     ▼
+         ▼ (15 A motor fuse)               ▼ (5 A logic fuse — V5.1 Part 1 BOM)
+   [85 °C thermal fuse — production HAT]    ▼
          │                        [Mini560 / TPS5430 5 V buck]
          ▼                                 │
    [IRLZ44N MOSFET]                         ├──────────────► [Orange Pi 3B]
@@ -91,10 +91,12 @@ Block diagram for custom PCB and HAT routing:
 Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [8 Ω 3 W speaker]
 ```
 
+IP2368 shares the BMS P+/P− node (canonical wiring: [V5.1 §2.3](Skeleton%20Prototype%20V5.1%20Build%20Guide.md)). Do not insert the charger in series with the motor or logic load.
+
 ### 3.1 Structural safety interlocks
 
 - **High-current terminals:** VMOT and returns use dual-row terminal blocks (up to 15 A), not prototype-board traces.
-- **Thermal fuse:** Optional on skeleton (individual heatsinks). Production target: unified aluminum bar + 85 °C fuse on motor rail (§3.1).
+- **Thermal fuse:** Optional on skeleton (individual heatsinks; [V5.1 §2.6](Skeleton%20Prototype%20V5.1%20Build%20Guide.md)). Production target: unified aluminum bar + 85 °C fuse on motor rail.
 - **Motor rail gate:** **IRLZ44N low-side** on Monster8 VIN− return (Drain → VIN−, Source → star ground); **TC4420** gate driver from Arduino D12. Cut on freefall, comms loss, or watchdog fault ([V9 §5.2](Master%20Software%20Architecture%20V9.md#52-real-time-hardware-interlock-mpu6050), `shared/protocol.h`). Pi also issues Klipper **M112** on freefall SAFETY frames.
 - **Audio filtering:** 470 µF low-ESR + 0.1 µF ceramic at MAX98357A VDD/GND to keep Class D switching noise off the 5 V logic bus.
 
@@ -163,8 +165,8 @@ Full deploy procedure: [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Soft
 | Heavy stepper EMI | Audio hum, SoC instability | Digital I2S (MAX98357A); local 470 µF + 0.1 µF on amp |
 | RK3566 pin limits | Cannot wire 8 independent driver UARTs | **MKS Monster8 V2 + Klipper over USB** — Pi issues motion via Moonraker, not Pi UART (§4) |
 | Sudden power loss | eMMC/SD corruption | Read-only root, overlayfs, atomic `/data` writes, sync timer (§6) |
-| Drop during motion | Head/solenoid damage | MPU6050 hardware INT → sub-10 ms IRLZ44N cut + SAFETY frame (§5) |
-| Driver thermal runaway | Fire / hardware damage | Unified heatsink + 85 °C thermal fuse on motor rail (§3.1) |
+| Drop during motion | Head/punch damage | MPU6050 hardware INT (D7/INT6, active-low) → sub-10 ms IRLZ44N cut + SAFETY frame (§5) |
+| Driver thermal runaway | Fire / hardware damage | Production: unified heatsink + 85 °C thermal fuse; skeleton defers fuse (§3.1) |
 | Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin keyboard** — one GPIO per key, no matrix (§2.1) |
 
 Standardized BOM: [V9 §7](Master%20Software%20Architecture%20V9.md#7-standardized-hardware-reference). Prototype breadboard part list and fuse ratings: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) Part 1.
@@ -176,7 +178,7 @@ Standardized BOM: [V9 §7](Master%20Software%20Architecture%20V9.md#7-standardiz
 | Retired | Superseded by |
 |---------|----------------|
 | Raspberry Pi 3B | Orange Pi 3B |
-| Servo-driven 6-key embosser array | Staggered solenoid head ([V9 §5.4](Master%20Software%20Architecture%20V9.md#54-staggered-embossing-head)) |
+| Servo-driven 6-key embosser array | Staggered NEMA14 punch head ([V9 §5.4](Master%20Software%20Architecture%20V9.md#54-staggered-embossing-head)) |
 | 18650 TBD battery pack | 4S LiPo + LTC2944 |
 | 4×4 keyboard matrix + per-key diodes | Direct-pin Arduino topology (§2.1) |
 | Piper TTS | eSpeak NG ([V9 §6.6](Master%20Software%20Architecture%20V9.md#66-dependencies)) |

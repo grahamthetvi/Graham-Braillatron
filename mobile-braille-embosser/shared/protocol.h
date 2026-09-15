@@ -117,7 +117,8 @@ typedef struct __attribute__((packed)) {
 #define BRAILLATRON_LIMIT_Y_HOME            (1u << 1) /* TCST2103 */
 #define BRAILLATRON_LIMIT_MOTION_BLOCKED    (1u << 2) /* SOC < 5% or policy */
 #define BRAILLATRON_LIMIT_BATTERY_CRITICAL  (1u << 3) /* LTC2944 shutdown band */
-/* bits 4-7 reserved */
+#define BRAILLATRON_LIMIT_CLEAR_FREEFALL    (1u << 4) /* Pi: request MPU latch clear */
+/* bits 5-7 reserved */
 
 typedef struct __attribute__((packed)) {
     uint8_t battery_percent; /* 0-100; BRAILLATRON_TELEMETRY_UNKNOWN if unread */
@@ -137,7 +138,7 @@ typedef struct __attribute__((packed)) {
 
 typedef enum {
     BRAILLATRON_FAULT_NONE             = 0x00u,
-    BRAILLATRON_FAULT_FREEFALL         = 0x01u, /* MPU6050 INT0 */
+    BRAILLATRON_FAULT_FREEFALL         = 0x01u, /* MPU6050 INT6 / D7 */
     BRAILLATRON_FAULT_WATCHDOG_TIMEOUT = 0x02u,
     BRAILLATRON_FAULT_COMMS_LOSS       = 0x03u,
     BRAILLATRON_FAULT_BATTERY_CRITICAL = 0x04u, /* SOC < 5% */

@@ -22,6 +22,7 @@ public:
     bool feed_lines(int32_t delta);
     bool home_y();
     bool emergency_stop();
+    bool firmware_restart();
     bool paper_edge_active() const;
 
 private:

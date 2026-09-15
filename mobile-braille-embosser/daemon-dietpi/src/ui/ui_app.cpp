@@ -2,6 +2,7 @@
 
 #include "../keyboard/global_hooks.h"
 #include "../motion/klipper_config.h"
+#include "../motion_gate.h"
 #include "../telemetry/telemetry_bridge.h"
 
 #include <chrono>
@@ -262,6 +263,10 @@ void UiApp::send_telemetry_if_due(uint64_t now_ms)
     payload.battery_percent = snapshot.battery_percent;
     payload.temperature_c = snapshot.temperature_c;
     payload.limit_status = snapshot.limit_status;
+    if (MotionGate::consume_arduino_clear_pulse()) {
+        payload.limit_status = static_cast<uint8_t>(
+            payload.limit_status | BRAILLATRON_LIMIT_CLEAR_FREEFALL);
+    }
 
     if (!serial_link_.send_telemetry(payload)) {
         serial_link_.close();

@@ -24,7 +24,7 @@ int main()
     config.moonraker_url = "http://127.0.0.1:7125";
 
     braillatron::motion::MoonrakerClient client(config);
-    expect_true(!client.ping(), "disabled client does not ping");
+    expect_true(!client.firmware_restart(), "disabled client does not firmware_restart");
 
     expect_true(config.emboss_stepper_name(1) == "emboss_1", "emboss stepper 1 default");
     expect_true(config.emboss_stepper_name(7).empty(), "emboss stepper 7 empty");

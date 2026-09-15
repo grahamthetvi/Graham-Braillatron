@@ -1,6 +1,6 @@
 # Arduino Micro firmware
 
-Real-time co-processor for the Braillatron: 13-key direct-pin keyboard scan, 40 ms braille chord assembly, MPU6050 freefall interlock, and USB CDC serial to the Pi at 115200 baud.
+Real-time co-processor for the Braillatron: 12-key direct-pin keyboard scan, 40 ms braille chord assembly, MPU6050 freefall interlock, and USB CDC serial to the Pi at 115200 baud.
 
 **Board:** Arduino Micro (`arduino:avr:micro`), profile `skeleton_v5` — see [src/pins.h](src/pins.h).
 

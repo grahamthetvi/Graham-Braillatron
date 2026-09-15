@@ -29,12 +29,12 @@
 #define STEPPER_CUT_PORT        PORTD
 #define STEPPER_CUT_BIT         6u
 
-#define BUTTON_COUNT           13u
+#define BUTTON_COUNT           12u
 
 /*
  * V5.1 Build Guide Part 3.1 wiring. Button 8 lives on A4 (moved off pin 13
- * to avoid the onboard LED circuitry). Button 13 (Menu) is an addition on A5
- * to cover all 13 logical keys defined in shared/protocol.h.
+ * to avoid the onboard LED circuitry). Menu is software-only: A5 is not
+ * wired and is not scanned.
  */
 static const uint8_t BUTTON_PINS[BUTTON_COUNT] = {
     4u,        /* Button 1  — dot 1 */
@@ -49,7 +49,6 @@ static const uint8_t BUTTON_PINS[BUTTON_COUNT] = {
     (uint8_t)A1, /* Button 10 — enter */
     (uint8_t)A2, /* Button 11 — shift / TTS */
     (uint8_t)A3, /* Button 12 — speech (push-to-talk) */
-    (uint8_t)A5, /* Button 13 — menu */
 };
 
 /* Logical protocol bit transmitted for each button (shared/protocol.h). */
@@ -66,7 +65,6 @@ static const uint16_t BUTTON_KEY_BITS[BUTTON_COUNT] = {
     BRAILLATRON_KEY_ENTER,
     BRAILLATRON_KEY_SHIFT_TTS,
     BRAILLATRON_KEY_SPEECH,
-    BRAILLATRON_KEY_MENU,
 };
 
 #define UART_BAUD_RATE      115200u

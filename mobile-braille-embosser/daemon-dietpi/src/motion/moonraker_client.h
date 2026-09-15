@@ -20,6 +20,7 @@ public:
     bool ping();
     bool run_gcode(const std::string &script);
     bool emergency_stop();
+    bool firmware_restart();
     bool home_y();
     bool feed_y_mm(double mm, double speed_mm_s);
     bool move_x_relative_mm(double mm, double speed_mm_s);
