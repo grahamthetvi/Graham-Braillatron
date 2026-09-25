@@ -9,6 +9,23 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
+blank_helper=""
+for candidate in \
+  "${SCRIPT_DIR}/ensure-hdmi-consoleblank.sh" \
+  /usr/local/sbin/ensure-hdmi-consoleblank.sh; do
+  if [[ -f "${candidate}" ]]; then
+    blank_helper="${candidate}"
+    break
+  fi
+done
+if [[ -z "${blank_helper}" ]]; then
+  echo "ensure-hdmi-consoleblank.sh missing; HDMI console blanking was not changed." >&2
+  exit 1
+fi
+# shellcheck source=ensure-hdmi-consoleblank.sh
+source "${blank_helper}"
+ensure_hdmi_consoleblank
+
 deploy_os_dir() {
   if [[ -f "${SCRIPT_DIR}/braillatron-systemd-wants.sh" ]]; then
     printf '%s\n' "${SCRIPT_DIR}"
@@ -57,6 +74,9 @@ install -m 755 "${OS_DIR}/braillatron-fb-repaint.sh" /usr/local/sbin/braillatron
 install -m 755 "${OS_DIR}/braillatron-systemd-wants.sh" /usr/local/sbin/braillatron-systemd-wants.sh
 install -m 755 "${OS_DIR}/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
 install -m 755 "${OS_DIR}/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
+if [[ -f "${OS_DIR}/ensure-hdmi-consoleblank.sh" ]]; then
+  install -m 755 "${OS_DIR}/ensure-hdmi-consoleblank.sh" /usr/local/sbin/ensure-hdmi-consoleblank.sh
+fi
 
 install -d /etc/braillatron
 if [[ ! -f /etc/braillatron/appliance.env ]]; then

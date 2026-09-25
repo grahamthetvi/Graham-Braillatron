@@ -338,11 +338,11 @@ sudo reboot
 
 After reboot, `braillatron.target` starts automatically. **No login or manual command is required** — power on, wait for TTS “Braillatron ready”, then use the physical keyboard.
 
-**Bench without SPI panel (default):** enable **Settings → Remote display** on the Pi, show pairing code, open `http://<pi-ip>:8080` on a laptop (USB keyboard stays on the Pi). When LAN access is disabled, use `ssh -L 8080:127.0.0.1:8080 user@<pi-ip>` and open `http://localhost:8080`.
+**HDMI monitor (default):** UI chrome renders on `/dev/fb0` when `hdmi_enabled=true` in `/etc/braillatron/display.conf`. If the screen stays blank, run `sudo fix-hdmi-appliance.sh` and reboot. Bootstrap also sets `consoleblank=0` so the kernel does not blank the console.
 
-**SPI panel present:** UI chrome renders on the panel; optional wireless mirror via Remote display settings.
+**SPI panel present:** UI chrome renders on the panel as well as HDMI when both devices are available.
 
-**Opt-in HDMI (`hdmi_enabled=true`):** legacy framebuffer bench on `/dev/fb0`; run `sudo fix-hdmi-appliance.sh` if the screen stays blank.
+**Assistant on a laptop:** enable **Settings → Remote display** on the Pi, show the pairing code, open `http://<pi-ip>:8080`. When LAN access is disabled, use `ssh -L 8080:127.0.0.1:8080 user@<pi-ip>` and open `http://localhost:8080`. The USB keyboard stays on the Pi.
 
 **TTS-only (no visual UI):** bootstrap with `BRAILLATRON\_HEADLESS=1` or edit `/etc/braillatron/appliance.env`.
 
@@ -405,9 +405,9 @@ Production bootstrap locks the device into appliance mode automatically:
 
 | Surface | What you get |
 | - | - |
-| **Remote display** | `braillatron-displayd.service` — browser viewer at `:8080` with pairing (default bench path) |
+| **HDMI** | `braillatron-ui.service` — `/dev/fb0` when `hdmi\_enabled=true` (shipped default) |
 | **SPI panel** | `braillatron-ui.service` — UI chrome on the HAT when `/etc/braillatron/appliance-spi` exists (`BRAILLATRON\_SPI\_PANEL=1` at bootstrap) |
-| **HDMI (opt-in)** | `braillatron-ui.service` — `/dev/fb0` when `hdmi\_enabled=true` |
+| **Remote display** | `braillatron-displayd.service` — browser viewer at `:8080` with pairing, for a laptop assistant |
 | **SPI + HDMI** | Composite backend when both devices are available and HDMI is enabled |
 | **Headless override** | `braillatron-ui-stub.service` when `BRAILLATRON\_HEADLESS=1` — TTS + keyboard, no visual UI |
 | **SSH** | Normal shell for builds, config edits, and debugging |
@@ -502,14 +502,14 @@ Production hardware with the **MAX98357A I2S amp** still uses `rk3566-i2s1-overl
 
 ## Testing on the Pi
 
-On the **default skeleton bench** (no SPI HAT), a connected HDMI monitor shows **UI chrome** via `/dev/fb0` (`braillatron-ui.service`). tty1 is cleared on success; error text appears on tty1 only when the UI fails to start. Speech, BRLTTY, and journal logs remain available regardless of display path.
+On the **default skeleton bench** (no SPI HAT), a connected HDMI monitor shows **UI chrome** via `/dev/fb0` (`braillatron-ui.service`, `hdmi_enabled=true`). tty1 is held without a clear or `setterm` on success, so console text does not wipe the framebuffer. Error text appears on tty1 only when the UI fails to start. Speech, BRLTTY, and journal logs remain available regardless of display path.
 
 Feedback channels:
 
 | Channel | How to use |
 | - | - |
 | **HDMI framebuffer** | UI chrome on `/dev/fb0` via `braillatron-ui.service` (default skeleton bench) |
-| **tty1** | Cleared on success; error text only when UI or display backend fails |
+| **tty1** | Held without clearing on success; error text only when UI or display backend fails |
 | **Journal logs** | `journalctl -u braillatron-ui -f` |
 | **Speech** | TTS on startup and focus changes (aux jack, Bluetooth, or I2S + Speech Dispatcher) |
 | **Braille display** | BRLTTY when a display is connected |

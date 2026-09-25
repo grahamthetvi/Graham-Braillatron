@@ -120,6 +120,7 @@ install -m 755 "${ROOT}/deploy/os/braillatron-systemd-wants.sh" /usr/local/sbin/
 install -m 755 "${ROOT}/deploy/os/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
 install -m 755 "${ROOT}/deploy/os/braillatron-fb-repaint.sh" /usr/local/sbin/braillatron-fb-repaint.sh
 install -m 755 "${ROOT}/deploy/os/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
+install -m 755 "${ROOT}/deploy/os/ensure-hdmi-consoleblank.sh" /usr/local/sbin/ensure-hdmi-consoleblank.sh
 
 install -m 644 "${ROOT}/deploy/systemd/braillatron-dictionary-data.service" "${SYSTEMD_DIR}/"
 install -m 644 "${ROOT}/deploy/systemd/braillatron-localsend.service" "${SYSTEMD_DIR}/"

@@ -36,9 +36,9 @@ if [[ -n "${backend_line}" ]]; then
   backend="${backend_line##*backend=}"
   case "${backend}" in
     stub|none|'')
-      echo 'WARN  UI has no local visual backend (expected on bench without SPI/HDMI)'
-      echo '  Enable Settings → Remote display, pair in browser at :8080 (USB keyboard stays on Pi)'
-      echo '  Or set hdmi_enabled=true for opt-in HDMI bench'
+      echo 'WARN  UI has no local visual backend'
+      echo '  HDMI: confirm hdmi_enabled=true and /dev/fb0, then sudo fix-hdmi-appliance.sh && sudo reboot'
+      echo '  Assistant browser: Settings → Remote display, then http://<pi-ip>:8080'
       ;;
     fb|spi|spi+fb|fb+spi)
       echo "OK  visual backend=${backend}"
@@ -53,7 +53,13 @@ fi
 
 section 'Kernel / boot overlays'
 for boot_env in /boot/dietpiEnv.txt /boot/firmware/dietpiEnv.txt; do
-  [[ -f "${boot_env}" ]] && grep -E '^(overlays|extraargs)=' "${boot_env}" || true
+  [[ -f "${boot_env}" ]] || continue
+  grep -E '^(overlays|extraargs)=' "${boot_env}" || true
+  if grep -q 'consoleblank=0' "${boot_env}"; then
+    echo "OK  ${boot_env} consoleblank=0"
+  else
+    echo "WARN  ${boot_env} missing consoleblank=0 (kernel may blank HDMI); run sudo fix-hdmi-appliance.sh"
+  fi
 done
 
 section 'Binaries and console tools'
@@ -121,9 +127,9 @@ if [[ ! -x /usr/local/bin/braillatron-ui ]]; then
 elif [[ ! -f /etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf ]]; then
   echo 'Re-apply appliance mode: sudo bash deploy/os/setup-appliance-mode.sh && sudo reboot'
 elif [[ "${backend_line}" == *'backend=stub'* ]] || [[ -z "${backend_line}" ]]; then
-  echo 'No local display backend: enable Settings → Remote display and open http://<pi-ip>:8080 (or ssh -L 8080:127.0.0.1:8080)'
-  echo 'Opt-in HDMI bench: set hdmi_enabled=true and run sudo fix-hdmi-appliance.sh'
+  echo 'No local display backend. HDMI: set hdmi_enabled=true, then sudo fix-hdmi-appliance.sh && sudo reboot'
+  echo 'Assistant browser: Settings → Remote display, then http://<pi-ip>:8080 (or ssh -L 8080:127.0.0.1:8080)'
 else
-  echo 'Local backend OK. For wireless mirror: Settings → Remote display → Show pairing code'
-  echo 'Opt-in HDMI blank: sudo fix-hdmi-appliance.sh (only when hdmi_enabled=true)'
+  echo 'Local backend OK. Assistant browser: Settings → Remote display → Show pairing code'
+  echo 'Blank HDMI after that: sudo fix-hdmi-appliance.sh && sudo reboot'
 fi

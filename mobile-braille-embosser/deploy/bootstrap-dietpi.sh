@@ -15,6 +15,12 @@ mapfile -t packages < "${ROOT}/deploy/packages.txt"
 apt_retry_update
 apt_retry_install "${packages[@]}"
 
+# shellcheck source=os/ensure-hdmi-consoleblank.sh
+source "${ROOT}/deploy/os/ensure-hdmi-consoleblank.sh"
+
+echo "Keeping the HDMI console from blanking..."
+ensure_hdmi_consoleblank
+
 echo "Configuring I2S overlay..."
 if ! grep -q 'rk3566-i2s1-overlay' /boot/dietpiEnv.txt 2>/dev/null; then
   if grep -q '^overlays=' /boot/dietpiEnv.txt 2>/dev/null; then
