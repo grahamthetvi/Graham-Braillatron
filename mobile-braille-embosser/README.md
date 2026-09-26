@@ -52,7 +52,7 @@ make display   # BRAILLATRON_DISPLAY=1 — ncurses UI chrome when stdout is a TT
 Other useful targets:
 
 ```bash
-make check                                              # build + run 24 host self-tests
+make check                                              # build + run 25 host self-tests
 make list-tests                                         # index of all self-test binaries
 make host-chord-test && ./braillatron-host-chord-test   # evdev chord commit logic, no keyboard
 make motion-test && ./braillatron-motion-test           # kinematics math only

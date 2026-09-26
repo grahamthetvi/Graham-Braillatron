@@ -8,6 +8,23 @@
 
 namespace braillatron::motion {
 
+namespace {
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic error "-Wswitch"
+void unhandled_brf_mark(documents::BrfMark mark)
+{
+    switch (mark) {
+    case documents::BrfMark::Cell:
+    case documents::BrfMark::Newline:
+    case documents::BrfMark::FormFeed:
+        break;
+    }
+}
+#pragma GCC diagnostic pop
+
+} // namespace
+
 MotionService::MotionService(kinematics::KinematicsConfig config)
     : controller_(std::move(config))
 {
@@ -104,19 +121,26 @@ void MotionService::emboss_brf(const std::string &brf)
             line_open = true;
             break;
         case documents::BrfMark::Newline:
-            advance_line();
+            if (!advance_line()) {
+                return;
+            }
             line_open = false;
             break;
         case documents::BrfMark::FormFeed:
-            if (line_open) {
-                advance_line();
-                line_open = false;
+            if (line_open && !advance_line()) {
+                return;
             }
+            line_open = false;
             {
                 const int32_t into = paper_.y_line_index() % kPageLines;
                 const int32_t feed = (into == 0) ? kPageLines : (kPageLines - into);
-                feed_lines(feed);
+                if (!feed_lines(feed)) {
+                    return;
+                }
             }
+            break;
+        default:
+            unhandled_brf_mark(token.mark);
             break;
         }
     }
