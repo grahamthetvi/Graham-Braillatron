@@ -120,7 +120,7 @@ void MotionService::emboss_brf(const std::string &brf)
     }
 }
 
-void MotionService::advance_line()
+bool MotionService::advance_line()
 {
     if (braillatron::MotionGate::is_blocked()) {
         return false;
