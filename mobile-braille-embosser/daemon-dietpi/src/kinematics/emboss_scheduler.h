@@ -1,7 +1,6 @@
 #pragma once
 
 #include "kinematics_config.h"
-#include "linkage_model.h"
 #include "motion_constants.h"
 #include "spatial_delay_line.h"
 #include "travel_log.h"
@@ -26,9 +25,7 @@ public:
     uint32_t row_b_deferral_microsteps() const;
 
 private:
-    KinematicsConfig config_;
     TravelLog &travel_log_;
-    LinkageModel linkage_;
     SpatialDelayLine delay_line_;
     RowStrikeHandler row_a_handler_;
     RowStrikeHandler row_b_handler_;

@@ -129,7 +129,9 @@ void on_menu_back()
 
 void on_safety_broadcast(uint8_t fault_code, uint8_t severity, uint16_t detail)
 {
-    if (fault_code == BRAILLATRON_FAULT_FREEFALL && g_klipper_emergency_stop) {
+    /* Freefall, comms loss, and sensor failure all mean the rail is cut
+     * while Klipper may still be inside a move. Stop the MCU too. */
+    if (severity >= BRAILLATRON_SEVERITY_CRITICAL && g_klipper_emergency_stop) {
         g_klipper_emergency_stop();
     }
 

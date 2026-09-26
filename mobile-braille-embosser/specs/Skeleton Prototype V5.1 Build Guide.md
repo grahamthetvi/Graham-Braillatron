@@ -6,7 +6,7 @@ This V5.1 Prototype Guide is the **canonical wiring document** for the Graham Br
 
 | Domain | Source of truth |
 |--------|-----------------|
-| Power / keys / MPU / VMOT gate | **This guide** + `firmware-arduino/src/pins.h` — 12 physical keys, MPU INT **active-low latched FALLING on D7**, IP2368 **in parallel** on the WAGO bus, D12 cut |
+| Power / keys / MPU / VMOT gate | **This guide** + `firmware-arduino/src/pins.h` — 12 physical keys, MPU INT **active-low latched FALLING on D7**, IP2368 **in parallel** on the WAGO bus, D12 high-side enable. Bench work that is still open: [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md) |
 | Monster8 pins / endstops / currents | `klipper/printer.cfg` **only** (Part 5). Do not copy pin excerpts from V9/V4.9. |
 
 V9 remains the software spec. Solenoid heads, MPU INT0 / active-high INT, series USB-C → IP2368 → BMS, and E0-STOP paper-edge wiring are retired.
@@ -35,8 +35,7 @@ V9 remains the software spec. Solenoid heads, MPU INT0 / active-high INT, series
 | **Logic Fuse** | 5 A ATC inline blade fuse on 14.8 V buck input. | 1 Fuse |
 | **Thermal Cutoff Fuse** | 85 °C non-resettable thermal fuse — **not installed on this skeleton prototype** (see Part 2.6). Production HAT **must** include it. | 0 on skeleton / 1 on production |
 | **Power Distribution** | 12-position dual-row screw terminal strip (star ground). 5-port WAGO lever nut (positive bus). | 1 Strip, 1 Nut |
-| **MOSFET Gate Driver** | TC4420 high-speed non-inverting gate driver IC. | 1 Chip |
-| **Low-Side Power MOSFET** | IRLZ44N N-channel logic-level MOSFET (30 A+) for VMOT cutoff. | 1 MOSFET |
+| **Motor-rail switch** | High-side break in Monster8 **VIN+**, after the 15 A fuse. Part is not selected. Arduino D12 is active-high enable (HIGH = motors on). Do **not** put an IRLZ44N in VIN− — USB ground bypasses it. See [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md). | 1 |
 | **Spike Protection** | TVS diode 18–20 V clamp (e.g. SMBJ18A or P6KE18CA) — **optional for bench** (see Part 2.5). | 0–1 Diode |
 | **Heavy-Gauge Wire** | #12–#14 AWG solid copper for pack/BMS/motor returns; #18–#22 for logic. | 1 Spool |
 
@@ -47,11 +46,11 @@ V9 remains the software spec. Solenoid heads, MPU INT0 / active-high INT, series
 | **Primary Processor (Tier 1)** | Orange Pi 3B (4 GB LPDDR4, Rockchip RK3566). On-board Wi‑Fi/BT silicon is whatever that **board revision ships** — this repo does not pin a module PN. | 1 Unit |
 | **Motion Controller (Tier 2)** | MKS Monster8 V2 (32-bit STM32, Klipper MCU). | 1 Board |
 | **Safety Watchdog (Tier 3)** | Arduino Micro (ATmega32U4, 5 V native). | 1 Unit |
-| **Logic Power Supply** | Mini560 (TPS5430) buck — 14.8 V in, 5.0 V / 5 A out. | 1 Module |
+| **Logic Power Supply** | Mini560 (TPS5430) buck — 14.8 V in, set to **5.1 V** under light load before the Pi is attached. | 1 Module |
 | **Audio Amplifier** | MAX98357A I2S Class D mono breakout. | 1 Board |
 | **Integrated Speaker** | 8 Ω 3 W enclosed micro speaker capsule (primary). 3.5 mm lapel mic on Pi aux (dev/STT). Bluetooth audio optional. | 1 Capsule |
 | **Audio Filter Capacitors** | 470 µF 35 V electrolytic + 0.1 µF ceramic at MAX98357A. | 1 Set |
-| **Gate Driver Bypass** | 0.1 µF ceramic across TC4420 VDD/GND. | 1 Unit |
+| **Switch bypass** | 0.1 µF ceramic at the high-side switch logic supply, once that part is chosen. | 1 |
 | **Audio SD Resistor** | 100 kΩ pull-up on MAX98357A SD pin. | 1 Unit |
 | **Haptic UI Driver** | DRV2605L I2C + 10 mm LRA. | 1 Set |
 | **User Display** | ST7789 240×240 SPI panel (3.3 V logic). | 1 Panel |
@@ -108,12 +107,13 @@ The following are **not specified** for this skeleton (do not invent CAD, photos
                             │                        │
     ┌───────────────────────┴────────────────────────┴───────────────┐
     │           CENTRAL NEGATIVE STAR GROUND (terminal block)         │
-    │  BMS P- │ IP2368 BAT- │ IRLZ44N Source │ Monster8 VIN- │ buck IN- │
+    │  BMS P- │ IP2368 BAT- │ Monster8 VIN- │ buck IN- │ Pi GND │
     └────────────────────────────────────────────────────────────────┘
 
 Motor bus (after 15 A fuse):
-    P+ ──► [opt 85°C thermal fuse] ──► Monster8 VIN+
-    Monster8 VIN- ──► IRLZ44N Drain ──► IRLZ44N Source ──► star ground (BMS P-)
+    P+ ──► [opt 85°C thermal fuse] ──► [high-side switch] ──► Monster8 VIN+
+    Monster8 VIN- ──► star ground (same net as USB GND — no FET here)
+    Arduino D12 HIGH = switch on; LOW = VIN+ open
 
 Logic bus (after 5 A fuse):
     P+ ──► Mini560 IN+ / IN- to star ground
@@ -121,21 +121,19 @@ Logic bus (after 5 A fuse):
     Mini560 OUT- ──► Pi pin 6 (GND) + Arduino GND
     *** Pi is powered ONLY from Mini560 — not from Monster8 VMOT or USB backfeed ***
 
-[LTC2944] across BMS P+ / P- (high-side sense), I2C to Pi pins 3/5
-
-[TC4420] Arduino D12 ──► gate ──► [IRLZ44N] (low-side on Monster8 VIN- return)
+[LTC2944] across BMS P+ / P- (high-side sense), I2C to Pi pins 3/5 (I2C2)
 
 Tier data:
-    Pi ═══ USB ═══ Monster8 (Klipper MCU, 5 V logic from USB jumper)
+    Pi ═══ USB ═══ Monster8 (Klipper MCU, 5 V logic from USB jumper only)
     Pi ═══ USB ═══ Arduino (keyboard + safety CDC @ 115200)
-    Pi I2S1 ──► MAX98357A ──► 8 Ω speaker
-    Pi SPI3 ──► ST7789
-    Pi I2C-1 ──► LTC2944, DRV2605L
+    Pi I2S1 M1 ──► MAX98357A ──► 8 Ω speaker (BCLK = pin 12, not pin 38)
+    Pi SPI3 ──► ST7789 (CS = pin 24 / spidev3.0)
+    Pi pins 3/5 (I2C2) ──► LTC2944, DRV2605L
 ```
 
 ### **2.2 BMS Wiring Walkthrough (Step-by-Step)**
 
-**Parts:** 4× Molicel P28A in 4S1P holder, HiLetgo 4S 30 A BMS, IP2368, WAGO, terminal block, fuses, Mini560, Monster8, IRLZ44N + TC4420.
+**Parts:** 4× Molicel P28A in 4S1P holder, HiLetgo 4S 30 A BMS, IP2368, WAGO, terminal block, fuses, Mini560, Monster8, and a high-side motor switch (part not selected — [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md)).
 
 #### Step 1 — Cell pack to BMS (B- / B+ only)
 
@@ -162,15 +160,14 @@ Tier data:
 3. Panel-mount **USB-C** to IP2368 **USB-C pads** (short leads; strain-relief the jack).
 4. When USB PD is present, the module charges the pack through the shared bus. When on battery, the module can source USB-C output (bi-directional path).
 
-#### Step 4 — Motor fuse → Monster8 VMOT (via IRLZ44N)
+#### Step 4 — Motor fuse → high-side switch → Monster8 VIN+
 
 1. WAGO → **15 A ATC fuse** → motor **P+** node.
 2. Optional skeleton thermal fuse in series on P+ (see §2.6).
-3. Motor **P+** → Monster8 **VIN+** or **POWER IN +** (#14 AWG).
-4. Monster8 **VIN-** → **IRLZ44N Drain** (#14 AWG).
-5. IRLZ44N **Source** → terminal block star ground (#14 AWG).
-6. IRLZ44N **Gate** ← TC4420 **OUT** (pins 6+7 tied); TC4420 **IN** ← Arduino **D12**; TC4420 **VDD/GND** ← Mini560 5 V logic bus.
-7. When D12 is HIGH, VMOT is enabled; freefall or comms loss pulls LOW and cuts motor power in <10 ms.
+3. Motor **P+** → **high-side switch input** → switch output → Monster8 **VIN+** (#14 AWG).
+4. Monster8 **VIN-** → terminal block star ground (#14 AWG). Do not insert a MOSFET in this return. USB ground is the same net, so a low-side FET is bypassed.
+5. Arduino **D12** enables the switch. HIGH = motors on, LOW = motors off. Pulldown the enable input so a floating Micro reset stays off.
+6. Firmware keeps D12 low until the first Pi heartbeat, and latches it low on freefall or a 3 s heartbeat gap until the Pi sends `CLEAR_FAULT`. The ISR itself is a port write; the MPU free-fall counter is about 20 ms (`FF_DUR`).
 
 #### Step 5 — Logic fuse → Mini560 → Pi & Arduino
 
@@ -184,14 +181,14 @@ Tier data:
 #### Step 6 — LTC2944 fuel gauge
 
 1. Mount LTC2944 on the **high-side battery rail** after BMS **P+** / **P-** (sense full pack voltage).
-2. I2C to Pi **pin 3 (SDA)** and **pin 5 (SCL)** — bus `i2c-1`, address `0x64`.
+2. I2C to Pi **pin 3 (SDA2)** and **pin 5 (SCL2)**. Those pins are I2C2, not I2C1. Address `0x64`. Confirm the `/dev/i2c-N` node on the image before trusting `telemetry.conf` ([Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md)).
 3. Calibrate SOC in software: 16.8 V = 100 %, 12.0 V = 0 % (`telemetry.conf`). After one full charge/discharge cycle, optionally set `battery_full_charge_counts` / `battery_empty_charge_counts` for coulomb counting.
 
 #### Step 7 — Monster8 logic power
 
 1. Flash Monster8 with Klipper firmware ([makerbase-mks/MKS-Monster8](https://github.com/makerbase-mks/MKS-Monster8)).
-2. Set Monster8 **5 V source jumper to USB** — the board's STM32 logic is powered from the Pi's USB port (which is fed by Mini560), **separate from VMOT**.
-3. Connect **shielded USB-C (Monster8) → USB-A (Pi)** for Klipper serial.
+2. Set Monster8 **5 V source jumper to USB only**. Remove the VIN-derived 5 V jumper. Both fitted will fight the Mini560 from the motor rail. STM32 logic then comes from the Pi USB port, which is fed by the Mini560, separate from VIN+.
+3. Connect **shielded USB-C (Monster8) → USB-A (Pi)** for Klipper serial. That cable's ground is why the motor cut has to be on VIN+, not VIN−.
 
 ### **2.3 IP2368 Bi-Directional Power Path**
 
@@ -219,17 +216,18 @@ This V5.1 skeleton is a **prototype / breadboard without** the production therma
 - **Production (custom PCB / HAT):** unified aluminum bar across all eight TMC2209 drivers + **required** 85 °C non-resettable thermal fuse on the motor rail. Do not ship production hardware without it. V4.9/V9 still own that requirement; deferring it here does not cancel it.
 - **Skeleton:** **Defer** the 85 °C series thermal fuse, or place one only on the highest-risk conductor (BMS P+ lead) if you want a belt-and-suspenders prototype.
 
-### **2.7 IRLZ44N + TC4420 Topology (Low-Side Cut)**
+### **2.7 Motor-rail switch (high-side on VIN+)**
+
+Monster8 VIN−, USB ground, and Pi ground are one net once the Klipper USB cable is plugged in. A low-side FET in the VIN− lead does not stop motor current; the return takes the USB ground wire instead, and it can push that current through the Pi.
 
 | Node | Connection |
 |------|------------|
-| IRLZ44N Source | Star ground (BMS P- / pack negative return) |
-| IRLZ44N Drain | Monster8 VIN- (negative motor supply) |
-| IRLZ44N Gate | TC4420 OUT (pins 6+7 tied) |
-| TC4420 IN | Arduino D12 |
-| TC4420 VDD/GND | Mini560 5 V logic bus |
+| Switch input | Motor P+ after the 15 A fuse |
+| Switch output | Monster8 VIN+ |
+| Monster8 VIN− | Star ground, directly |
+| Enable | Arduino D12, active high, with a pulldown |
 
-This is a **low-side** switch on the VMOT return. Cutting the return opens the motor circuit even if Monster8 logic is still alive via USB — which is why Klipper **M112** is also sent on freefall (software stop + hardware rail cut).
+D12 HIGH means motors on. D12 LOW means VIN+ is open. Klipper **M112** is still sent on freefall, comms loss, and sensor failure, because USB logic power stays up when VIN+ opens. The switch part itself is open work: [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md). A TC4420 plus IRLZ44N does not implement this high-side break.
 
 ---
 
@@ -266,7 +264,7 @@ Twelve tactile switches — **no 13th physical Menu key**. The system Menu overl
 
 - Install TMC2209 StepSticks in slots **0–7**; UART jumpers under each socket (no jumper photos in this repo).
 - Klipper cartesian kinematics also require a `[stepper_z]` object. In `printer.cfg` that object is a **dummy** on unused EXP1 pins (PB2 / PE10 / PE11). It is **not** Monster8 slot 2 (silkscreen Z = `emboss_1`). Do **not** attach a motor to EXP1.
-- **Microstepping:** 16× (`MS1=HIGH`, `MS2=HIGH`) — matches `kinematics.conf` and 1600 microsteps per 10 mm line.
+- **Microstepping:** 16× from `printer.cfg` (`microsteps: 16`) over UART. With the UART jumper fitted, MS1/MS2 are the driver address straps, not the microstep code.
 - **Sensorless homing:** not used — optical endstops only.
 
 #### USB & logic power
@@ -290,7 +288,7 @@ Do **not** wire paper-edge to **E0-STOP** or **FIL_RUNOUT**. Monster8 pin names 
 
 **Option A:** limits live on Monster8 only. The Pi reads state via **Moonraker/Klipper API** (`query_endstops`, object status) — not Pi GPIO. Leave `gpio_paper_edge` / `gpio_y_home` empty in `telemetry.conf` unless you duplicate sensors for bench test.
 
-### **3.3 MPU6050 & TC4420 Failsafe (Tier 3)**
+### **3.3 MPU6050 & motor-rail enable (Tier 3)**
 
 Keep MPU wiring **under 10 cm** (24–26 AWG).
 
@@ -303,7 +301,7 @@ Keep MPU wiring **under 10 cm** (24–26 AWG).
 | INT | **D7** (PE6 / hardware interrupt **INT6**) — **active-low latched**, ISR on **FALLING**. **Not D3 / INT0** (D3 is I2C SCL). V9 active-high language and GY-521 jumpers that leave INT active-high will **miss freefall**. |
 | ADO | GND (address 0x68) |
 
-**TC4420:** VDD/GND → 5 V logic bus; IN → D12; OUT → IRLZ44N gate; 0.1 µF bypass on VDD/GND.
+**D12:** active-high enable for the high-side switch on VIN+ (§2.7). Pulldown the input. Firmware drives the pin low in `setup()` and leaves it low until the first heartbeat.
 
 ### **3.4 I2C Bus (Pi `i2c-1`)**
 
@@ -312,7 +310,7 @@ Keep MPU wiring **under 10 cm** (24–26 AWG).
 | LTC2944 | 0x64 | SDA pin 3, SCL pin 5 |
 | DRV2605L | 0x5A | same bus |
 
-Enable `i2c1` overlay in `armbianEnv.txt` / DietPi config.
+Header pins 3 and 5 are **SDA2/SCL2 (I2C2)**. Bootstrap appends overlay `i2c1` to `/boot/dietpiEnv.txt` (not `armbianEnv.txt`). That overlay name does not match this header mux. Confirm with `i2cdetect` before using `/dev/i2c-1` ([Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md)).
 
 **Production-only / unspecified on this skeleton:** PDM MEMS mic (ICS-43432), grounded copper-tape cage, custom HAT netlist, and DRV2605L **EN** (breakout assumed strapped high; no V5.1 pin). Do not invent a HAT schematic. Skeleton STT uses the Pi 3.5 mm aux jack (Part 1 audio row).
 
@@ -322,14 +320,14 @@ Enable `i2c1` overlay in `armbianEnv.txt` / DietPi config.
 |-----------|--------------|
 | VDD | Pin 4 (5 V) or logic 5 V bus |
 | GND | Pin 6 |
-| LRCK (WS) | Pin 35 (I2S1_LRCK) |
-| BCLK | Pin 38 (I2S1_SCLK) |
-| DIN | Pin 40 (I2S1_SDO0) |
+| LRCK (WS) | Pin 35 (GPIO3_D0, I2S1 M1 LRCK TX) |
+| BCLK | Pin 12 (GPIO3_C7, I2S1 M1 SCLK TX) |
+| DIN | Pin 40 (GPIO3_D1, I2S1 M1 SDO0) |
 | GAIN | GND (9 dB) |
 | SD | 3.3 V via 100 kΩ |
 | Speaker | 8 Ω 3 W to OUT+ / OUT- |
 
-Overlay: `rk3566-i2s1-overlay` in `armbianEnv.txt`. Factory speaker test: `speaker-test -t sine -f 440 -c 1`.
+Pin 38 is I2S1 data-in, not the bit clock. Bootstrap appends `rk3566-i2s1-overlay` to `/boot/dietpiEnv.txt`. The overlay file is not in this repo, and the onboard headphone codec already uses I2S1 mux M0. Confirm the overlay muxes M1 before soldering ([Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md)). Factory speaker test: `speaker-test -t sine -f 440 -c 1`.
 
 ### **3.6 ST7789 SPI Display**
 
@@ -341,7 +339,7 @@ Enable SPI3 + spidev overlay. Recommended wiring:
 | GND | 6 | GND |
 | SCL | 23 | SPI3_CLK |
 | SDA | 19 | SPI3_TXD (MOSI) |
-| CS | 24 | SPI3_CS1 (or tie low if module omits CS) |
+| CS | 24 | Rockchip SPI3 CS0 (`/dev/spidev3.0`). Orange Pi silkscreen often labels this pin SPI3_CS1. Pin 26 is RES, not chip-select. |
 | DC | 22 | GPIO (gpiochip4 line 9) |
 | RES | 26 | GPIO (gpiochip4 line 7) |
 | BLK | 3.3 V | backlight always on |
@@ -382,11 +380,12 @@ Authoritative: `shared/protocol.h`, `shared/protocol.md`.
 |--------|-----------|---------|
 | `0x01` KEYBOARD_MATRIX | Arduino → Pi | Edge function keys |
 | `0x02` TELEMETRY | Pi → Arduino | Battery %, temp, limit flags |
-| `0x03` SAFETY | Bidirectional | Freefall, comms loss |
-| `0x04` HEARTBEAT | Pi → Arduino | 500 ms liveness (DietPi `braillatron-ui`) |
+| `0x03` SAFETY | Arduino → Pi | Freefall, comms loss, sensor failure |
+| `0x04` HEARTBEAT | Pi → Arduino | 500 ms liveness (`braillatron-ui`) |
 | `0x06` CHORD | Arduino → Pi | Braille dot mask |
+| `0x07` CLEAR_FAULT | Pi → Arduino | Drop latched freefall / comms-loss and re-apply the rail |
 
-**USB heartbeat:** `braillatron-ui` opens `/dev/ttyACM0` and sends `HEARTBEAT` on the configured interval. If heartbeats stop >3 s, Arduino cuts VMOT.
+**USB heartbeat:** `braillatron-ui` opens the Arduino CDC device and sends `HEARTBEAT` on the configured interval. The rail stays off until the first heartbeat. If heartbeats then stop for more than 3 s, the Arduino cuts the rail and latches that off until `CLEAR_FAULT`. A later heartbeat does not turn it back on.
 
 **TELEMETRY relay:** `braillatron-ui` reads `/run/braillatron/telemetry.json` (from `braillatron-sentinel`) and sends `TELEMETRY` frames to Arduino every 500 ms with battery and limit flags.
 
@@ -398,9 +397,9 @@ Non-blocking `millis()` state machine — never `delay()` in the main loop (MPU 
 
 On INT6 (D7 / PE6) **falling** edge (MPU INT is **active-low latched**; firmware `INT_PIN_CFG = 0xA0`):
 
-1. Arduino **ISR** pulls D12 LOW → IRLZ44N opens VMOT (port write only — **no serial in the ISR**).
+1. Arduino **ISR** pulls D12 LOW, which opens the high-side switch (port write only — **no serial in the ISR**).
 2. The **main loop** sees the pending latch and transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL` (`braillatron_app.cpp`).
-3. Pi handler issues **Klipper M112** via Moonraker and blocks MotionGate.
+3. Pi handler issues **Klipper emergency stop** via Moonraker and blocks MotionGate. The same stop is sent for comms loss and sensor failure.
 
 ### **4.5 DietPi / gpiod Heartbeat (development)**
 

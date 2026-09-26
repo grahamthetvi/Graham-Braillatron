@@ -31,7 +31,7 @@ Version 1 implemented in `shared/protocol.h` and `shared/protocol.c`.
 | `0x04` HEARTBEAT | Pi → Arduino | none | Sent periodically when serial is connected |
 | `0x05` ACK_NACK | Unused in v1 | none | Neither side emits |
 | `0x06` CHORD | Arduino → Pi | 1-byte dot_mask | Braille chord assembled on-device (40 ms window) |
-| `0x07` CLEAR_FAULT | Pi → Arduino | none | Explicit recover for latched FREEFALL: firmware clears the MPU INT latch and restores D12/VMOT if no other hold is active |
+| `0x07` CLEAR_FAULT | Pi → Arduino | none | Drop latched FREEFALL and COMMS_LOSS, then re-apply D12. MPU-missing, battery-critical, and an INT that is still low keep the rail off |
 
 ## Keyboard input split
 
@@ -64,9 +64,9 @@ The Arduino uses `BRAILLATRON_LIMIT_BATTERY_CRITICAL` in firmware to reinforce t
 
 On `BRAILLATRON_OP_SAFETY` with severity ≥ `BRAILLATRON_SEVERITY_CRITICAL`, `keyboard_service` blocks **MotionGate** and announces via Output Hub.
 
-For `BRAILLATRON_FAULT_FREEFALL`, the Pi also calls the registered Klipper emergency-stop handler (**M112** via Moonraker) when `klipper.conf` `enabled=true`. Hardware VMOT is already cut by the Arduino **ISR** (D12 port write only — **no serial in the ISR**). The **main loop** later transmits `BRAILLATRON_OP_SAFETY`. M112 stops Monster8 motion that may still be alive over USB.
+For any SAFETY frame at severity ≥ critical (freefall, comms loss, sensor failure), the Pi calls the registered Klipper emergency-stop handler (Moonraker `emergency_stop`, with `M112` only if that call fails) when `klipper.conf` `enabled=true`. Hardware VMOT is already cut by the Arduino (freefall: D12 port write in the ISR, no serial in the ISR). The main loop re-asserts the hold and transmits `BRAILLATRON_OP_SAFETY`. Emergency stop halts Monster8 motion that is still alive over USB.
 
-Recover is explicit: Settings / Factory Test call `hooks::recover_motion_gate()`, which must send `BRAILLATRON_OP_CLEAR_FAULT` (`0x07`, zero payload) before unblocking MotionGate. The daemon must not restore motion from a daemon-only unblock while Arduino still has D12 latched off.
+Recover is explicit: Settings / Factory Test call `hooks::recover_motion_gate()`, which sends `BRAILLATRON_OP_CLEAR_FAULT` (`0x07`, zero payload) before unblocking MotionGate. There is no acknowledgement. A successful write is not proof that D12 came back on. After a cut, re-home Y and jog the carriage before embossing ([Hardware Bring-Up To-Do](../specs/Hardware%20Bring-Up%20To-Do.md)).
 
 Arduino-emitted SAFETY codes are `FREEFALL`, `COMMS_LOSS`, and `SENSOR_FAILURE`. Battery-critical is a TELEMETRY `LIMIT_BATTERY_CRITICAL` flag, not a Pi- or Arduino-sent SAFETY frame. `FAULT_WATCHDOG_TIMEOUT` and `FAULT_THERMAL` are unused/reserved (kept for parsing); a host heartbeat gap uses `COMMS_LOSS`, and there is no Arduino thermal sensor.
 
@@ -77,9 +77,10 @@ Arduino-emitted SAFETY codes are `FREEFALL`, `COMMS_LOSS`, and `SENSOR_FAILURE`.
 ## Error handling
 
 - Invalid CRC frames are dropped by the receiver parser.
-- The Arduino watches for host heartbeats: after the first heartbeat is seen,
-  a gap longer than the comms timeout cuts the stepper rail and emits
-  `SAFETY` with `BRAILLATRON_FAULT_COMMS_LOSS`.
+- The Arduino watches for host heartbeats. The rail stays off until the first
+  one. After that, a gap longer than the comms timeout cuts the stepper rail,
+  latches `BRAILLATRON_FAULT_COMMS_LOSS`, and keeps the rail off until
+  `CLEAR_FAULT`. A resumed heartbeat does not clear the latch.
 - The Arduino also runs the AVR hardware watchdog; a hung main loop resets
-  the MCU (stepper rail defaults to off until re-enabled in setup). That
-  reset does not emit `FAULT_WATCHDOG_TIMEOUT` (unused/reserved).
+  the MCU. Setup drives D12 low and leaves it low until the next clean
+  heartbeat. That reset does not emit `FAULT_WATCHDOG_TIMEOUT` (unused/reserved).

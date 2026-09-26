@@ -27,6 +27,7 @@ static void broadcast_active_fault(uint32_t now_ms)
 {
     uint8_t fault_code = BRAILLATRON_FAULT_NONE;
     uint8_t severity = BRAILLATRON_SEVERITY_INFO;
+    uint16_t detail = 0u;
 
     if (mpu6050_freefall_pending()) {
         fault_code = BRAILLATRON_FAULT_FREEFALL;
@@ -34,9 +35,14 @@ static void broadcast_active_fault(uint32_t now_ms)
     } else if (g_sensor_fault) {
         fault_code = BRAILLATRON_FAULT_SENSOR_FAILURE;
         severity = BRAILLATRON_SEVERITY_CRITICAL;
+    } else if (watchdog_comms_lost()) {
+        fault_code = BRAILLATRON_FAULT_COMMS_LOSS;
+        severity = BRAILLATRON_SEVERITY_CRITICAL;
+        detail = watchdog_comms_elapsed_ms();
     }
 
     if (fault_code == BRAILLATRON_FAULT_NONE) {
+        g_fault_tx_pending = false;
         return;
     }
 
@@ -44,7 +50,7 @@ static void broadcast_active_fault(uint32_t now_ms)
         return;
     }
 
-    protocol_tx_safety(fault_code, severity, 0u);
+    protocol_tx_safety(fault_code, severity, detail);
     g_last_fault_tx_ms = now_ms;
     g_fault_tx_pending = true;
 }
@@ -75,6 +81,7 @@ void braillatron_loop(void)
 
     protocol_rx_poll(now_ms);
     watchdog_kick(now_ms);
+    fail_safes_apply_rail();
     broadcast_active_fault(now_ms);
 
     if (mpu6050_freefall_pending()) {

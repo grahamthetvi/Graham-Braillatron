@@ -1,8 +1,6 @@
 #include "telemetry_handler.h"
 
 #include "fail_safes.h"
-#include "mpu6050_isr.h"
-#include "watchdog.h"
 
 #include <Arduino.h>
 
@@ -31,9 +29,7 @@ void telemetry_handler_apply(const braillatron_telemetry_t *payload)
         payload->battery_percent != BRAILLATRON_TELEMETRY_UNKNOWN &&
         payload->battery_percent > 5u) {
         g_battery_critical_latched = false;
-        if (!mpu6050_freefall_pending() && !watchdog_comms_lost()) {
-            fail_safes_restore_rail();
-        }
+        /* The main loop applies the rail. Other holds can still keep it off. */
     }
 }
 

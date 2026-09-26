@@ -29,6 +29,7 @@ Graham Braillatron/
 | connectd + app bring-up checklist | [Connectivity Follow-Up Checklist](mobile-braille-embosser/specs/Connectivity%20Follow-Up%20Checklist.md) |
 | Software architecture | [Master Software Architecture V9](mobile-braille-embosser/specs/Master%20Software%20Architecture%20V9.md) (apps/protocol/OS; interconnect is V5.1 + `pins.h` + `printer.cfg`) |
 | Prototype wiring & BOM | [Skeleton Prototype V5.1 Build Guide](mobile-braille-embosser/specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) |
+| Bench work still open | [Hardware Bring-Up To-Do](mobile-braille-embosser/specs/Hardware%20Bring-Up%20To-Do.md) |
 | Serial protocol | [shared/protocol.md](mobile-braille-embosser/shared/protocol.md) |
 | Arduino firmware build | [firmware-arduino/README.md](mobile-braille-embosser/firmware-arduino/README.md) |
 

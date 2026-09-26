@@ -57,6 +57,11 @@ int main()
         return 1;
     }
 
+    if (deferral != MICROSTEPS_ROW_B_OFFSET) {
+        std::cerr << "row B offset must stay the 2.5 mm column pitch\n";
+        return 1;
+    }
+
     if (events[1].travel_microsteps - events[0].travel_microsteps !=
         static_cast<int64_t>(deferral)) {
         std::cerr << "row B deferral mismatch\n";

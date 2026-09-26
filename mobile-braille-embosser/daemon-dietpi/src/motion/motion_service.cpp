@@ -94,8 +94,9 @@ void MotionService::advance_line()
         static_cast<int32_t>(controller_.row_b_deferral_microsteps()));
 
     // Physical Y feed plus carriage return to X0 (KlipperMotionBridge).
-    if (line_feed_) {
-        line_feed_(1);
+    if (line_feed_ && !line_feed_(1)) {
+        std::cerr << "[motion] line feed failed; paper index left unchanged\n";
+        return;
     }
 
     // New line starts with the carriage at X0.
@@ -114,8 +115,9 @@ void MotionService::feed_lines(int32_t delta)
         }
     } else if (delta < 0) {
         // Paper retreat is a pure Y move; the carriage travel log is X-only.
-        if (line_feed_) {
-            line_feed_(delta);
+        if (line_feed_ && !line_feed_(delta)) {
+            std::cerr << "[motion] line feed failed; paper index left unchanged\n";
+            return;
         }
         for (int32_t i = 0; i > delta; --i) {
             paper_.retreat_line();
