@@ -127,6 +127,7 @@ install -m 755 "${REPO_ROOT}/deploy/os/braillatron-tty1-launch.sh" "${PI}/usr/lo
 install -m 755 "${REPO_ROOT}/deploy/os/braillatron-systemd-wants.sh" "${PI}/usr/local/sbin/braillatron-systemd-wants.sh"
 install -m 755 "${REPO_ROOT}/deploy/os/braillatron-boot-diagnose.sh" "${PI}/usr/local/bin/braillatron-boot-diagnose"
 install -m 755 "${REPO_ROOT}/deploy/os/fix-hdmi-appliance.sh" "${PI}/usr/local/sbin/fix-hdmi-appliance.sh"
+install -m 755 "${REPO_ROOT}/deploy/os/ensure-hdmi-consoleblank.sh" "${PI}/usr/local/sbin/ensure-hdmi-consoleblank.sh"
 install -d "${PI}/etc/systemd/system/getty@tty1.service.d"
 install -m 644 "${REPO_ROOT}/deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf" \
   "${PI}/etc/systemd/system/getty@tty1.service.d/braillatron-appliance.conf"

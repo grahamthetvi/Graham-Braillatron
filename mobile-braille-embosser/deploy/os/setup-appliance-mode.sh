@@ -39,6 +39,7 @@ install -m 755 "${SCRIPT_DIR}/braillatron-tty1-launch.sh" /usr/local/sbin/braill
 install -m 755 "${SCRIPT_DIR}/braillatron-systemd-wants.sh" /usr/local/sbin/braillatron-systemd-wants.sh
 install -m 755 "${SCRIPT_DIR}/braillatron-boot-diagnose.sh" /usr/local/bin/braillatron-boot-diagnose
 install -m 755 "${SCRIPT_DIR}/fix-hdmi-appliance.sh" /usr/local/sbin/fix-hdmi-appliance.sh
+install -m 755 "${SCRIPT_DIR}/ensure-hdmi-consoleblank.sh" /usr/local/sbin/ensure-hdmi-consoleblank.sh
 install -m 755 "${SCRIPT_DIR}/braillatron-fb-repaint.sh" /usr/local/sbin/braillatron-fb-repaint.sh
 # DietPi can defer getty@tty1 until network-online (wlan0 ~5min). Late tty1 init wipes fb0 UI.
 while IFS= read -r dropin; do
@@ -137,9 +138,10 @@ cat <<EOF
 
 Appliance mode configured.
   - Power on: Braillatron starts automatically (no login required)
-  - Visual UI: SPI panel when fitted; wireless remote display (Settings → Remote display)
-  - HDMI framebuffer: opt-in via hdmi_enabled=true in display.conf
-  - Repair scripts/units: sudo fix-hdmi-appliance.sh
+  - HDMI monitor: UI chrome on /dev/fb0 when hdmi_enabled=true (the shipped default)
+  - SPI panel: same chrome when the HAT is fitted
+  - Assistant browser: Settings → Remote display, then http://<device-ip>:8080
+  - Blank HDMI: sudo fix-hdmi-appliance.sh && sudo reboot
   - SSH: enabled for development and maintenance
 
 Maintenance over SSH:

@@ -234,12 +234,12 @@ For a similar local-console experience on a **dev PC** (ncurses bench), use [`de
 
 | Surface | When | What you see |
 | --- | --- | --- |
-| **Remote display** | Settings → Remote display (default bench path) | UI chrome in a browser at `:8080` with pairing auth; USB keyboard on Pi |
+| **HDMI** | Default: `hdmi_enabled=true` and `/dev/fb0` | UI chrome on the monitor. `sudo fix-hdmi-appliance.sh` if the screen stays blank |
 | **SPI panel** | `/dev/spidev0.0` + GPIO configured | Same UI chrome on the HAT display |
-| **HDMI** | Opt-in: `hdmi_enabled=true` | UI chrome on `/dev/fb0` (legacy bench; use remote display instead) |
+| **Remote display** | Settings → Remote display | Same chrome in a browser at `:8080` for a laptop assistant; USB keyboard stays on the Pi |
 | **SSH** | Always | Admin shell — use `ssh -L 8080:127.0.0.1:8080` when LAN access is disabled |
 
-Default bench without SPI: enable **Remote display** in Settings, show pairing code, open `http://<pi-ip>:8080` on a laptop (or `http://localhost:8080` through an SSH tunnel).
+A connected HDMI monitor shows the UI after reboot. For a sighted helper on another computer, enable **Remote display** in Settings, show the pairing code, and open `http://<pi-ip>:8080` (or `http://localhost:8080` through an SSH tunnel).
 
 Force TTS-only (no visual UI): `BRAILLATRON_HEADLESS=1` at bootstrap or set in `/etc/braillatron/appliance.env`, then `systemctl restart braillatron.target`. Re-enable visual UI: [`deploy/os/setup-dev-console-mode.sh`](deploy/os/setup-dev-console-mode.sh).
 
@@ -254,7 +254,7 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 | `keyboard.conf` | Serial + evdev bench input |
 | `evdev_map.conf` | USB key → logical key map (edit for non-QWERTY layouts) |
 | `ui.conf` | TTS, braille, STT, haptics toggles, visual display toggle, document dictation |
-| `display.conf` | Display backends (`auto`/`spi`/`fb`/`ncurses`/`stub`), spidev, fbdev, GPIO, remote publisher, HDMI opt-in |
+| `display.conf` | Display backends (`auto`/`spi`/`fb`/`ncurses`/`stub`), spidev, fbdev, GPIO, remote publisher, HDMI (`hdmi_enabled=true` by default) |
 | `remote-display.conf` | displayd HTTP/WebSocket listener, pairing, LAN access (`/data/braillatron/settings/` on Pi) |
 | `localsend.conf` | LocalSend receive-only sidecar (`enabled`, port `53317`, HTTP) |
 

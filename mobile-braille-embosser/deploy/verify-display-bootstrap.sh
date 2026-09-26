@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Default bootstrap verification for wireless-first appliance display.
+# Bootstrap verification. HDMI on /dev/fb0 is the local display unless opted out.
 set -euo pipefail
 
 PREFIX="${PREFIX:-/usr/local}"
 SYSTEMD_DIR="/etc/systemd/system"
 failures=0
 HDMI_MODE=0
+DISPLAY_CONF="/etc/braillatron/display.conf"
 
-if [[ "${BRAILLATRON_HDMI:-0}" == "1" ]]; then
+if [[ "${BRAILLATRON_HDMI:-}" == "1" ]]; then
   HDMI_MODE=1
-elif [[ -f /etc/braillatron/display.conf ]] && grep -q '^hdmi_enabled=true' /etc/braillatron/display.conf; then
+elif [[ "${BRAILLATRON_HDMI:-}" != "0" ]] \
+    && [[ -f "${DISPLAY_CONF}" ]] \
+    && grep -q '^hdmi_enabled=true' "${DISPLAY_CONF}"; then
   HDMI_MODE=1
 fi
 
@@ -22,13 +25,19 @@ check() {
   fi
 }
 
-if [[ -f /etc/braillatron/display.conf ]]; then
-  if grep -q '^hdmi_enabled=false' /etc/braillatron/display.conf; then
-    check ok "display.conf hdmi_enabled=false (wireless-first default)"
+if [[ -f "${DISPLAY_CONF}" ]]; then
+  if [[ "${BRAILLATRON_HDMI:-}" == "0" ]] && grep -q '^hdmi_enabled=true' "${DISPLAY_CONF}"; then
+    check fail "display.conf hdmi_enabled=true conflicts with BRAILLATRON_HDMI=0"
+  elif [[ "${BRAILLATRON_HDMI:-}" == "1" ]] && grep -q '^hdmi_enabled=false' "${DISPLAY_CONF}"; then
+    check fail "display.conf hdmi_enabled=false conflicts with BRAILLATRON_HDMI=1"
+  elif grep -q '^hdmi_enabled=true' "${DISPLAY_CONF}"; then
+    check ok "display.conf hdmi_enabled=true (local HDMI)"
+  elif grep -q '^hdmi_enabled=false' "${DISPLAY_CONF}"; then
+    check ok "display.conf hdmi_enabled=false (HDMI opt-out)"
   else
-    check fail "display.conf hdmi_enabled should be false unless BRAILLATRON_HDMI=1"
+    check fail "display.conf missing hdmi_enabled=true or hdmi_enabled=false"
   fi
-  grep -q '^remote_display_socket=' /etc/braillatron/display.conf \
+  grep -q '^remote_display_socket=' "${DISPLAY_CONF}" \
     && check ok "display.conf remote_display_socket configured" \
     || check fail "display.conf missing remote_display_socket"
 fi
@@ -70,6 +79,6 @@ if [[ "${failures}" -eq 0 ]]; then
 fi
 
 echo "verify-display-bootstrap: ${failures} check(s) failed" >&2
-echo "  Bench without SPI: enable Remote display in Settings, pair at http://<pi-ip>:8080" >&2
-echo "  LAN disabled: ssh -L 8080:127.0.0.1:8080 user@<pi-ip> then open http://localhost:8080" >&2
+echo "  HDMI: hdmi_enabled=true, /dev/fb0 present, then sudo fix-hdmi-appliance.sh && sudo reboot" >&2
+echo "  Assistant browser: Settings → Remote display, then http://<pi-ip>:8080" >&2
 exit 1
