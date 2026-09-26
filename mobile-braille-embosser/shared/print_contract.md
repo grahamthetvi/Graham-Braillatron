@@ -38,3 +38,5 @@ Reasons: `none`, `safety`, `paper`, `motion`, `overflow`.
 In C those reasons are `BRAILLATRON_PRINT_FAULT_*`. The co-processor link in `protocol.h` already uses `BRAILLATRON_FAULT_*` for freefall and comms loss, and the two enums have to keep different names.
 
 A drop cuts motor power (`safety`) on either product. The personal-computer co-processor link is a different file, [`protocol.h`](protocol.h).
+
+The embosser’s ESP32-S3 talks to the Spider on a third frame, [`embosser_link.h`](embosser_link.h): sync `0xA6`, a heartbeat before motors run, and a binary status opcode back. That frame is not the `BRFSTAT` text line and not the co-processor frame (`0xA5`).

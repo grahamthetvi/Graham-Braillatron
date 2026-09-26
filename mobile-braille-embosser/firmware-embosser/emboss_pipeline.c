@@ -183,8 +183,7 @@ static void form_feed(emboss_pipeline *pipeline)
         }
     }
     set_state(pipeline, BRAILLATRON_JOB_DONE);
-    pipeline->hdr = EMBOSS_HDR_MAYBE;
-    pipeline->line_len = 0;
+    emboss_job_reset(&pipeline->job);
 }
 
 static void submit_cell(emboss_pipeline *pipeline, uint8_t mask)
@@ -216,96 +215,81 @@ static void submit_cell(emboss_pipeline *pipeline, uint8_t mask)
     travel_by(pipeline, BRAILLATRON_CELL_PITCH_UM);
 }
 
-static void accept_content_byte(emboss_pipeline *pipeline, uint8_t byte)
+static int pipeline_is_faulted(void *user)
 {
-    uint8_t mask = 0;
+    const emboss_pipeline *pipeline = user;
 
-    if (pipeline->state == BRAILLATRON_JOB_FAULT) {
+    return pipeline->state == BRAILLATRON_JOB_FAULT;
+}
+
+static void note_new_job(emboss_pipeline *pipeline)
+{
+    if (pipeline->state != BRAILLATRON_JOB_IDLE &&
+        pipeline->state != BRAILLATRON_JOB_DONE) {
         return;
     }
-    if (pipeline->swallow_lf) {
-        pipeline->swallow_lf = 0;
-        if (byte == '\n') {
-            return;
-        }
-    }
-    if (byte == '\r') {
-        newline(pipeline);
-        pipeline->swallow_lf = 1;
-        return;
-    }
-    if (byte == '\n') {
-        newline(pipeline);
-        return;
-    }
-    if (byte == BRAILLATRON_BRF_FORM_FEED) {
-        form_feed(pipeline);
-        return;
-    }
-    if (!braillatron_brf_ascii_to_dot_mask((char)byte, &mask)) {
-        return;
-    }
+    pipeline->filename[0] = '\0';
+    set_state(pipeline, BRAILLATRON_JOB_RECEIVING);
+}
+
+static void pipeline_on_cell(void *user, uint8_t mask)
+{
+    emboss_pipeline *pipeline = user;
+
+    note_new_job(pipeline);
     submit_cell(pipeline, mask);
 }
 
-static void store_filename(emboss_pipeline *pipeline)
+static void pipeline_on_newline(void *user)
 {
-    size_t begin = sizeof(BRAILLATRON_BRF_HEADER_PREFIX) - 1;
-    size_t end = pipeline->line_len;
-    size_t n;
+    emboss_pipeline *pipeline = user;
 
-    while (begin < end && (pipeline->line[begin] == ' ' || pipeline->line[begin] == '\t')) {
-        begin++;
-    }
-    while (end > begin && (pipeline->line[end - 1] == ' ' || pipeline->line[end - 1] == '\t')) {
-        end--;
-    }
-    n = end - begin;
-    if (n >= EMBOSS_FILENAME_CAP) {
-        enter_fault(pipeline, BRAILLATRON_PRINT_FAULT_OVERFLOW);
+    note_new_job(pipeline);
+    newline(pipeline);
+}
+
+static void pipeline_on_form_feed(void *user)
+{
+    emboss_pipeline *pipeline = user;
+
+    note_new_job(pipeline);
+    form_feed(pipeline);
+}
+
+static void pipeline_on_filename(void *user, const char *name)
+{
+    emboss_pipeline *pipeline = user;
+    size_t n = 0;
+
+    if (name == NULL) {
+        pipeline->filename[0] = '\0';
         return;
     }
-    if (n > 0) {
-        memcpy(pipeline->filename, pipeline->line + begin, n);
+    while (name[n] != '\0' && n + 1 < EMBOSS_FILENAME_CAP) {
+        pipeline->filename[n] = name[n];
+        n++;
     }
     pipeline->filename[n] = '\0';
 }
 
-static void replay_prefix_as_cells(emboss_pipeline *pipeline, int as_newline)
+static void pipeline_on_overflow(void *user)
 {
-    char saved[EMBOSS_LINE_CAP];
-    size_t n = pipeline->line_len;
-    size_t i;
-
-    if (n > sizeof saved) {
-        enter_fault(pipeline, BRAILLATRON_PRINT_FAULT_OVERFLOW);
-        return;
-    }
-    memcpy(saved, pipeline->line, n);
-    pipeline->line_len = 0;
-    pipeline->hdr = EMBOSS_HDR_BODY;
-    for (i = 0; i < n; i++) {
-        accept_content_byte(pipeline, (uint8_t)saved[i]);
-        if (pipeline->state == BRAILLATRON_JOB_FAULT) {
-            return;
-        }
-    }
-    if (as_newline) {
-        accept_content_byte(pipeline, (uint8_t)'\n');
-    }
+    enter_fault(user, BRAILLATRON_PRINT_FAULT_OVERFLOW);
 }
 
-static void close_first_line(emboss_pipeline *pipeline, int as_newline)
+static void bind_job(emboss_pipeline *pipeline)
 {
-    if (pipeline->hdr == EMBOSS_HDR_FILENAME) {
-        store_filename(pipeline);
-        pipeline->line_len = 0;
-        pipeline->hdr = EMBOSS_HDR_BODY;
-        return;
-    }
-    if (pipeline->hdr == EMBOSS_HDR_MAYBE) {
-        replay_prefix_as_cells(pipeline, as_newline);
-    }
+    emboss_job_cbs cbs;
+
+    memset(&cbs, 0, sizeof cbs);
+    cbs.user = pipeline;
+    cbs.cell = pipeline_on_cell;
+    cbs.newline = pipeline_on_newline;
+    cbs.form_feed = pipeline_on_form_feed;
+    cbs.filename = pipeline_on_filename;
+    cbs.overflow = pipeline_on_overflow;
+    cbs.is_faulted = pipeline_is_faulted;
+    emboss_job_init(&pipeline->job, &cbs);
 }
 
 static void begin_job_if_idle(emboss_pipeline *pipeline)
@@ -315,55 +299,8 @@ static void begin_job_if_idle(emboss_pipeline *pipeline)
         return;
     }
     pipeline->filename[0] = '\0';
-    pipeline->line_len = 0;
-    pipeline->hdr = EMBOSS_HDR_MAYBE;
-    pipeline->swallow_lf = 0;
+    emboss_job_reset(&pipeline->job);
     set_state(pipeline, BRAILLATRON_JOB_RECEIVING);
-}
-
-static void on_byte(emboss_pipeline *pipeline, uint8_t byte)
-{
-    const char *prefix = BRAILLATRON_BRF_HEADER_PREFIX;
-
-    if (pipeline->hdr == EMBOSS_HDR_BODY) {
-        accept_content_byte(pipeline, byte);
-        return;
-    }
-    if (byte == '\r' || byte == '\n' || byte == BRAILLATRON_BRF_FORM_FEED) {
-        close_first_line(pipeline, byte == '\n' || byte == '\r');
-        if (byte == '\r') {
-            pipeline->swallow_lf = 1;
-        }
-        if (byte == BRAILLATRON_BRF_FORM_FEED &&
-            pipeline->state != BRAILLATRON_JOB_FAULT) {
-            form_feed(pipeline);
-        }
-        return;
-    }
-    if (pipeline->hdr == EMBOSS_HDR_MAYBE) {
-        if (pipeline->line_len < sizeof(BRAILLATRON_BRF_HEADER_PREFIX) - 1 &&
-            (char)byte == prefix[pipeline->line_len]) {
-            pipeline->line[pipeline->line_len++] = (char)byte;
-            if (prefix[pipeline->line_len] == '\0') {
-                pipeline->hdr = EMBOSS_HDR_FILENAME;
-            }
-            return;
-        }
-        /* BrfCableParser also accepts a tab after "BRF1". */
-        if (pipeline->line_len == 4 && byte == '\t') {
-            pipeline->line[pipeline->line_len++] = '\t';
-            pipeline->hdr = EMBOSS_HDR_FILENAME;
-            return;
-        }
-        pipeline->line[pipeline->line_len++] = (char)byte;
-        replay_prefix_as_cells(pipeline, 0);
-        return;
-    }
-    if (pipeline->line_len >= EMBOSS_LINE_CAP) {
-        enter_fault(pipeline, BRAILLATRON_PRINT_FAULT_OVERFLOW);
-        return;
-    }
-    pipeline->line[pipeline->line_len++] = (char)byte;
 }
 
 void emboss_pipeline_init(emboss_pipeline *pipeline, const emboss_motor *motor,
@@ -376,29 +313,64 @@ void emboss_pipeline_init(emboss_pipeline *pipeline, const emboss_motor *motor,
     pipeline->status = status;
     pipeline->status_len = status_len;
     pipeline->motors_enabled = 1;
-    pipeline->hdr = EMBOSS_HDR_MAYBE;
     pipeline->state = BRAILLATRON_JOB_IDLE;
     pipeline->fault = BRAILLATRON_PRINT_FAULT_NONE;
+    bind_job(pipeline);
     if (pipeline->motor.set_enable != NULL) {
         pipeline->motor.set_enable(pipeline->motor.user, 1);
     }
     publish_status(pipeline);
 }
 
+void emboss_pipeline_set_armed(emboss_pipeline *pipeline, int armed)
+{
+    if (pipeline->state == BRAILLATRON_JOB_FAULT) {
+        pipeline->motors_enabled = 0;
+        if (pipeline->motor.set_enable != NULL) {
+            pipeline->motor.set_enable(pipeline->motor.user, 0);
+        }
+        return;
+    }
+    pipeline->motors_enabled = armed ? 1 : 0;
+    if (pipeline->motor.set_enable != NULL) {
+        pipeline->motor.set_enable(pipeline->motor.user, armed ? 1 : 0);
+    }
+}
+
+void emboss_pipeline_cell(emboss_pipeline *pipeline, uint8_t dot_mask)
+{
+    if (pipeline->state == BRAILLATRON_JOB_FAULT || !pipeline->motors_enabled) {
+        return;
+    }
+    begin_job_if_idle(pipeline);
+    submit_cell(pipeline, dot_mask);
+}
+
+void emboss_pipeline_newline(emboss_pipeline *pipeline)
+{
+    if (pipeline->state == BRAILLATRON_JOB_FAULT || !pipeline->motors_enabled) {
+        return;
+    }
+    begin_job_if_idle(pipeline);
+    newline(pipeline);
+}
+
+void emboss_pipeline_form_feed(emboss_pipeline *pipeline)
+{
+    if (pipeline->state == BRAILLATRON_JOB_FAULT || !pipeline->motors_enabled) {
+        return;
+    }
+    begin_job_if_idle(pipeline);
+    form_feed(pipeline);
+}
+
 void emboss_pipeline_feed(emboss_pipeline *pipeline, const uint8_t *data, size_t len)
 {
-    size_t i;
-
     if (pipeline->state == BRAILLATRON_JOB_FAULT || data == NULL || len == 0) {
         return;
     }
-    for (i = 0; i < len; i++) {
-        if (pipeline->state == BRAILLATRON_JOB_FAULT) {
-            return;
-        }
-        begin_job_if_idle(pipeline);
-        on_byte(pipeline, data[i]);
-    }
+    begin_job_if_idle(pipeline);
+    emboss_job_feed(&pipeline->job, data, len);
 }
 
 void emboss_pipeline_finish(emboss_pipeline *pipeline)
@@ -408,12 +380,10 @@ void emboss_pipeline_finish(emboss_pipeline *pipeline)
     }
     if ((pipeline->state == BRAILLATRON_JOB_IDLE ||
          pipeline->state == BRAILLATRON_JOB_DONE) &&
-        pipeline->hdr == EMBOSS_HDR_MAYBE && pipeline->line_len == 0) {
+        pipeline->job.hdr == EMBOSS_HDR_MAYBE && pipeline->job.line_len == 0) {
         return;
     }
-    if (pipeline->hdr != EMBOSS_HDR_BODY) {
-        close_first_line(pipeline, 0);
-    }
+    emboss_job_finish(&pipeline->job);
     while (pipeline->pending_count > 0 &&
            pipeline->state != BRAILLATRON_JOB_FAULT &&
            pipeline->motors_enabled) {
@@ -424,8 +394,7 @@ void emboss_pipeline_finish(emboss_pipeline *pipeline)
         pipeline->state == BRAILLATRON_JOB_QUEUED) {
         set_state(pipeline, BRAILLATRON_JOB_DONE);
     }
-    pipeline->hdr = EMBOSS_HDR_MAYBE;
-    pipeline->line_len = 0;
+    emboss_job_reset(&pipeline->job);
 }
 
 void emboss_pipeline_safety_cut(emboss_pipeline *pipeline)
@@ -441,24 +410,32 @@ void emboss_pipeline_fault(emboss_pipeline *pipeline, braillatron_fault_reason r
     enter_fault(pipeline, reason);
 }
 
-void emboss_pipeline_clear_fault(emboss_pipeline *pipeline)
+static void leave_fault(emboss_pipeline *pipeline, int enable_motors)
 {
     if (pipeline->state != BRAILLATRON_JOB_FAULT) {
         return;
     }
     pipeline->pending_count = 0;
     pipeline->pending_head = 0;
-    pipeline->line_len = 0;
     pipeline->line_open = 0;
-    pipeline->hdr = EMBOSS_HDR_MAYBE;
-    pipeline->swallow_lf = 0;
-    pipeline->motors_enabled = 1;
+    emboss_job_reset(&pipeline->job);
+    pipeline->motors_enabled = enable_motors ? 1 : 0;
     if (pipeline->motor.set_enable != NULL) {
-        pipeline->motor.set_enable(pipeline->motor.user, 1);
+        pipeline->motor.set_enable(pipeline->motor.user, enable_motors ? 1 : 0);
     }
     pipeline->fault = BRAILLATRON_PRINT_FAULT_NONE;
     pipeline->state = BRAILLATRON_JOB_FAULT;
     set_state(pipeline, BRAILLATRON_JOB_IDLE);
+}
+
+void emboss_pipeline_clear_fault(emboss_pipeline *pipeline)
+{
+    leave_fault(pipeline, 1);
+}
+
+void emboss_pipeline_clear_fault_held(emboss_pipeline *pipeline)
+{
+    leave_fault(pipeline, 0);
 }
 
 int32_t emboss_pipeline_x_um(const emboss_pipeline *pipeline)

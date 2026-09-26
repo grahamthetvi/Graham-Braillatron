@@ -6,6 +6,7 @@
 #ifndef EMBOSS_PIPELINE_H
 #define EMBOSS_PIPELINE_H
 
+#include "emboss_job.h"
 #include "print_contract.h"
 
 #include <stddef.h>
@@ -15,15 +16,7 @@
 extern "C" {
 #endif
 
-#define EMBOSS_LINE_CAP 160
-#define EMBOSS_FILENAME_CAP 128
 #define EMBOSS_ROW_B_CAP 8
-
-typedef enum emboss_header_phase {
-    EMBOSS_HDR_MAYBE = 0,
-    EMBOSS_HDR_FILENAME,
-    EMBOSS_HDR_BODY
-} emboss_header_phase;
 
 typedef struct emboss_pending_row_b {
     int32_t due_x_um;
@@ -54,10 +47,7 @@ typedef struct emboss_pipeline {
     int32_t y_um;
     int32_t y_line;
     int line_open;
-    int swallow_lf;
-    emboss_header_phase hdr;
-    char line[EMBOSS_LINE_CAP];
-    size_t line_len;
+    emboss_job job;
     char filename[EMBOSS_FILENAME_CAP];
     emboss_pending_row_b pending[EMBOSS_ROW_B_CAP];
     size_t pending_head;
@@ -70,8 +60,19 @@ void emboss_pipeline_init(emboss_pipeline *pipeline, const emboss_motor *motor,
 /* Stream BRF bytes. Does not store the document. */
 void emboss_pipeline_feed(emboss_pipeline *pipeline, const uint8_t *data, size_t len);
 
+/* Commands from the Spider side of the link. BRF parsing has already happened. */
+void emboss_pipeline_cell(emboss_pipeline *pipeline, uint8_t dot_mask);
+void emboss_pipeline_newline(emboss_pipeline *pipeline);
+void emboss_pipeline_form_feed(emboss_pipeline *pipeline);
+
 /* Close the open job. The caller applies the 1500 ms idle gap. */
 void emboss_pipeline_finish(emboss_pipeline *pipeline);
+
+/*
+ * Nonzero lets the motors run. Zero drops enable without entering fault.
+ * The Spider stays disarmed until a heartbeat.
+ */
+void emboss_pipeline_set_armed(emboss_pipeline *pipeline, int armed);
 
 /* Drop cuts motor power. No further strikes until clear_fault. */
 void emboss_pipeline_safety_cut(emboss_pipeline *pipeline);
@@ -79,8 +80,11 @@ void emboss_pipeline_safety_cut(emboss_pipeline *pipeline);
 /* Paper, motion, or overflow. Disables motors and publishes the reason. */
 void emboss_pipeline_fault(emboss_pipeline *pipeline, braillatron_fault_reason reason);
 
-/* Leave fault, re-enable motors. Does not home the carriage. */
+/* Leave fault and re-enable motors. Does not home the carriage. */
 void emboss_pipeline_clear_fault(emboss_pipeline *pipeline);
+
+/* Leave fault and keep motors disabled until set_armed(1). */
+void emboss_pipeline_clear_fault_held(emboss_pipeline *pipeline);
 
 int32_t emboss_pipeline_x_um(const emboss_pipeline *pipeline);
 int32_t emboss_pipeline_y_um(const emboss_pipeline *pipeline);

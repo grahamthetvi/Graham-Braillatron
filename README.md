@@ -12,7 +12,7 @@ Graham Braillatron/
 │   ├── README.md              Developer setup (bench keyboard, build, run)
 │   ├── daemon-dietpi/         Pi UI, motion, keyboard, and connect daemons
 │   ├── firmware-arduino/      Arduino Micro safety co-processor
-│   ├── firmware-embosser/     Host-testable BRF pipeline (no stepper board yet)
+│   ├── firmware-embosser/     Host-testable BRF pipeline and ESP32/Spider link
 │   ├── firmware-keyboard-bridge/  ESP32-S3 phone-to-USB-HID bridge (not the embosser)
 │   ├── shared/                Serial protocol and print contract
 │   ├── deploy/                DietPi bootstrap, systemd units, SD card prep
@@ -41,4 +41,4 @@ Graham Braillatron/
 
 ## CI
 
-Push and pull requests run `make check` and `make check-liblouis` from the repository root (daemon self-tests, then the embosser pipeline test) and compile the Arduino Micro firmware with `arduino-cli`. The phone-to-USB-HID bridge is not part of that AVR compile. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+Push and pull requests run `make check` and `make check-liblouis` from the repository root (daemon self-tests, then the embosser pipeline and link tests) and compile the Arduino Micro firmware with `arduino-cli`. The phone-to-USB-HID bridge is not part of that AVR compile. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
