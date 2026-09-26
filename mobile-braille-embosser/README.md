@@ -243,13 +243,36 @@ A connected HDMI monitor shows the UI after reboot. For a sighted helper on anot
 
 Force TTS-only (no visual UI): `BRAILLATRON_HEADLESS=1` at bootstrap or set in `/etc/braillatron/appliance.env`, then `systemctl restart braillatron.target`. Re-enable visual UI: [`deploy/os/setup-dev-console-mode.sh`](deploy/os/setup-dev-console-mode.sh).
 
+## Computer cable (BRF in, Braille out)
+
+The Orange Pi USB-A ports are host ports. Arduino and the Monster8 already use two of them. A third free USB-A jack is the computer cable: plug a USB-serial adapter into that jack. `brf_cable_device=auto` opens the first `/dev/ttyUSB*` that is not the Arduino. It does not open `/dev/ttyACM*` (that is the keyboard co-processor) and it does not open the Klipper board.
+
+115200 baud, 8 data bits, no parity, 1 stop bit. The job is North American Braille ASCII, the same bytes Graham Braille Editor's generic text embosser writes (`CRLF` lines, form feed at the end). Optional first line names the file:
+
+```text
+BRF1 worksheet.brf
+,A CAPITAL LETTER
+\f
+```
+
+On the sending computer, hold the serial port open for the whole write. From a Linux machine with the adapter on `/dev/ttyUSB0`:
+
+```bash
+stty -F /dev/ttyUSB0 115200 raw -echo
+printf 'BRF1 worksheet.brf\n' | cat - worksheet.brf <(printf '\f') > /dev/ttyUSB0
+```
+
+The device stores the file in the library and back-translates it for speech (the same liblouis path as Graham Braille Editor: `en-us-brf.dis` plus the UEB table, then the opening-quote repair). With `brf_cable_emboss=ask` (the default), Enter embosses the original cells and Backspace keeps the file without printing. `always` embosses immediately. `store` only files it.
+
+Opening a `.brf` from Library, a USB stick, or LocalSend uses that same split: speech is the back-translation, Print embosses the Braille that arrived.
+
 ## Configuration layout
 
 When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important files:
 
 | File | Purpose |
 | --- | --- |
-| `hardware.conf` | Serial device, `allow_missing_arduino`, `motion_enabled`, Klipper config path |
+| `hardware.conf` | Serial device, `allow_missing_arduino`, `motion_enabled`, Klipper config path, BRF USB-serial cable |
 | `klipper.conf` | Moonraker URL, emboss stroke/speed, feed speeds |
 | `keyboard.conf` | Serial + evdev bench input |
 | `evdev_map.conf` | USB key → logical key map (edit for non-QWERTY layouts) |

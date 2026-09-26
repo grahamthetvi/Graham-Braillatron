@@ -14,6 +14,12 @@ struct HardwareConfig {
     std::string matrix_map_config = "config/matrix_map.conf";
     std::string telemetry_config = "config/telemetry.conf";
     std::string klipper_config = "config/klipper.conf";
+    /** Free USB-A port via a USB-serial cable. `auto` uses the first /dev/ttyUSB*. */
+    bool brf_cable_enabled = true;
+    std::string brf_cable_device = "auto";
+    uint32_t brf_cable_baud = 115200;
+    /** ask: Enter embosses, Backspace stores. always: emboss on receive. store: library only. */
+    std::string brf_cable_emboss = "ask";
 };
 
 HardwareConfig load_hardware_config(const std::string &path);

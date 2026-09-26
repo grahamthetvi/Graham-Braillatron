@@ -165,12 +165,48 @@ bool test_catalog_and_resume_state()
     return true;
 }
 
+bool test_brf_open_and_import()
+{
+    const std::string dir = temp_dir() + "-brf";
+    expect_true(write_file(dir + "/notes.brf", "ABC\n"), "write brf");
+
+    braillatron::documents::EbookDocument doc;
+    expect_true(doc.open(dir + "/notes.brf"), "open brf");
+    expect_true(doc.format() == "brf", "brf format");
+    expect_true(doc.sections().size() == 1, "brf section count");
+    if (!doc.sections().empty()) {
+        expect_true(doc.sections()[0].emboss_brf.find("ABC") != std::string::npos,
+                    "emboss source kept");
+        expect_true(!doc.sections()[0].text.empty(), "back-translation or fallback text");
+    }
+
+    braillatron::documents::LibraryStoreConfig config;
+    config.catalog_path = dir + "/catalog.json";
+    config.books_dir = dir + "/books";
+    config.import_dir = dir + "/import";
+    config.state_dir = dir + "/state";
+    braillatron::documents::LibraryStore store(config);
+    expect_true(store.load(), "load empty catalog");
+    const auto stored = store.import_brf_text("worksheet.brf", "XYZ\n");
+    expect_true(stored.has_value(), "import brf text");
+    if (stored.has_value()) {
+        braillatron::documents::EbookDocument imported;
+        expect_true(imported.open(*stored), "open imported brf");
+        expect_true(imported.format() == "brf", "imported format");
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    return true;
+}
+
 } // namespace
 
 int main()
 {
     test_epub_directory_parse();
     test_txt_open();
+    test_brf_open_and_import();
     test_catalog_and_resume_state();
 
     if (failures != 0) {

@@ -1,5 +1,8 @@
 #include "liblouis_bridge.h"
 
+#include "brf_format.h"
+
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <vector>
@@ -464,6 +467,162 @@ std::optional<std::string> BrailleTranslationService::translate_backward_cells(
     return back_translate_braille_cells(table_list(), dot_masks);
 #else
     (void)dot_masks;
+    return std::nullopt;
+#endif
+}
+
+namespace {
+
+#ifdef BRAILLATRON_HAS_LIBLOUIS
+void append_utf8(std::string &out, uint32_t codepoint)
+{
+    if (codepoint < 0x80u) {
+        out.push_back(static_cast<char>(codepoint));
+        return;
+    }
+    if (codepoint < 0x800u) {
+        out.push_back(static_cast<char>(0xC0u | (codepoint >> 6)));
+        out.push_back(static_cast<char>(0x80u | (codepoint & 0x3Fu)));
+        return;
+    }
+    if (codepoint < 0x10000u) {
+        out.push_back(static_cast<char>(0xE0u | (codepoint >> 12)));
+        out.push_back(static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | (codepoint & 0x3Fu)));
+        return;
+    }
+    if (codepoint < 0x110000u) {
+        out.push_back(static_cast<char>(0xF0u | (codepoint >> 18)));
+        out.push_back(static_cast<char>(0x80u | ((codepoint >> 12) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | (codepoint & 0x3Fu)));
+    }
+}
+
+std::optional<std::string> back_translate_wide_line(const char *table_list,
+                                                    const std::vector<widechar> &cells)
+{
+    if (cells.empty()) {
+        return std::string {};
+    }
+
+    ensure_liblouis_initialized();
+
+    std::vector<widechar> inbuf = cells;
+    inbuf.push_back(0);
+    const int needed = std::max(64, static_cast<int>(cells.size()) * 8);
+    std::vector<widechar> outbuf(static_cast<size_t>(needed) + 1, 0);
+    int inlen = static_cast<int>(cells.size());
+    int outlen = needed;
+    if (!lou_backTranslateString(table_list, inbuf.data(), &inlen, outbuf.data(), &outlen, nullptr,
+                                 nullptr, 0)) {
+        return std::nullopt;
+    }
+
+    std::string result;
+    result.reserve(static_cast<size_t>(std::max(outlen, 0)));
+    for (int i = 0; i < outlen; ++i) {
+        append_utf8(result, static_cast<uint32_t>(outbuf[static_cast<size_t>(i)]));
+    }
+    return result;
+}
+
+std::optional<std::string> back_translate_ascii_line(const char *table_list, const std::string &line)
+{
+    std::vector<widechar> cells;
+    cells.reserve(line.size());
+    for (unsigned char ch : line) {
+        cells.push_back(static_cast<widechar>(ch));
+    }
+    return back_translate_wide_line(table_list, cells);
+}
+
+std::optional<std::string> back_translate_dot_line(const char *table_list, const std::string &line)
+{
+    std::vector<widechar> cells;
+    cells.reserve(line.size());
+    for (char ch : line) {
+        uint8_t mask = 0;
+        if (!brf_ascii_to_dot_mask(ch, &mask)) {
+            continue;
+        }
+        cells.push_back(static_cast<widechar>(0x2800u | mask));
+    }
+    return back_translate_wide_line(table_list, cells);
+}
+
+std::vector<std::string> split_keep_lines(const std::string &text)
+{
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= text.size()) {
+        const size_t end = text.find('\n', start);
+        if (end == std::string::npos) {
+            lines.push_back(text.substr(start));
+            break;
+        }
+        lines.push_back(text.substr(start, end - start));
+        start = end + 1;
+    }
+    return lines;
+}
+
+#endif
+
+} // namespace
+
+std::optional<std::string> BrailleTranslationService::back_translate_brf(const std::string &brf) const
+{
+    const std::string ascii = normalize_brf_document(brf);
+    if (ascii.find_first_not_of(" \t\n\r\f") == std::string::npos) {
+        return std::string {};
+    }
+
+    const_cast<BrailleTranslationService *>(this)->ensure_tables_ready();
+
+#ifdef BRAILLATRON_HAS_LIBLOUIS
+    if (!available_) {
+        return std::nullopt;
+    }
+
+    std::string literary = literary_table_for_preset(preset_);
+
+    const std::string display_table = "en-us-brf.dis," + literary;
+    bool display_table_ok = true;
+    std::string lined = ascii;
+    for (char &ch : lined) {
+        if (ch == '\f') {
+            ch = '\n';
+        }
+    }
+    const std::vector<std::string> lines = split_keep_lines(lined);
+    std::string plain;
+    for (size_t line_index = 0; line_index < lines.size(); ++line_index) {
+        if (line_index > 0) {
+            plain.push_back('\n');
+        }
+        if (lines[line_index].empty()) {
+            continue;
+        }
+        std::optional<std::string> translated;
+        if (display_table_ok) {
+            translated = back_translate_ascii_line(display_table.c_str(), lines[line_index]);
+            if (!translated.has_value()) {
+                display_table_ok = false;
+                translated = back_translate_dot_line(literary.c_str(), lines[line_index]);
+            }
+        } else {
+            translated = back_translate_dot_line(literary.c_str(), lines[line_index]);
+        }
+        if (!translated.has_value()) {
+            return std::nullopt;
+        }
+        plain += *translated;
+    }
+
+    return restore_ueb_open_quote_from_his(plain);
+#else
+    (void)brf;
     return std::nullopt;
 #endif
 }
