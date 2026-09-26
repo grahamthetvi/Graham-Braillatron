@@ -1,6 +1,6 @@
 # Two products, one roof — rough draft
 
-**Status:** brainstorm for the university build. This note maps the split. It does not replace [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md), [Master Architecture V4.9](Master%20Architecture%20V4.9.md), or the [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Those remain the personal-computer spec. The embosser motor section below is the working choice: an ESP32-S3 plus eight TMC2209 stepsticks. There is no ESP-IDF port yet, and there is no pin map until a carrier is drawn.
+**Status:** brainstorm for the university build. This note maps the split. It does not replace [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md), [Master Architecture V4.9](Master%20Architecture%20V4.9.md), or the [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Those remain the personal-computer spec. The embosser motor section below is the working choice: a FYSETC Spider (or a comparable eight-socket board such as the BTT Octopus) plus one ESP32-S3. A WROOM-32 is not a second module. There is no firmware port onto the Spider yet.
 
 Commit `54a3621` replaced `firmware-arduino/firmware-arduino.ino` (the Arduino Micro entry point, `braillatron_setup` / `braillatron_loop`) with an ESP32-S3 BLE keyboard bridge: a phone writes Nordic UART, and the chip types those bytes as USB HID. That bridge is a third idea (a phone typing into a host). It now lives in `firmware-keyboard-bridge/`. It is not the embosser, and it is not the motor-rail interlock. `firmware-arduino/firmware-arduino.ino` again calls `braillatron_setup` / `braillatron_loop`. The safety sources under `firmware-arduino/src/` are unchanged.
 
@@ -9,7 +9,7 @@ A builder picks one product:
 | Product | What it is | Brain |
 | --- | --- | --- |
 | **Braillatron** | Personal computer. The repo as it stands: keyboard, apps, speech, display, and a head that can emboss on the same machine. | Orange Pi 3B, DietPi, Klipper host, Monster8, Arduino Micro safety co-processor |
-| **Braillatron embosser** | A printer. Its only job is to accept a `.brf` and punch it. Cheaper parts, because the apps and the notetaker stay behind. | A small Wi-Fi microcontroller (ESP32 class) and a stepper board that chip can drive itself |
+| **Braillatron embosser** | A printer. Its only job is to accept a `.brf` and punch it. Cheaper parts, because the apps and the notetaker stay behind. | FYSETC Spider (STM32F446, eight driver sockets) for the steps, plus one ESP32-S3 for Wi-Fi and USB |
 
 Both products share the mechanism and the print contract. Each product has its own computer and its own code that turns a cell into steps.
 
@@ -110,7 +110,7 @@ Rough pipeline, matching `emboss_brf`:
 
 Wireless and wired are two sockets into that same parser. Wired is USB serial at 115200 8N1. Wireless is a TCP port that carries the identical bytes, after the board has joined a network. Finding the board (mDNS name, or a setup access point) is open; see below.
 
-Step pulses and the radio share one chip. The step core should be dedicated, with the radio on the other core, and the motor-enable pin should drop if that step core stops kicking the watchdog. That is the embosser’s version of the Arduino heartbeat.
+Step pulses stay on the Spider’s STM32. The ESP32-S3 only receives the job and reports status. The STM32 cuts motor power if its own loop stalls, and it also cuts power if the ESP32 stops sending a heartbeat. That split is the embosser’s version of the Arduino heartbeat.
 
 ### What a cheaper bill of materials actually changes
 
@@ -120,34 +120,24 @@ The personal-computer brain adds the Orange Pi 3B, the Monster8, the Arduino Mic
 
 ### Embosser motor section
 
-The Monster8 stays on the personal computer. Its STM32 already runs without Linux; the Orange Pi is in the loop only because Klipper’s planner runs on the host. Putting our own firmware on a Monster8 would drop the Pi and still leave an eight-driver printer motherboard, with no Wi-Fi on that chip.
+The Monster8 stays on the personal computer. The embosser does not use one, and it does not use a hand-wired carrier of eight loose driver modules.
 
-Catalog boards do not close the gap:
+Working choice: a **FYSETC Spider** (STM32F446, eight driver sockets) plus **one ESP32-S3**. A BTT Octopus is the same kind of board if a Spider is hard to get. An ESP32-WROOM-32 is not added beside the S3. The Spider already has the step computer, and the S3 already has Wi-Fi and native USB. A WROOM-32 would be a third computer doing the same radio job.
 
-| Board | Computer on the board | Driver sockets | Why it is not the embosser |
-| --- | --- | --- | --- |
-| MKS Monster8, BTT Octopus, FYSETC Spider | STM32F4 | 8 | Same class of printer motherboard. Firmware ecosystem is Klipper (needs Linux) or Marlin. No Wi-Fi unless a radio module is added. |
-| V1 Engineering Jackpot, Bart Dring 6-pack | ESP32 | 6 | Two sockets short. The six punch motors are independent, so they cannot share a step pulse. |
-| MKS TinyBee | ESP32 | 5 | Three sockets short. Step/dir only; UART to the drivers is not what the board is built for. |
-| FYSETC E4 | ESP32 | 4 | Four sockets short. |
+What each chip owns:
 
-FluidNC can talk about twelve motors because one axis may have two ganged drivers. A punch is not a ganged axis. Six sockets stay six independent motors.
+| Piece | Chip | Job |
+| --- | --- | --- |
+| Driver sockets, step pulses, motor enable | Spider’s STM32F446 | Turn each cell into steps. Cut the motor rail if its loop stalls or the ESP32 heartbeat stops. |
+| Wi-Fi and USB | ESP32-S3 | Accept the `.brf` byte stream, hand cells to the Spider, send `BRFSTAT` back. |
 
-Working choice for the embosser: the ESP32-S3 is the only computer, and the drivers are dumb.
+The eight TMC2209s seat in the sockets the Spider already has. Motor phase wires land on the Spider’s motor terminals, the same kind of hookup as the Monster8. Nobody wires STEP, DIR, and ENN by hand. Analog’s TMC2209 datasheet (rev 1.08) straps 16 microsteps with MS1 and MS2 both tied to VIO, matching the personal computer’s `microsteps: 16`.
 
-- **ESP32-S3 module** (WROOM-class). USB serial for the wired `.brf` job, Wi-Fi for the same byte stream, step generation on one core, the radio on the other. A watchdog on the step core releases motor enable if that core stops.
-- **Eight TMC2209 stepstick modules**, STEP and DIR from the ESP32. Standalone mode, not UART, for the first board. Analog’s TMC2209 datasheet (rev 1.08) straps 16 microsteps with MS1 and MS2 both tied to VIO. That matches the personal computer’s `microsteps: 16`. The chip then interpolates to 256 internally; the contract stays in millimetres, and this brain converts.
-- **One shared ENN.** TMC2209 enable is active-low. A pull-up to VIO holds every driver off when the ESP32 pin floats or sits high. The firmware drives the pin low only while printing. A safety cut lets the pin go high.
-- **The same high-side switch** on VMOT as the personal computer, owned by this chip, failing off. ENN is the logic gate. The high-side switch is the power cut.
-- **A passive carrier** for VMOT, ground, and the eight sockets. The carrier has no MCU. That carrier is the Monster8’s replacement.
-- **Same motors and currents** as `klipper/printer.cfg`: X `17HS08-1004S` at 0.85 A run, Y `17HS15-1504S` at 1.20 A run, six NEMA14 punches at 0.80 A run. A TMC2209 is rated 2 A RMS and VM up to 28 V, which covers the 4S pack. Punch nameplate current is still unchecked; see the hardware bring-up list.
-- **Paper home and paper edge** on two ESP32 inputs. Headless until a feed or cancel key is chosen.
+Same motors and currents as `klipper/printer.cfg`: X `17HS08-1004S` at 0.85 A run, Y `17HS15-1504S` at 1.20 A run, six NEMA14 punches at 0.80 A run. A TMC2209 is rated 2 A RMS. Punch nameplate current is still unchecked; see the hardware bring-up list.
 
-GPIO for that is 16 step/dir pins, one enable, and two sensors, plus the native USB port. The pin map waits on the carrier drawing. Do not copy Monster8 port names into this firmware.
+VMOT still passes through the high-side switch that fails off. The Spider’s STM32 owns that pin. Paper home and paper edge land on the Spider. The link between the ESP32-S3 and the Spider is a short UART: cells one way, `BRFSTAT` the other.
 
-Fallback, if wiring eight modules is the part to avoid: a FYSETC Spider or BTT Octopus (eight sockets, STM32F446) runs the step generator, and a small ESP32 only receives the `.brf` and reports `BRFSTAT`. That is two non-Linux chips and a board in the Monster8’s class. It is the assembled-motherboard path. It is not the cheap path.
-
-No prices in this draft. The savings are the Orange Pi, the Monster8, and the Arduino Micro leaving the embosser.
+No prices in this draft. The embosser drops the Orange Pi, the Monster8, and the Arduino Micro. It keeps an eight-socket printer board because that is what makes the motors a plug-in job.
 
 ---
 
@@ -165,7 +155,7 @@ mobile-braille-embosser/
 ├── firmware-arduino/         personal-computer safety co-processor
 ├── firmware-keyboard-bridge/ phone-to-USB-HID typing bridge (not either product's brain)
 ├── klipper/                  personal-computer motor board
-├── firmware-embosser/        embosser pipeline, host-tested; ESP32-S3 + 8× TMC2209
+├── firmware-embosser/        embosser pipeline, host-tested; Spider steps, ESP32-S3 receives
 ├── deploy/                   personal-computer image
 └── specs/
     ├── Master Software Architecture V9.md
@@ -189,7 +179,7 @@ The personal computer can send a document to a standalone embosser by writing th
 
 ## First build slice
 
-Landed in the tree. The motor section is an ESP32-S3 plus eight TMC2209 stepsticks. There is no ESP-IDF port and no carrier pin map yet.
+Landed in the tree. The motor section is a FYSETC Spider plus one ESP32-S3. There is no Spider firmware and no ESP-IDF port yet.
 
 1. `shared/print_contract.h` is the roof in C: micrometre geometry, row masks, logical names `emboss_1` … `emboss_6`, the 64-byte North American BRF table, job states, fault reasons, and the wire markers (`BRF1 `, form feed, 115200, 1500 ms). `braillatron_print_status_line` writes `BRFSTAT <state>` or `BRFSTAT fault <reason>`. `shared/print_contract.md` points at the header as the source of truth.
 2. The Pi daemon includes that header. `motion_constants.h` static-asserts the millimetre constants and row masks. `MotionService::emboss_brf` static-asserts the 33-line page. `brf_format.cpp` uses the shared table. `BrfCableParser::kIdleCompleteMs` stays 1500 and is checked against the contract. The embosser does not take the Pi's 2 MB job buffer. `make brf-test` still covers the codec.
@@ -200,13 +190,13 @@ Landed in the tree. The motor section is an ESP32-S3 plus eight TMC2209 stepstic
 
 ## Open questions
 
-The motor section is chosen: ESP32-S3 plus eight TMC2209 stepsticks on a passive carrier. These are the decisions that still block a carrier drawing and a firmware port.
+The motor section is chosen: a FYSETC Spider for the steps, one ESP32-S3 for Wi-Fi and USB. A WROOM-32 is not on this board. These are the decisions that still block the firmware port.
 
-1. **Carrier.** A small PCB or a proto carrier that sockets eight TMC2209 modules, brings VMOT through the high-side switch, and breaks STEP, DIR, ENN, and the two sensors out to the ESP32-S3. No second MCU on that board.
-2. **Radio versus steps.** Working assumption: one ESP32-S3, steps on one core, Wi-Fi on the other. Split them only if the bench shows the radio stalls the step core.
+1. **Spider UART.** The short link from the ESP32-S3 to the Spider: cell bytes one way, `BRFSTAT` the other, plus a heartbeat the STM32 requires before it will enable the motors.
+2. **Octopus as the alternate.** Use a BTT Octopus only when a Spider cannot be sourced. The firmware should talk to the driver sockets, not to one board’s silkscreen names, so the swap stays possible.
 3. **Wi-Fi bring-up on a headless printer.** Join a network with credentials sent over the USB serial link, or boot an access point for first setup?
 4. **Job size.** Stream line by line, or spool a whole `.brf` to a flash chip first so a dropped Wi-Fi session can resume?
 5. **Local keys.** Headless only, or a feed key and a cancel key on the embosser?
 6. **Sensors.** Same TCST2103 home and TCRT5000 paper-edge parts, on the cheap controller’s GPIO?
 7. **Battery and the drop switch.** Same pack as the personal computer, with this chip owning the high-side enable?
-8. **Who writes the step generator.** The university team can own `firmware-embosser`. The frozen input is `print_contract.h`, this note’s pipeline, and the ESP32-S3 plus eight TMC2209 modules. Step timing and the carrier pin map are what they settle on the bench.
+8. **Who writes the step generator.** The university team can own the Spider firmware. The frozen input is `print_contract.h` plus this note’s pipeline. The ESP32-S3 only receives the job and forwards cells. Step timing on the STM32 is what they settle on the bench.
