@@ -197,6 +197,6 @@ The motor section is chosen: a FYSETC Spider for the steps, one ESP32-S3 for Wi-
 3. **Wi-Fi bring-up on a headless printer.** Join a network with credentials sent over the USB serial link, or boot an access point for first setup?
 4. **Job size.** Stream line by line, or spool a whole `.brf` to a flash chip first so a dropped Wi-Fi session can resume?
 5. **Local keys.** Headless only, or a feed key and a cancel key on the embosser?
-6. **Sensors.** Same TCST2103 home and TCRT5000 paper-edge parts, on the cheap controller’s GPIO?
-7. **Battery and the drop switch.** Same pack as the personal computer, with this chip owning the high-side enable?
+6. **Sensors.** Same TCST2103 home and TCRT5000 paper-edge parts, on the Spider’s endstop inputs?
+7. **Battery and the drop switch.** Same pack as the personal computer, with the Spider’s STM32 owning the high-side enable?
 8. **Who writes the step generator.** The university team can own the Spider firmware. The frozen input is `print_contract.h` plus this note’s pipeline. The ESP32-S3 only receives the job and forwards cells. Step timing on the STM32 is what they settle on the bench.
