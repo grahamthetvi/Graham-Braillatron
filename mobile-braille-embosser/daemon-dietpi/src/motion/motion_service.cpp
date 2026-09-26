@@ -91,6 +91,8 @@ void MotionService::emboss_brf(const std::string &brf)
 
     // Same fresh-page length as paper_separator (100 lb cardstock, 33 lines).
     constexpr int32_t kPageLines = 33;
+    static_assert(kPageLines == BRAILLATRON_PAGE_LINES,
+                  "page length must match the print contract");
     bool line_open = false;
     for (const documents::BrfToken &token : documents::tokenize_brf(brf)) {
         if (braillatron::MotionGate::is_blocked()) {
@@ -120,7 +122,7 @@ void MotionService::emboss_brf(const std::string &brf)
     }
 }
 
-void MotionService::advance_line()
+bool MotionService::advance_line()
 {
     if (braillatron::MotionGate::is_blocked()) {
         return false;

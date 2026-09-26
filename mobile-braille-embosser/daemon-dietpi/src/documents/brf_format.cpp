@@ -1,5 +1,7 @@
 #include "brf_format.h"
 
+#include "print_contract.h"
+
 #include <cctype>
 #include <regex>
 
@@ -7,23 +9,12 @@ namespace braillatron::documents {
 
 namespace {
 
-// ASCII 0x20..0x5F → Unicode braille dot offset. Copied from
-// Graham_Braille_Editor client/src/utils/braille.ts.
-constexpr uint8_t kBrfToDotOffset[64] = {
-    0x00, 0x2E, 0x10, 0x3C, 0x2B, 0x29, 0x2F, 0x04, // space ! " # $ % & '
-    0x37, 0x3E, 0x21, 0x2C, 0x20, 0x24, 0x28, 0x0C, // ( ) * + , - . /
-    0x34, 0x02, 0x06, 0x12, 0x32, 0x22, 0x16, 0x36, // 0 1 2 3 4 5 6 7
-    0x26, 0x14, 0x31, 0x30, 0x23, 0x3F, 0x1C, 0x39, // 8 9 : ; < = > ?
-    0x08, 0x01, 0x03, 0x09, 0x19, 0x11, 0x0B, 0x1B, // @ A B C D E F G
-    0x13, 0x0A, 0x1A, 0x05, 0x07, 0x0D, 0x1D, 0x15, // H I J K L M N O
-    0x0F, 0x1F, 0x17, 0x0E, 0x1E, 0x25, 0x27, 0x3A, // P Q R S T U V W
-    0x2D, 0x3D, 0x35, 0x2A, 0x33, 0x3B, 0x18, 0x38  // X Y Z [ \ ] ^ _
-};
+// North American table lives in print_contract.h (braillatron_brf_to_dot_offset).
 
 char dot_offset_to_brf_ascii(uint8_t offset)
 {
-    for (int i = 0; i < 64; ++i) {
-        if (kBrfToDotOffset[i] == (offset & 0x3F)) {
+    for (int i = 0; i < BRAILLATRON_BRF_TABLE_LEN; ++i) {
+        if (braillatron_brf_to_dot_offset[i] == (offset & 0x3F)) {
             return static_cast<char>(0x20 + i);
         }
     }
@@ -101,22 +92,7 @@ bool is_group_sign(char ch)
 
 bool brf_ascii_to_dot_mask(char ch, uint8_t *dot_mask)
 {
-    if (dot_mask == nullptr) {
-        return false;
-    }
-    unsigned char code = static_cast<unsigned char>(ch);
-    if (code >= 0x60 && code <= 0x7F) {
-        code = static_cast<unsigned char>(code - 0x20);
-    }
-    if (code < 0x20) {
-        return false;
-    }
-    const int index = static_cast<int>(code) - 0x20;
-    if (index < 0 || index >= 64) {
-        return false;
-    }
-    *dot_mask = static_cast<uint8_t>(kBrfToDotOffset[index] & 0x3F);
-    return true;
+    return braillatron_brf_ascii_to_dot_mask(ch, dot_mask);
 }
 
 std::string normalize_brf_document(const std::string &raw)

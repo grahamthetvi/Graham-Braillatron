@@ -1,5 +1,7 @@
 #pragma once
 
+#include "print_contract.h"
+
 #include <cstdint>
 
 namespace braillatron::kinematics {
@@ -110,5 +112,15 @@ static_assert(FULL_STEPS_PER_CELL == 60u, "6.0 mm cell must equal 60 full steps"
 static_assert(MICROSTEPS_PER_CELL == 960u, "6.0 mm cell must equal 960 microsteps at 16x");
 static_assert(X_ROTATION_DISTANCE_MM == 40.0, "X GT2/20T must be 40 mm/rev");
 static_assert(X_MM_PER_FULL_STEP == 0.2, "X GT2/20T must be 0.2 mm/full-step");
+static_assert(CELL_PITCH_MM * 1000 == BRAILLATRON_CELL_PITCH_UM,
+              "cell pitch must match the print contract");
+static_assert(ROW_B_X_OFFSET_MM * 1000 == BRAILLATRON_ROW_B_OFFSET_UM,
+              "Row B offset must match the print contract");
+static_assert(LINE_ADVANCE_MM * 1000 == BRAILLATRON_LINE_ADVANCE_UM,
+              "line advance must match the print contract");
+static_assert(ROW_A_DOT_MASK == BRAILLATRON_ROW_A_DOT_MASK,
+              "Row A mask must match the print contract");
+static_assert(ROW_B_DOT_MASK == BRAILLATRON_ROW_B_DOT_MASK,
+              "Row B mask must match the print contract");
 
 } // namespace braillatron::kinematics

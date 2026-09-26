@@ -11,8 +11,10 @@ Graham Braillatron/
 ├── mobile-braille-embosser/
 │   ├── README.md              Developer setup (bench keyboard, build, run)
 │   ├── daemon-dietpi/         Pi UI, motion, keyboard, and connect daemons
-│   ├── firmware-arduino/      Arduino Micro co-processor firmware
-│   ├── shared/                Serial protocol (single source of truth)
+│   ├── firmware-arduino/      Arduino Micro safety co-processor
+│   ├── firmware-embosser/     Host-testable BRF pipeline (no stepper board yet)
+│   ├── firmware-keyboard-bridge/  ESP32-S3 phone-to-USB-HID bridge (not the embosser)
+│   ├── shared/                Serial protocol and print contract
 │   ├── deploy/                DietPi bootstrap, systemd units, SD card prep
 │   └── specs/                 Architecture and Pi SD image build guide
 └── LICENSE                    MIT
@@ -32,8 +34,11 @@ Graham Braillatron/
 | Prototype wiring & BOM | [Skeleton Prototype V5.1 Build Guide](mobile-braille-embosser/specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) |
 | Bench work still open | [Hardware Bring-Up To-Do](mobile-braille-embosser/specs/Hardware%20Bring-Up%20To-Do.md) |
 | Serial protocol | [shared/protocol.md](mobile-braille-embosser/shared/protocol.md) |
+| Print contract (geometry, BRF, status) | [shared/print_contract.md](mobile-braille-embosser/shared/print_contract.md) |
+| Embosser pipeline (`make check`) | [firmware-embosser/README.md](mobile-braille-embosser/firmware-embosser/README.md) |
+| Phone-to-USB-HID bridge | [firmware-keyboard-bridge/README.md](mobile-braille-embosser/firmware-keyboard-bridge/README.md) |
 | Arduino firmware build | [firmware-arduino/README.md](mobile-braille-embosser/firmware-arduino/README.md) |
 
 ## CI
 
-Push and pull requests run `make check` and `make check-liblouis` from the repository root (host self-tests) and compile the Arduino firmware with `arduino-cli`. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+Push and pull requests run `make check` and `make check-liblouis` from the repository root (daemon self-tests, then the embosser pipeline test) and compile the Arduino Micro firmware with `arduino-cli`. The phone-to-USB-HID bridge is not part of that AVR compile. See [.github/workflows/ci.yml](.github/workflows/ci.yml).

@@ -1,8 +1,8 @@
 # Two products, one roof — rough draft
 
-**Status:** brainstorm for the university build. This note maps the split. It does not replace [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md), [Master Architecture V4.9](Master%20Architecture%20V4.9.md), or the [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Those remain the personal-computer spec. No board has been chosen for the cheaper embosser, and no firmware tree exists yet.
+**Status:** brainstorm for the university build. This note maps the split. It does not replace [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md), [Master Architecture V4.9](Master%20Architecture%20V4.9.md), or the [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Those remain the personal-computer spec. No board has been chosen for the cheaper embosser. `firmware-embosser/` is a host-testable C pipeline for the print contract. It is not an ESP-IDF port and it does not name a stepper board.
 
-One sketch already on `main` needs a home before either product grows around it. `firmware-arduino/firmware-arduino.ino` was the Arduino Micro entry point (`braillatron_setup` / `braillatron_loop`). Commit `54a3621` replaced that file with an ESP32-S3 BLE keyboard bridge: a phone writes Nordic UART, and the chip types those bytes as USB HID. The safety sources under `firmware-arduino/src/` are still the Micro co-processor, and the `.ino` no longer calls them. That bridge is a third idea (a phone typing into a host). It is not the embosser, and it is not the motor-rail interlock. The embosser firmware belongs in its own directory. The personal-computer safety entry point needs to be restored or moved on purpose, rather than shared with the printer.
+Commit `54a3621` replaced `firmware-arduino/firmware-arduino.ino` (the Arduino Micro entry point, `braillatron_setup` / `braillatron_loop`) with an ESP32-S3 BLE keyboard bridge: a phone writes Nordic UART, and the chip types those bytes as USB HID. That bridge is a third idea (a phone typing into a host). It now lives in `firmware-keyboard-bridge/`. It is not the embosser, and it is not the motor-rail interlock. `firmware-arduino/firmware-arduino.ino` again calls `braillatron_setup` / `braillatron_loop`. The safety sources under `firmware-arduino/src/` are unchanged.
 
 A builder picks one product:
 
@@ -132,17 +132,19 @@ No prices in this draft. The savings are the computer section, and they show up 
 
 ## How the tree should grow
 
-Nothing moves in this draft. When we cut the roof into code, the shape is:
+The first slice below is in the tree. The shape it is growing into:
 
 ```
 mobile-braille-embosser/
 ├── shared/
 │   ├── protocol.h            personal-computer co-processor link (unchanged)
-│   └── print_contract.h      C header both brains include
+│   ├── print_contract.h      C header both brains include
+│   └── print_contract.md     short form of that header
 ├── daemon-dietpi/            personal-computer brain (unchanged home)
 ├── firmware-arduino/         personal-computer safety co-processor
+├── firmware-keyboard-bridge/ phone-to-USB-HID typing bridge (not either product's brain)
 ├── klipper/                  personal-computer motor board
-├── firmware-embosser/        embosser firmware, added when a board is chosen
+├── firmware-embosser/        embosser pipeline, host-tested; board not chosen
 ├── deploy/                   personal-computer image
 └── specs/
     ├── Master Software Architecture V9.md
@@ -156,25 +158,28 @@ mobile-braille-embosser/
 - The 64-byte North American BRF table copied from `brf_format.cpp`.
 - Job-state and fault enums.
 - The wire markers: `BRF1 `, form feed, 115200, idle gap 1500 ms.
+- The status line: `BRFSTAT <state>` or `BRFSTAT fault <reason>`.
 
-The Pi files keep their behavior. A later edit can `static_assert` `motion_constants.h` against the header so the two cannot drift. The embosser firmware includes the header and writes its own step generator. `EmbossScheduler` does not get ported line by line.
+The Pi files keep their behavior. `motion_constants.h` static-asserts against `print_contract.h` so the two cannot drift. The embosser firmware includes the header. Its host pipeline schedules strikes; the step generator is still unwritten. `EmbossScheduler` is not ported line by line.
 
 The personal computer can send a document to a standalone embosser by writing the same bytes `BrfCableParser` already accepts, to a USB serial port or to that TCP port. Local embossing stays `emboss_brf`. Two destinations, one file.
 
 ---
 
-## First build slice, when we leave the brainstorm
+## First build slice
 
-1. Add `shared/print_contract.h` and a host test that checks the Pi codec against it. No firmware yet.
-2. Treat the existing cable grammar as the embosser’s wire format. Document the status line.
-3. Scaffold `firmware-embosser` only after a microcontroller and a stepper board are named. Until then the scaffold would be pretending the hardware exists.
-4. Leave the DietPi image, Klipper config, and Arduino firmware on the personal-computer path.
+Landed in the tree. No stepper board is selected, and there is no ESP-IDF port.
+
+1. `shared/print_contract.h` is the roof in C: micrometre geometry, row masks, logical names `emboss_1` … `emboss_6`, the 64-byte North American BRF table, job states, fault reasons, and the wire markers (`BRF1 `, form feed, 115200, 1500 ms). `braillatron_print_status_line` writes `BRFSTAT <state>` or `BRFSTAT fault <reason>`. `shared/print_contract.md` points at the header as the source of truth.
+2. The Pi daemon includes that header. `motion_constants.h` static-asserts the millimetre constants and row masks. `MotionService::emboss_brf` static-asserts the 33-line page. `brf_format.cpp` uses the shared table. `BrfCableParser::kIdleCompleteMs` stays 1500 and is checked against the contract. The embosser does not take the Pi's 2 MB job buffer. `make brf-test` still covers the codec.
+3. `firmware-embosser/` streams BRF on the host: optional `BRF1` header, Row A at the cell, Row B at that X plus 2.5 mm during the cell advance, newline flush, 33-line form feed, and `BRFSTAT` lines. Motor output is function pointers. `emboss_pipeline_safety_cut` drops enable and enters `fault safety`. `make check` at the repo root runs this test after the daemon check. `queued` is in the contract for a later spool; this pipeline does not emit it.
+4. DietPi, Klipper, and the Arduino Micro safety firmware stay on the personal-computer path. The ESP32-S3 BLE HID sketch is `firmware-keyboard-bridge/` and is not on the AVR CI job.
 
 ---
 
 ## Open questions
 
-These are the decisions that block a board choice and a firmware tree.
+These are the decisions that still block a board choice and a firmware port. The host pipeline in `firmware-embosser/` is already in the tree; it does not pick a board.
 
 1. **Stepper board.** Which board can drive eight steppers from an ESP32-class chip, with an enable that fails off, without speaking Klipper? Eight channels is the whole constraint. A board with fewer drivers changes the mechanism and breaks the shared roof.
 2. **Radio versus steps.** Is one dual-core module enough, or do we want a second small chip whose only job is step pulses while the radio chip receives the file?

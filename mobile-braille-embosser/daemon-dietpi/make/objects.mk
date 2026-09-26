@@ -42,7 +42,7 @@ MOTION_OBJS := $(call module_objs,src/motion,moonraker_self_test.cpp)
 HAPTICS_OBJS := $(call module_objs,src/haptics,)
 
 DOCUMENT_OBJS := \
-	$(call module_objs,src/documents,liblouis_bridge.cpp liblouis_self_test.cpp dictionary_self_test.cpp spelling_self_test.cpp contacts_self_test.cpp library_self_test.cpp brf_self_test.cpp) \
+	$(call module_objs,src/documents,liblouis_bridge.cpp liblouis_self_test.cpp dictionary_self_test.cpp spelling_self_test.cpp contacts_self_test.cpp library_self_test.cpp brf_self_test.cpp paper_separator_self_test.cpp) \
 	$(LIBLOUIS_BRIDGE_OBJ)
 
 APP_OBJS := $(call module_objs,src/ui/apps,calculator_self_test.cpp)
@@ -238,6 +238,10 @@ BRF_TEST_OBJS := \
 	src/documents/brf_format.o \
 	src/documents/brf_cable.o \
 	src/documents/brf_self_test.o
+
+PAPER_SEPARATOR_TEST_OBJS := \
+	src/documents/paper_separator.o \
+	src/documents/paper_separator_self_test.o
 
 LIBRARY_BACKEND_TEST_OBJS := \
 	src/connect/connect_config.o \
