@@ -6,7 +6,10 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <iostream>
 #include <linux/fb.h>
+#include <linux/kd.h>
+#include <linux/vt.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -26,6 +29,8 @@ FbdevDisplayBackend::FbdevDisplayBackend(const DisplayConfig &config)
         fb_fd_ = -1;
         return;
     }
+
+    claim_console();
 
     layout_ = layout_for_hdmi(fb_width_, fb_height_);
     if (config.hdmi_font_scale > 0) {
@@ -87,6 +92,49 @@ bool FbdevDisplayBackend::map_framebuffer()
     return mapped_ != MAP_FAILED;
 }
 
+void FbdevDisplayBackend::claim_console()
+{
+    // tty1 and /dev/fb0 share one framebuffer. While the console stays in text
+    // mode it redraws over the UI (the menu flashes behind the shell) and the
+    // keyboard echoes into that console instead of the UI.
+    int tty0 = open("/dev/tty0", O_RDWR | O_NOCTTY);
+    if (tty0 < 0) {
+        return;
+    }
+
+    vt_stat state {};
+    const int state_rc = ioctl(tty0, VT_GETSTATE, &state);
+    close(tty0);
+    if (state_rc != 0 || state.v_active != 1) {
+        return;
+    }
+
+    tty_fd_ = open("/dev/tty1", O_RDWR | O_NOCTTY);
+    if (tty_fd_ < 0) {
+        std::cerr << "[display] fb: could not open /dev/tty1: " << std::strerror(errno) << "\n";
+        return;
+    }
+
+    if (ioctl(tty_fd_, KDSETMODE, KD_GRAPHICS) != 0) {
+        std::cerr << "[display] fb: KD_GRAPHICS failed: " << std::strerror(errno) << "\n";
+    }
+    if (ioctl(tty_fd_, KDSKBMODE, K_OFF) != 0) {
+        std::cerr << "[display] fb: keyboard off failed: " << std::strerror(errno) << "\n";
+    }
+}
+
+void FbdevDisplayBackend::release_console()
+{
+    if (tty_fd_ < 0) {
+        return;
+    }
+
+    ioctl(tty_fd_, KDSKBMODE, K_UNICODE);
+    ioctl(tty_fd_, KDSETMODE, KD_TEXT);
+    close(tty_fd_);
+    tty_fd_ = -1;
+}
+
 void FbdevDisplayBackend::unmap_framebuffer()
 {
     if (mapped_ != nullptr && mapped_ != MAP_FAILED) {
@@ -100,6 +148,11 @@ void FbdevDisplayBackend::blit_to_fb()
 {
     if (!available()) {
         return;
+    }
+
+    if (tty_fd_ >= 0) {
+        ioctl(tty_fd_, KDSETMODE, KD_GRAPHICS);
+        ioctl(tty_fd_, KDSKBMODE, K_OFF);
     }
 
     auto *dst_base = static_cast<uint8_t *>(mapped_);
@@ -147,6 +200,7 @@ void FbdevDisplayBackend::render(const UiChromeModel &model)
 
 void FbdevDisplayBackend::shutdown()
 {
+    release_console();
     unmap_framebuffer();
     if (fb_fd_ >= 0) {
         close(fb_fd_);
