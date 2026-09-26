@@ -331,7 +331,6 @@ void AppRegistry::on_text(const std::string &text)
                     echo_typed_commit(word);
                     deliver_text(focused_app(), word);
                 }
-                echo_typed_text(" ");
                 deliver_text(focused_app(), " ");
             } else {
                 const std::string word =
@@ -611,6 +610,37 @@ std::vector<MenuItem> AppRegistry::build_inline_menu()
     insert_media_playback_menu_items(items, ctx_, media_index);
 
     if (active_ != nullptr && active_->id() == "brailler") {
+        items.push_back(MenuItem {
+            "Review navigation",
+            [this]() {
+                if (ctx_.edit == nullptr) {
+                    return std::string("Review navigation");
+                }
+                return std::string("Review navigation: ")
+                    + documents::EditSession::nav_unit_label(ctx_.edit->nav_unit());
+            },
+            [this](MenuOverlay &mo) {
+                const auto make_item = [this](const char *label, const char *action) {
+                    return MenuItem {
+                        label,
+                        {},
+                        [this, action](MenuOverlay &inner) {
+                            if (active_ != nullptr) {
+                                active_->on_menu_action(action, ctx_);
+                            }
+                            inner.close();
+                        },
+                    };
+                };
+                mo.push_level(
+                    {
+                        make_item("By line", "nav_by_line"),
+                        make_item("By word", "nav_by_word"),
+                        make_item("By letter", "nav_by_letter"),
+                    },
+                    "Review navigation");
+            },
+        });
         items.push_back(MenuItem {
             "Look up word",
             {},

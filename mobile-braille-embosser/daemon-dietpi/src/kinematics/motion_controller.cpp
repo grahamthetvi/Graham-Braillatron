@@ -44,11 +44,6 @@ void MotionController::log_carriage_full_steps(int32_t delta_full_steps)
     log_carriage_microsteps(delta_full_steps * static_cast<int32_t>(MICROSTEPS_PER_FULL_STEP));
 }
 
-void MotionController::advance_line_10mm()
-{
-    log_carriage_microsteps(static_cast<int32_t>(MICROSTEPS_PER_10MM_LINE));
-}
-
 TravelLog &MotionController::travel_log()
 {
     return travel_log_;

@@ -31,26 +31,6 @@ bool parse_bool(const std::string &value)
 
 } // namespace
 
-std::string KlipperConfig::emboss_stepper_name(unsigned dot_index) const
-{
-    switch (dot_index) {
-    case 1:
-        return emboss_stepper_1;
-    case 2:
-        return emboss_stepper_2;
-    case 3:
-        return emboss_stepper_3;
-    case 4:
-        return emboss_stepper_4;
-    case 5:
-        return emboss_stepper_5;
-    case 6:
-        return emboss_stepper_6;
-    default:
-        return {};
-    }
-}
-
 KlipperConfig load_klipper_config(const std::string &path)
 {
     KlipperConfig config;
@@ -86,20 +66,10 @@ KlipperConfig load_klipper_config(const std::string &path)
             config.y_feed_speed_mm_s = std::stod(value);
         } else if (key == "x_move_speed_mm_s") {
             config.x_move_speed_mm_s = std::stod(value);
-        } else if (key == "stepper_buzz_duration_ms") {
-            config.stepper_buzz_duration_ms = static_cast<uint32_t>(std::stoul(value));
-        } else if (key == "emboss_stepper_1") {
-            config.emboss_stepper_1 = value;
-        } else if (key == "emboss_stepper_2") {
-            config.emboss_stepper_2 = value;
-        } else if (key == "emboss_stepper_3") {
-            config.emboss_stepper_3 = value;
-        } else if (key == "emboss_stepper_4") {
-            config.emboss_stepper_4 = value;
-        } else if (key == "emboss_stepper_5") {
-            config.emboss_stepper_5 = value;
-        } else if (key == "emboss_stepper_6") {
-            config.emboss_stepper_6 = value;
+        } else if (key == "emboss_stroke_mm") {
+            config.emboss_stroke_mm = std::stod(value);
+        } else if (key == "emboss_speed_mm_s") {
+            config.emboss_speed_mm_s = std::stod(value);
         }
     }
 

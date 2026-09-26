@@ -1,6 +1,5 @@
 #pragma once
 
-#include "limit_sensors.h"
 #include "telemetry_config.h"
 
 #include <atomic>
@@ -32,10 +31,10 @@ public:
 
 private:
     TelemetryConfig config_;
-    LimitSensors limit_sensors_;
     motion::MoonrakerClient *moonraker_ = nullptr;
     std::atomic<HomingState> state_ {HomingState::Idle};
     int32_t target_y_ = 0;
+    std::string fail_reason_;
 };
 
 } // namespace braillatron::telemetry

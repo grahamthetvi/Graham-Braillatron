@@ -8,21 +8,16 @@ namespace braillatron::motion {
 struct KlipperConfig {
     bool enabled = false;
     std::string moonraker_url = "http://127.0.0.1:7125";
-    uint32_t request_timeout_sec = 5;
+    // Must exceed the longest blocking g-code (STEPPER_BUZZ runs ~10 s).
+    uint32_t request_timeout_sec = 15;
 
     double y_feed_mm_per_line = 10.0;
     double y_feed_speed_mm_s = 20.0;
     double x_move_speed_mm_s = 30.0;
-    uint32_t stepper_buzz_duration_ms = 100;
 
-    std::string emboss_stepper_1 = "emboss_1";
-    std::string emboss_stepper_2 = "emboss_2";
-    std::string emboss_stepper_3 = "emboss_3";
-    std::string emboss_stepper_4 = "emboss_4";
-    std::string emboss_stepper_5 = "emboss_5";
-    std::string emboss_stepper_6 = "emboss_6";
-
-    std::string emboss_stepper_name(unsigned dot_index) const;
+    // EMBOSS_DOT strike stroke and speed (printer.cfg macro parameters).
+    double emboss_stroke_mm = 2.0;
+    double emboss_speed_mm_s = 40.0;
 };
 
 KlipperConfig load_klipper_config(const std::string &path);

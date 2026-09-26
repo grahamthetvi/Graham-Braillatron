@@ -2,6 +2,7 @@
 #include "ui_context.h"
 
 #include "../../connect/subprocess.h"
+#include "../../keyboard/global_hooks.h"
 #include "../../keyboard/keyboard_service.h"
 #include "../../motion/klipper_motion_bridge.h"
 #include "../../motion/moonraker_client.h"
@@ -205,9 +206,9 @@ private:
             {TestKind::Speaker440, "Speaker 440 hertz sine"},
             {TestKind::ArduinoButtons, "Arduino button matrix"},
             {TestKind::BatteryStatus, "Battery percent"},
-            {TestKind::ChargingState, "Charging state"},
+            {TestKind::ChargingState, "Charging (LTC2944 voltage rise)"},
             {TestKind::Temperature, "LTC2944 temperature"},
-            {TestKind::PaperSensors, "Paper endstops (Klipper)"},
+            {TestKind::PaperSensors, "Paper endstops (Klipper X-STOP/PA14)"},
             {TestKind::Haptics, "DRV2605L haptic pulse"},
             {TestKind::MotionGate, "Motion gate status"},
         };
@@ -320,7 +321,7 @@ private:
             return;
         }
 
-        const bool ok = ctx.klipper->client().stepper_buzz(stepper, 100u);
+        const bool ok = ctx.klipper->client().stepper_buzz(stepper);
         last_result_ = stepper + (ok ? ": STEPPER_BUZZ ok" : ": STEPPER_BUZZ failed");
         announce(ctx, last_result_);
     }
@@ -364,9 +365,12 @@ private:
     void run_charging(UiContext &ctx)
     {
         (void)ctx;
+        // V5.1 IP2368 charge LED is on the module, not a Pi GPIO. The live
+        // signal is telemetry snapshot.charging from LTC2944 voltage rise.
         const telemetry::TelemetrySnapshot snap =
             telemetry::read_telemetry_json(telemetry::kTelemetryJsonPath);
-        last_result_ = snap.charging ? "Charging: yes" : "Charging: no";
+        last_result_ = snap.charging ? "Charging (LTC2944 voltage rise): yes"
+                                     : "Charging (LTC2944 voltage rise): no";
         announce(ctx, last_result_);
     }
 
@@ -393,8 +397,9 @@ private:
         }
 
         const motion::EndstopState endstops = ctx.klipper->client().query_endstops();
-        last_result_ = std::string("Paper edge: ") + (endstops.paper_edge ? "triggered" : "open") +
-                       ", Y home: " + (endstops.y_home ? "triggered" : "open");
+        last_result_ = std::string("Paper edge (X-STOP PA14): ")
+                       + (endstops.paper_edge ? "triggered" : "open") +
+                       ", Y home (Y-STOP PA15): " + (endstops.y_home ? "triggered" : "open");
         announce(ctx, last_result_);
     }
 
@@ -413,10 +418,20 @@ private:
     void run_motion_gate(UiContext &ctx)
     {
         if (MotionGate::is_blocked()) {
-            last_result_ = std::string("Motion gate blocked: ") + MotionGate::block_reason();
-        } else {
-            last_result_ = "Motion gate: clear";
+            const char *reason = MotionGate::block_reason();
+            last_result_ = std::string("Motion gate blocked: ")
+                + (reason != nullptr ? reason : "unknown")
+                + ". Clearing lock.";
+            announce(ctx, last_result_);
+            if (hooks::recover_motion_gate() && !MotionGate::is_blocked()) {
+                last_result_ = "Motion lock cleared";
+            } else {
+                last_result_ = "Motion lock clear failed";
+            }
+            announce(ctx, last_result_);
+            return;
         }
+        last_result_ = "Motion gate: clear";
         announce(ctx, last_result_);
     }
 

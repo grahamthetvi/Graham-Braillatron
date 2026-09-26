@@ -26,7 +26,7 @@ namespace braillatron::keyboard {
 
 class KeyboardService {
 public:
-    explicit KeyboardService(KeyboardConfig config);
+    KeyboardService(KeyboardConfig config, platform::SerialLink *serial_link);
     ~KeyboardService();
 
     KeyboardService(const KeyboardService &) = delete;
@@ -57,9 +57,11 @@ private:
     void handle_safety(const braillatron_safety_broadcast_t &payload);
     void handle_control_edge(const ControlEdge &edge);
     static uint64_t now_ms();
+    std::string serial_device_path() const;
 
     KeyboardConfig config_;
     MatrixMap matrix_map_;
+    platform::SerialLink *serial_link_ = nullptr;
     SerialListener serial_;
     ChordEngine chord_;
     FocusNavigator focus_;

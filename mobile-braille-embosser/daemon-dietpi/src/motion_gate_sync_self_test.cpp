@@ -32,6 +32,25 @@ int main()
         return 1;
     }
 
+    braillatron::MotionGate::unblock();
+    if (braillatron::MotionGate::is_blocked()) {
+        std::cerr << "motion gate sync test: expected unblock to clear the latch\n";
+        return 1;
+    }
+
+    snapshot.motion_blocked = false;
+    snapshot.limit_status = 0;
+    if (!braillatron::telemetry::write_telemetry_json(path, snapshot)) {
+        std::cerr << "motion gate sync test: failed to rewrite telemetry json\n";
+        return 1;
+    }
+    braillatron::MotionGate::block("arduino_freefall");
+    braillatron::telemetry::sync_motion_gate_from_telemetry(path);
+    if (!braillatron::MotionGate::is_blocked()) {
+        std::cerr << "motion gate sync test: json must not auto-unblock a latched gate\n";
+        return 1;
+    }
+
     std::remove(path.c_str());
     std::cout << "motion gate sync test passed\n";
     return 0;

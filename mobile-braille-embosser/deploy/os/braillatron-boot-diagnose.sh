@@ -13,9 +13,10 @@ cat /etc/braillatron/appliance.env 2>/dev/null || echo 'appliance.env: missing'
 
 section 'Display devices'
 ls -l /dev/fb0 2>/dev/null || echo '/dev/fb0: absent'
-ls -l /dev/spidev0.0 2>/dev/null || echo '/dev/spidev0.0: absent'
+ls -l /dev/spidev3.0 2>/dev/null || echo '/dev/spidev3.0: absent'
+ls -l /dev/gpiochip4 2>/dev/null || echo '/dev/gpiochip4: absent'
 if [[ -f /etc/braillatron/display.conf ]]; then
-  grep -E '^(backend|fbdev|hdmi_enabled|remote_display_enabled|gpio_dc|spidev)=' /etc/braillatron/display.conf || true
+  grep -E '^(backend|fbdev|hdmi_enabled|remote_display_enabled|gpio_chip|gpio_dc|gpio_rst|spidev)=' /etc/braillatron/display.conf || true
 fi
 
 section 'Remote display (displayd)'

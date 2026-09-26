@@ -59,7 +59,7 @@ For a new Cursor conversation, paste the **Suggested agent prompt** at the botto
 
 - [ ] Launch **YouTube** app from menu
 - [ ] Search a public query (no cookies) — results announced via TTS
-- [ ] Play a result — audio heard on I2S speaker (PipeWire/pulse → MAX98357A)
+- [ ] Play a result — audio heard on I2S speaker (ALSA → MAX98357A; Bluetooth uses BlueALSA, not PipeWire)
 - [ ] Shift/TTS pauses or ducks during playback
 - [ ] Backspace stops playback and returns to results
 - [ ] Export browser cookies → copy to `/data/braillatron/credentials/incoming/cookies.txt`

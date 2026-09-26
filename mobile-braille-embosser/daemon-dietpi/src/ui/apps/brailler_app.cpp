@@ -141,7 +141,6 @@ public:
                         ctx.brf->append_char(wch);
                     }
                 }
-                announce_typing(ctx, "space");
                 ctx.brf->append_char(' ');
             } else {
                 const std::string word = commit_pending_word();
@@ -168,6 +167,41 @@ public:
     void on_control(keyboard::ControlKey key, bool pressed, UiContext &ctx) override
     {
         if (!pressed) {
+            return;
+        }
+
+        const bool reviewing =
+            ctx.edit != nullptr
+            && (ctx.edit->state() == documents::EditState::LineReview
+                || ctx.edit->state() == documents::EditState::AwaitFullCell
+                || ctx.edit->state() == documents::EditState::ReplacementLine);
+
+        if (reviewing) {
+            if (ctx.edit->state() != documents::EditState::ReplacementLine) {
+                if (key == keyboard::ControlKey::DpadUp) {
+                    if (!ctx.edit->move_review(-1) && ctx.output != nullptr) {
+                        ctx.output->play_boundary_haptic();
+                    }
+                    return;
+                }
+                if (key == keyboard::ControlKey::DpadDown) {
+                    if (!ctx.edit->move_review(1) && ctx.output != nullptr) {
+                        ctx.output->play_boundary_haptic();
+                    }
+                    return;
+                }
+                if (key == keyboard::ControlKey::Enter) {
+                    // Re-announce the focused review line.
+                    ctx.edit->begin_line_review(ctx.edit->review_line());
+                    return;
+                }
+            }
+            if (key == keyboard::ControlKey::Backspace) {
+                clear_pending_chords();
+                ctx.edit->cancel_review();
+                sync_display(ctx);
+                return;
+            }
             return;
         }
 
@@ -202,7 +236,27 @@ public:
             return;
         }
         if (ctx.edit != nullptr && ctx.brf != nullptr) {
-            ctx.edit->begin_line_review(ctx.brf->line_count() > 0 ? ctx.brf->line_count() - 1 : 0);
+            const size_t lines = ctx.brf->line_count();
+            ctx.edit->begin_line_review(lines > 0 ? lines - 1 : 0);
+        }
+    }
+
+    void on_menu_action(const std::string &action, UiContext &ctx) override
+    {
+        if (ctx.edit == nullptr) {
+            return;
+        }
+        if (action == "nav_by_line") {
+            ctx.edit->set_nav_unit(documents::ReviewNavUnit::Line);
+            return;
+        }
+        if (action == "nav_by_word") {
+            ctx.edit->set_nav_unit(documents::ReviewNavUnit::Word);
+            return;
+        }
+        if (action == "nav_by_letter") {
+            ctx.edit->set_nav_unit(documents::ReviewNavUnit::Letter);
+            return;
         }
     }
 

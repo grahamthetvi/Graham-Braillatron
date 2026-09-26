@@ -19,7 +19,6 @@ public:
 
     void log_carriage_microsteps(int32_t delta_microsteps);
     void log_carriage_full_steps(int32_t delta_full_steps);
-    void advance_line_10mm();
 
     TravelLog &travel_log();
     const TravelLog &travel_log() const;

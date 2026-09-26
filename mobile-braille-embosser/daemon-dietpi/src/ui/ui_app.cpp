@@ -2,6 +2,7 @@
 
 #include "../keyboard/global_hooks.h"
 #include "../motion/klipper_config.h"
+#include "../motion_gate.h"
 #include "../telemetry/telemetry_bridge.h"
 
 #include <chrono>
@@ -34,7 +35,7 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     , connect_client_(braillatron::connect::default_connect_config().socket_path,
                       braillatron::connect::default_connect_config().event_path)
     , timer_service_("/data/braillatron/timer/state.json")
-    , keyboard_(keyboard_config_)
+    , keyboard_(keyboard_config_, &serial_link_)
 {
     timer_service_.set_alert_handler([this](const std::string &message) {
         output_hub_.announce_message(message);
@@ -43,11 +44,11 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     coord_store_.load();
     brf_store_.load();
 
+    // MotionService drives the physical Y feed through the line-feed handler
+    // that KlipperMotionBridge installs on connect — no direct bridge call,
+    // which would double-feed the paper.
     paper_separator_.set_feed_handler([this](int32_t delta) {
         motion_service_.feed_lines(delta);
-        if (klipper_bridge_ != nullptr) {
-            klipper_bridge_->feed_lines(delta);
-        }
     });
 
     ui_context_.output = &output_hub_;
@@ -72,6 +73,16 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     hooks::set_output_hub(&output_hub_);
     hooks::set_app_registry(&app_registry_);
     hooks::set_keyboard_service(&keyboard_);
+    hooks::set_serial_link(&serial_link_);
+    hooks::set_recover_motion_gate([this]() {
+        // CLEAR_FAULT (0x07) already sent by recover_motion_gate(). This
+        // lambda is Settings / Factory Test only — never from a move.
+        braillatron::MotionGate::unblock();
+        if (klipper_bridge_ != nullptr) {
+            klipper_bridge_->firmware_restart();
+        }
+        return true;
+    });
 
     keyboard_.set_braille_service(&braille_input_service_);
 
@@ -154,9 +165,11 @@ void UiApp::stop()
     app_registry_.exit();
     brf_store_.save();
     coord_store_.save();
+    hooks::set_serial_link(nullptr);
+    hooks::set_recover_motion_gate(nullptr);
+    keyboard_.stop();
     serial_link_.close();
     output_hub_.release_backends();
-    keyboard_.stop();
     hooks::set_app_registry(nullptr);
     hooks::set_output_hub(nullptr);
     hooks::set_keyboard_service(nullptr);
@@ -219,11 +232,6 @@ void UiApp::refresh_status(bool force_log)
 
     if (keyboard_.serial_connected()) {
         serial_missing_announced_ = false;
-        if (!serial_link_.is_open()) {
-            serial_link_.try_open();
-        }
-    } else {
-        serial_link_.close();
     }
 }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../platform/serial_link.h"
+
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -25,7 +27,7 @@ using SerialDisconnectHandler = std::function<void()>;
 
 class SerialListener {
 public:
-    SerialListener(std::string device_path, uint32_t baud_rate);
+    explicit SerialListener(platform::SerialLink *link);
     ~SerialListener();
 
     SerialListener(const SerialListener &) = delete;
@@ -39,9 +41,7 @@ public:
     void set_disconnect_handler(SerialDisconnectHandler handler);
 
 private:
-    std::string device_path_;
-    uint32_t baud_rate_;
-    int fd_ = -1;
+    platform::SerialLink *link_ = nullptr;
     FrameHandler handler_;
     SerialDisconnectHandler disconnect_handler_;
     std::thread worker_;

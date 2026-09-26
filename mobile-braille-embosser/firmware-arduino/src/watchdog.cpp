@@ -16,6 +16,7 @@
 #include "mpu6050_isr.h"
 #include "protocol.h"
 #include "protocol_tx.h"
+#include "telemetry_handler.h"
 
 #include <avr/wdt.h>
 
@@ -42,6 +43,7 @@ void watchdog_kick(uint32_t now_ms)
     if (elapsed > COMMS_TIMEOUT_MS) {
         g_comms_lost = true;
         fail_safes_cut_rail();
+        /* Comms gap is COMMS_LOSS, not unused FAULT_WATCHDOG_TIMEOUT. */
         protocol_tx_safety(
             (uint8_t)BRAILLATRON_FAULT_COMMS_LOSS,
             (uint8_t)BRAILLATRON_SEVERITY_CRITICAL,
@@ -56,8 +58,8 @@ void watchdog_notify_heartbeat(uint32_t now_ms)
 
     if (g_comms_lost) {
         g_comms_lost = false;
-        /* A latched freefall keeps the rail down regardless of comms. */
-        if (!mpu6050_freefall_pending()) {
+        /* Latched freefall or battery-critical keep the rail down. */
+        if (!mpu6050_freefall_pending() && !telemetry_handler_battery_critical()) {
             fail_safes_restore_rail();
         }
     }

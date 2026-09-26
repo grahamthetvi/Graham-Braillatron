@@ -4,6 +4,13 @@
 
 This V5.1 Prototype Guide is the **canonical wiring document** for the Graham Braillatron skeleton. It integrates the industrial-grade 3-tier architecture:
 
+| Domain | Source of truth |
+|--------|-----------------|
+| Power / keys / MPU / VMOT gate | **This guide** + `firmware-arduino/src/pins.h` — 12 physical keys, MPU INT **active-low latched FALLING on D7**, IP2368 **in parallel** on the WAGO bus, D12 cut |
+| Monster8 pins / endstops / currents | `klipper/printer.cfg` **only** (Part 5). Do not copy pin excerpts from V9/V4.9. |
+
+V9 remains the software spec. Solenoid heads, MPU INT0 / active-high INT, series USB-C → IP2368 → BMS, and E0-STOP paper-edge wiring are retired.
+
 | Tier | Board | Role |
 |------|-------|------|
 | 1 | Orange Pi 3B | Brain — DietPi, apps, Moonraker/Klipper host, I2S audio, I2C telemetry |
@@ -26,7 +33,7 @@ This V5.1 Prototype Guide is the **canonical wiring document** for the Graham Br
 | **USB-C Panel Port** | Panel-mount USB-C receptacle (PD input) wired to IP2368 with short pigtails. | 1 Jack |
 | **Main Motor Fuse** | 15 A ATC inline blade fuse on 14.8 V motor rail. | 1 Fuse |
 | **Logic Fuse** | 5 A ATC inline blade fuse on 14.8 V buck input. | 1 Fuse |
-| **Thermal Cutoff Fuse** | 85 °C non-resettable thermal fuse — **optional on skeleton** (see Part 2.6). | 0–1 Fuse |
+| **Thermal Cutoff Fuse** | 85 °C non-resettable thermal fuse — **not installed on this skeleton prototype** (see Part 2.6). Production HAT **must** include it. | 0 on skeleton / 1 on production |
 | **Power Distribution** | 12-position dual-row screw terminal strip (star ground). 5-port WAGO lever nut (positive bus). | 1 Strip, 1 Nut |
 | **MOSFET Gate Driver** | TC4420 high-speed non-inverting gate driver IC. | 1 Chip |
 | **Low-Side Power MOSFET** | IRLZ44N N-channel logic-level MOSFET (30 A+) for VMOT cutoff. | 1 MOSFET |
@@ -37,7 +44,7 @@ This V5.1 Prototype Guide is the **canonical wiring document** for the Graham Br
 
 | Component | Specifications / Description | Qty Required |
 | :---- | :---- | :---- |
-| **Primary Processor (Tier 1)** | Orange Pi 3B (4 GB LPDDR4, Rockchip RK3566). | 1 Unit |
+| **Primary Processor (Tier 1)** | Orange Pi 3B (4 GB LPDDR4, Rockchip RK3566). On-board Wi‑Fi/BT silicon is whatever that **board revision ships** — this repo does not pin a module PN. | 1 Unit |
 | **Motion Controller (Tier 2)** | MKS Monster8 V2 (32-bit STM32, Klipper MCU). | 1 Board |
 | **Safety Watchdog (Tier 3)** | Arduino Micro (ATmega32U4, 5 V native). | 1 Unit |
 | **Logic Power Supply** | Mini560 (TPS5430) buck — 14.8 V in, 5.0 V / 5 A out. | 1 Module |
@@ -62,6 +69,19 @@ This V5.1 Prototype Guide is the **canonical wiring document** for the Graham Br
 | **Embossing Actuators** | NEMA 14 steppers, dots 1–6 (Row A: 1,3,5; Row B: 2,4,6). | 6 Motors |
 
 **Paper:** 100 lb cardstock, 0.5 in perf spacing, 33-line fresh page feed on app switch.
+
+### Mechanical CAD gap
+
+This guide specifies **electrical interconnect** (power, GPIO, Monster8 headers, Arduino pins). Mechanical CAD and actuator manufacturer part numbers are **not in this repo**. Missing: NEMA14 SKU, coil/phase order, GT2 belt, tractor sprocket, crank/linkage, chassis, keyboard plate, and embossing head. Do not invent those PNs — you cannot fabricate the machine from this repository.
+
+### Unspecified on skeleton
+
+The following are **not specified** for this skeleton (do not invent CAD, photos, or PNs):
+
+- **Speech key seat** — electrical pin is Arduino **A3** (Part 3.1); physical seat / plate location is not drawn.
+- **Cherry MX colorway** — BOM calls for 12 tactile switches; switch color / SKU is not pinned.
+- **Monster8 UART jumper photos** — Part 3.2 requires UART jumpers under each TMC2209 socket; no photo set is in this repo.
+- **Which Pi USB-A port is Arduino vs Monster8** — not assigned by jack. Identify by device: Arduino CDC is `arduino_device=` in `hardware.conf` (typically `/dev/ttyACM0`); Monster8 is `/dev/serial/by-id/usb-Klipper_*` (`printer.cfg` `[mcu] serial`). Either USB-A jack on the 3B works.
 
 ---
 
@@ -175,7 +195,7 @@ Tier data:
 
 ### **2.3 IP2368 Bi-Directional Power Path**
 
-The IP2368 sits **in parallel** on the battery bus (BAT+ / BAT- tied to WAGO / star ground). It is not in series with the load.
+The IP2368 sits **in parallel** on the battery bus (BAT+ / BAT- tied to WAGO / star ground). It is not in series with the load. **Do not** wire USB-C → IP2368 → BMS as a series chain (older V4.9/V9 ASCII drawings looked like that).
 
 - **Charging:** USB-C PD input → IP2368 → raises BAT+ to charge the 4S pack through the BMS.
 - **On battery:** IP2368 can boost/export USB-C power from the pack (useful for bench accessories).
@@ -192,12 +212,12 @@ A TVS diode does **not** measure state of charge. It **clamps voltage spikes** o
 - **Recommended part:** SMBJ18A or P6KE18CA across P+ and P- at the distribution node (cathode to P+, anode to P-).
 - **Skeleton:** Optional — skip for first bench bring-up if budget is tight; add before mobile testing.
 
-### **2.6 Thermal Fuse (Individual Heatsinks)**
+### **2.6 Thermal Fuse (Skeleton Prototype vs Production)**
 
-Production V4.9 assumed a **unified aluminum bar** across all drivers. This skeleton uses **individual heatsinks** on Molicel cells and drivers, not a shared bar.
+This V5.1 skeleton is a **prototype / breadboard without** the production thermal fuse. Drivers and cells use **individual heatsinks**, not a unified bar.
 
-- **Recommendation:** **Defer** the 85 °C series thermal fuse on the skeleton, or place one only on the highest-risk conductor (BMS P+ lead) if you want a belt-and-suspenders prototype.
-- Revisit a unified heatsink + thermal fuse for the custom PCB HAT.
+- **Production (custom PCB / HAT):** unified aluminum bar across all eight TMC2209 drivers + **required** 85 °C non-resettable thermal fuse on the motor rail. Do not ship production hardware without it. V4.9/V9 still own that requirement; deferring it here does not cancel it.
+- **Skeleton:** **Defer** the 85 °C series thermal fuse, or place one only on the highest-risk conductor (BMS P+ lead) if you want a belt-and-suspenders prototype.
 
 ### **2.7 IRLZ44N + TC4420 Topology (Low-Side Cut)**
 
@@ -244,7 +264,8 @@ Twelve tactile switches — **no 13th physical Menu key**. The system Menu overl
 | 6 | Emboss dot 5 | NEMA 14 | **0.80** | Row A |
 | 7 | Emboss dot 6 | NEMA 14 | **0.80** | Row B |
 
-- Install TMC2209 StepSticks in slots **0–7**; UART jumpers under each socket.
+- Install TMC2209 StepSticks in slots **0–7**; UART jumpers under each socket (no jumper photos in this repo).
+- Klipper cartesian kinematics also require a `[stepper_z]` object. In `printer.cfg` that object is a **dummy** on unused EXP1 pins (PB2 / PE10 / PE11). It is **not** Monster8 slot 2 (silkscreen Z = `emboss_1`). Do **not** attach a motor to EXP1.
 - **Microstepping:** 16× (`MS1=HIGH`, `MS2=HIGH`) — matches `kinematics.conf` and 1600 microsteps per 10 mm line.
 - **Sensorless homing:** not used — optical endstops only.
 
@@ -258,10 +279,14 @@ Twelve tactile switches — **no 13th physical Menu key**. The system Menu overl
 
 Wire to Monster8 endstop headers (5 V / GND / SIG):
 
-| Sensor | Klipper name | Monster8 port (example) |
-|--------|--------------|-------------------------|
-| TCST2103 Y home | `y_home` | Y-STOP or dedicated MIN |
-| TCRT5000 paper edge | `paper_edge` | E0-STOP or FIL_RUNOUT |
+| Sensor | Klipper object | Monster8 port (`printer.cfg`) |
+|--------|----------------|-------------------------------|
+| TCST2103 Y home | `stepper_y` endstop | **Y-STOP `^PA15`** |
+| TCRT5000 paper edge | `stepper_x` endstop (QUERY_ENDSTOPS rail `"x"`; never `G28 X`) | **X-STOP `^PA14`** |
+
+**PN map (do not swap):** **TCRT5000** = paper edge (reflective IR); **TCST2103** = Y home (transmissive slot).
+
+Do **not** wire paper-edge to **E0-STOP** or **FIL_RUNOUT**. Monster8 pin names come from `klipper/printer.cfg` only. PA14 is reused as paper-edge because the carriage has no X home sensor.
 
 **Option A:** limits live on Monster8 only. The Pi reads state via **Moonraker/Klipper API** (`query_endstops`, object status) — not Pi GPIO. Leave `gpio_paper_edge` / `gpio_y_home` empty in `telemetry.conf` unless you duplicate sensors for bench test.
 
@@ -275,7 +300,7 @@ Keep MPU wiring **under 10 cm** (24–26 AWG).
 | GND | GND |
 | SDA | **D2** (I2C SDA) |
 | SCL | **D3** (I2C SCL) |
-| INT | **D7** (hardware interrupt INT6 — **not D3**) |
+| INT | **D7** (PE6 / hardware interrupt **INT6**) — **active-low latched**, ISR on **FALLING**. **Not D3 / INT0** (D3 is I2C SCL). V9 active-high language and GY-521 jumpers that leave INT active-high will **miss freefall**. |
 | ADO | GND (address 0x68) |
 
 **TC4420:** VDD/GND → 5 V logic bus; IN → D12; OUT → IRLZ44N gate; 0.1 µF bypass on VDD/GND.
@@ -288,6 +313,8 @@ Keep MPU wiring **under 10 cm** (24–26 AWG).
 | DRV2605L | 0x5A | same bus |
 
 Enable `i2c1` overlay in `armbianEnv.txt` / DietPi config.
+
+**Production-only / unspecified on this skeleton:** PDM MEMS mic (ICS-43432), grounded copper-tape cage, custom HAT netlist, and DRV2605L **EN** (breakout assumed strapped high; no V5.1 pin). Do not invent a HAT schematic. Skeleton STT uses the Pi 3.5 mm aux jack (Part 1 audio row).
 
 ### **3.5 I2S MAX98357A**
 
@@ -319,7 +346,7 @@ Enable SPI3 + spidev overlay. Recommended wiring:
 | RES | 26 | GPIO (gpiochip4 line 7) |
 | BLK | 3.3 V | backlight always on |
 
-`display.conf` placeholders: `spidev=/dev/spidev0.0`, `gpio_dc=9`, `gpio_rst=7` (verify against `gpioinfo` on your image).
+`display.conf`: `spidev=/dev/spidev3.0` (DietPi `spi3-spidev`), `gpio_chip=gpiochip4`, `gpio_dc=9`, `gpio_rst=7` (header pins 22/26). Confirm the chip node with `gpioinfo` if a kernel enumerates GPIO4 elsewhere.
 
 ---
 
@@ -369,20 +396,11 @@ Non-blocking `millis()` state machine — never `delay()` in the main loop (MPU 
 
 ### **4.4 MPU6050 Freefall → Klipper M112**
 
-On INT6 (pin 7) rising edge:
+On INT6 (D7 / PE6) **falling** edge (MPU INT is **active-low latched**; firmware `INT_PIN_CFG = 0xA0`):
 
-1. Arduino ISR pulls D12 LOW → IRLZ44N opens VMOT.
-2. Arduino transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL`.
+1. Arduino **ISR** pulls D12 LOW → IRLZ44N opens VMOT (port write only — **no serial in the ISR**).
+2. The **main loop** sees the pending latch and transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL` (`braillatron_app.cpp`).
 3. Pi handler issues **Klipper M112** via Moonraker and blocks MotionGate.
-
-Example ISR outline:
-
-```cpp
-void handleFreefallEmergency() {
-  digitalWrite(safetyGatePin, LOW);
-  // emit BRAILLATRON_OP_SAFETY frame (see shared/protocol.h)
-}
-```
 
 ### **4.5 DietPi / gpiod Heartbeat (development)**
 
@@ -456,13 +474,15 @@ motion_enabled=true
 
 `evdev_enabled=true` remains for USB keyboard bench input.
 
+`matrix_map.conf` is an **obsolete leftover** from the retired 4×4 key-matrix era (identity remap). The daemon still loads it; do not delete until that path is removed. See the file header.
+
 ---
 
 ## Part 5: Klipper configuration (authoritative)
 
 **Do not copy pin excerpts from older docs.** The repo ships the canonical Monster8 config:
 
-[`klipper/printer.cfg`](../klipper/printer.cfg) — 8 steppers (X, Y, emboss dots 1–6), TMC2209 UART, 16× microsteps, endstop placeholders.
+[`klipper/printer.cfg`](../klipper/printer.cfg) — 8 **real** steppers (X, Y, emboss dots 1–6), plus a **dummy** cartesian `[stepper_z]` on unused EXP1 pins (required by Klipper cartesian kinematics — do **not** attach a motor). TMC2209 UART, 16× microsteps, Y-STOP `^PA15`, paper-edge on **X-STOP `^PA14`**.
 
 1. Flash Monster8 with Klipper firmware ([makerbase-mks/MKS-Monster8](https://github.com/makerbase-mks/MKS-Monster8)).
 2. Copy `klipper/printer.cfg` to `~/printer_data/config/printer.cfg` on the Pi.

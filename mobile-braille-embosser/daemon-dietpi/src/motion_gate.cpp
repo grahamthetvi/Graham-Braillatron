@@ -16,6 +16,12 @@ void MotionGate::block(const char *reason)
     blocked_.store(true);
 }
 
+void MotionGate::unblock()
+{
+    reason_ = nullptr;
+    blocked_.store(false);
+}
+
 const char *MotionGate::block_reason()
 {
     return reason_;

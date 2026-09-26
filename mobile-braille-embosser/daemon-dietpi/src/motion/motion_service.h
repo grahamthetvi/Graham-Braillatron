@@ -28,11 +28,18 @@ public:
     void reset_from_coordinate(int64_t x_microsteps, int32_t y_line_index);
 
     void set_row_strike_log(std::function<void(uint8_t, int64_t)> logger);
+    /**
+     * Physical line feed (positive = advance, negative = retreat), installed
+     * by KlipperMotionBridge. Responsible for the Y feed and for returning
+     * the carriage to the line start (X0).
+     */
+    void set_line_feed_handler(std::function<bool(int32_t)> handler);
 
 private:
     braillatron::kinematics::MotionController controller_;
     braillatron::kinematics::PaperPosition paper_;
     std::function<void(uint8_t, int64_t)> strike_logger_;
+    std::function<bool(int32_t)> line_feed_;
 };
 
 } // namespace braillatron::motion

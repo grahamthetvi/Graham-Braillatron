@@ -62,10 +62,11 @@ std::string resolve_config_path(const std::string &path)
 
 } // namespace
 
-KeyboardService::KeyboardService(KeyboardConfig config)
+KeyboardService::KeyboardService(KeyboardConfig config, platform::SerialLink *serial_link)
     : config_(std::move(config))
     , matrix_map_(MatrixMap::load(config_.matrix_map_config))
-    , serial_(config_.serial_device, config_.baud_rate)
+    , serial_link_(serial_link)
+    , serial_(serial_link)
 {
     host_chord_assembler_.set_keyboard_matrix_handler(
         [this](uint16_t key_state) { handle_key_state(key_state); });
@@ -89,14 +90,14 @@ void KeyboardService::start()
 
     if (serial_.start([this](const SerialFrame &frame) { enqueue_frame(frame); })) {
         serial_started_ = true;
-        std::cerr << "keyboard: listening on " << config_.serial_device << "\n";
+        std::cerr << "keyboard: listening on " << serial_device_path() << "\n";
     } else {
         serial_started_ = false;
         if (!config_.allow_missing_arduino) {
             throw std::runtime_error("failed to open required serial device " +
-                                     config_.serial_device);
+                                     serial_device_path());
         }
-        std::cerr << "keyboard: " << config_.serial_device
+        std::cerr << "keyboard: " << serial_device_path()
                   << " unavailable; running without Arduino input\n";
     }
 
@@ -174,6 +175,14 @@ uint16_t KeyboardService::last_matrix_state() const
     return last_matrix_state_;
 }
 
+std::string KeyboardService::serial_device_path() const
+{
+    if (serial_link_ != nullptr) {
+        return serial_link_->device_path();
+    }
+    return config_.serial_device;
+}
+
 bool KeyboardService::serial_connected() const
 {
     return serial_started_.load() && serial_.is_connected();
@@ -200,7 +209,7 @@ bool KeyboardService::try_serial_reconnect()
 
     if (serial_.try_reconnect()) {
         serial_started_ = true;
-        std::cerr << "keyboard: reconnected to " << config_.serial_device << "\n";
+        std::cerr << "keyboard: reconnected to " << serial_device_path() << "\n";
         return true;
     }
 
@@ -471,6 +480,13 @@ void KeyboardService::handle_chord(uint8_t dot_mask)
 
 void KeyboardService::handle_safety(const braillatron_safety_broadcast_t &payload)
 {
+    if (payload.fault_code == BRAILLATRON_FAULT_NONE) {
+        MotionGate::unblock();
+        last_announced_fault_ = 0;
+        last_announced_severity_ = 0;
+        return;
+    }
+
     if (payload.severity >= BRAILLATRON_SEVERITY_CRITICAL) {
         MotionGate::block(fault_block_reason(payload.fault_code));
     }

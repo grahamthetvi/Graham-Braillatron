@@ -3,6 +3,7 @@
 #include "../documents/liblouis_bridge.h"
 #include "../keyboard/global_hooks.h"
 #include "../motion/motion_service.h"
+#include "../motion_gate.h"
 #include "../platform/audio_output.h"
 #include "../platform/network_util.h"
 #include "../platform/shell_util.h"
@@ -830,10 +831,12 @@ void OutputHub::announce_safety_fault(uint8_t fault_code, uint8_t severity, uint
     std::string message;
     switch (fault_code) {
     case BRAILLATRON_FAULT_FREEFALL:
-        message = "Drop detected. Motors stopped for safety.";
+        message = "Drop detected. Motors stopped. Clear the motion lock from "
+                  "Settings when the device is stable.";
         break;
     case BRAILLATRON_FAULT_WATCHDOG_TIMEOUT:
-        message = "Controller watchdog timeout. Motors stopped.";
+        /* Unused/reserved: Arduino never emits this (comms gap uses COMMS_LOSS). */
+        message = "Safety fault reported by controller.";
         break;
     case BRAILLATRON_FAULT_COMMS_LOSS:
         message = "Controller lost contact with the system. Motors stopped.";
@@ -842,7 +845,8 @@ void OutputHub::announce_safety_fault(uint8_t fault_code, uint8_t severity, uint
         message = "Battery critically low.";
         break;
     case BRAILLATRON_FAULT_THERMAL:
-        message = "Temperature fault. Motors stopped.";
+        /* Unused/reserved: Arduino has no thermal sensor and never emits this. */
+        message = "Safety fault reported by controller.";
         break;
     case BRAILLATRON_FAULT_ESTOP:
         message = "Emergency stop engaged.";
@@ -1432,6 +1436,49 @@ std::vector<MenuItem> OutputHub::build_settings_menu()
             },
             "Toggle",
             [this]() { return ui_config_.embosser_enabled ? "On" : "Off"; }
+        },
+        MenuItem {
+            "Clear motion lock",
+            []() {
+                if (!MotionGate::is_blocked()) {
+                    return std::string("Clear motion lock: clear");
+                }
+                const char *reason = MotionGate::block_reason();
+                return std::string("Clear motion lock: ")
+                    + (reason != nullptr ? reason : "blocked");
+            },
+            [this](MenuOverlay &mo) {
+                if (!MotionGate::is_blocked()) {
+                    emit("Motion lock is already clear");
+                    return;
+                }
+                const char *reason = MotionGate::block_reason();
+                const std::string reason_text =
+                    reason != nullptr ? reason : "safety fault";
+                mo.push_level(
+                    {
+                        MenuItem {
+                            "Cancel",
+                            {},
+                            [](MenuOverlay &inner) { inner.pop_level(); },
+                        },
+                        MenuItem {
+                            "Clear lock",
+                            {},
+                            [this](MenuOverlay &inner) {
+                                inner.close();
+                                if (hooks::recover_motion_gate()) {
+                                    emit("Motion lock cleared");
+                                } else {
+                                    emit("Motion lock clear failed");
+                                }
+                            },
+                        },
+                    },
+                    (std::string("Clear lock after ") + reason_text));
+            },
+            "Menu Item",
+            nullptr
         },
         MenuItem {
             "Deaf-blind parity",

@@ -34,7 +34,36 @@ constexpr uint32_t MICROSTEPS_PER_10MM_LINE =
     FULL_STEPS_PER_10MM_LINE * MICROSTEPS_PER_FULL_STEP; // 1600
 
 /*
- * .cursorrules §3.4 — Row A (dots 1,3,5) vs Row B (dots 2,4,6) staggered 2.5 mm on X.
+ * Assumed X carriage drive (matches klipper/printer.cfg stepper_x):
+ *   GT2 2 mm-pitch belt, 20-tooth pulley → 40 mm per motor revolution.
+ *   200 full steps/rev → 0.2 mm/full-step on X (distinct from Y's 0.1 mm).
+ * Not CAD-verified; no pulley/belt PN is claimed. Commanded X millimetres
+ * (cell pitch, Row B stagger) are physically correct only with this drive.
+ */
+constexpr double X_BELT_PITCH_MM = 2.0;
+constexpr double X_PULLEY_TEETH = 20.0;
+constexpr double X_ROTATION_DISTANCE_MM = X_BELT_PITCH_MM * X_PULLEY_TEETH; // 40.0
+constexpr double X_MM_PER_FULL_STEP =
+    X_ROTATION_DISTANCE_MM / static_cast<double>(FULL_STEPS_PER_MOTOR_REV); // 0.2
+
+/*
+ * Braille cell pitch (Marburg Medium: 2.5 mm dot spacing, 6.0 mm cell-to-cell,
+ * 10 mm line spacing — consistent with ROW_B_X_OFFSET_MM and LINE_ADVANCE_MM).
+ *
+ * Software stores carriage X in the Y-derived 0.1 mm/full-step unit so
+ * microsteps_to_mm() yields millimetres; Klipper then applies stepper_x
+ * rotation_distance 40. Those millimetres match the page only if the GT2/20T
+ * assumption above is the hardware that is fitted.
+ */
+constexpr double CELL_PITCH_MM = 6.0;
+constexpr uint32_t FULL_STEPS_PER_CELL =
+    static_cast<uint32_t>(CELL_PITCH_MM / MM_PER_FULL_STEP); // 60
+constexpr uint32_t MICROSTEPS_PER_CELL =
+    FULL_STEPS_PER_CELL * MICROSTEPS_PER_FULL_STEP; // 960
+
+/*
+ * .cursorrules §3.4 — Row A (dots 1,3,5) vs Row B (dots 2,4,6) staggered 2.5 mm
+ * on X. Valid on the page only if printer.cfg X is GT2/20T (rotation_distance 40).
  */
 constexpr double ROW_B_X_OFFSET_MM = 2.5;
 constexpr uint32_t FULL_STEPS_ROW_B_OFFSET =
@@ -77,5 +106,9 @@ static_assert(FULL_STEPS_PER_10MM_LINE == 100u, "10 mm must equal 100 full steps
 static_assert(MICROSTEPS_PER_10MM_LINE == 1600u, "10 mm must equal 1600 microsteps at 16x");
 static_assert(FULL_STEPS_ROW_B_OFFSET == 25u, "2.5 mm must equal 25 full steps");
 static_assert(MICROSTEPS_ROW_B_OFFSET == 400u, "2.5 mm must equal 400 microsteps at 16x");
+static_assert(FULL_STEPS_PER_CELL == 60u, "6.0 mm cell must equal 60 full steps");
+static_assert(MICROSTEPS_PER_CELL == 960u, "6.0 mm cell must equal 960 microsteps at 16x");
+static_assert(X_ROTATION_DISTANCE_MM == 40.0, "X GT2/20T must be 40 mm/rev");
+static_assert(X_MM_PER_FULL_STEP == 0.2, "X GT2/20T must be 0.2 mm/full-step");
 
 } // namespace braillatron::kinematics

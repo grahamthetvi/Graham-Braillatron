@@ -74,6 +74,7 @@ LimitSensorState LimitSensors::read_klipper_endstops() const
 LimitSensorState LimitSensors::read() const
 {
     if (config_.gpio_paper_edge.empty() && config_.gpio_y_home.empty() && moonraker_ != nullptr) {
+        // Live hardware: TCRT5000 on X-STOP ^PA14, TCST2103 on Y-STOP ^PA15.
         return read_klipper_endstops();
     }
 

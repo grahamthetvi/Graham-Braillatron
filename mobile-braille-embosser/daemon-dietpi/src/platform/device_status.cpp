@@ -84,14 +84,14 @@ DeviceEntry DeviceStatus::probe_serial(const std::string &device_path) const
     }
 
     entry.detail = device_path;
-    const int fd = open(device_path.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
-    if (fd < 0) {
+    // SerialLink is the sole O_RDWR owner of the Arduino CDC node. A second
+    // open here (status probe every 10 s) resets Micro ACM and races HEARTBEAT.
+    if (!path_exists(device_path)) {
         entry.state = DeviceState::Missing;
-        entry.detail = device_path + ": " + std::strerror(errno);
+        entry.detail = device_path + ": absent";
         return entry;
     }
 
-    close(fd);
     entry.state = DeviceState::Connected;
     return entry;
 }

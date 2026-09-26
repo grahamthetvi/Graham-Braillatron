@@ -82,6 +82,8 @@ DisplayConfig load_display_config(const std::string &path)
             config.width = static_cast<uint16_t>(std::stoul(value));
         } else if (key == "height") {
             config.height = static_cast<uint16_t>(std::stoul(value));
+        } else if (key == "gpio_chip") {
+            config.gpio_chip = value;
         } else if (key == "gpio_dc") {
             config.gpio_dc = std::stoi(value);
         } else if (key == "gpio_rst") {

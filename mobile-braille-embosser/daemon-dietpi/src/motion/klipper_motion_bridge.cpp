@@ -20,7 +20,7 @@ bool KlipperMotionBridge::connect()
     ready_ = client_.ping();
     if (ready_) {
         std::cerr << "[klipper] Moonraker reachable at " << config_.moonraker_url << "\n";
-        attach_row_strike_handlers();
+        attach_motion_handlers();
     } else if (config_.enabled) {
         std::cerr << "[klipper] Moonraker unavailable at " << config_.moonraker_url
                   << " — kinematics-only motion continues\n";
@@ -28,10 +28,13 @@ bool KlipperMotionBridge::connect()
     return ready_;
 }
 
-void KlipperMotionBridge::attach_row_strike_handlers()
+void KlipperMotionBridge::attach_motion_handlers()
 {
     motion_.set_row_strike_log([this](uint8_t pin_mask, int64_t travel) {
         on_row_strike(pin_mask, travel);
+    });
+    motion_.set_line_feed_handler([this](int32_t delta) {
+        return feed_lines(delta);
     });
 }
 
@@ -58,10 +61,7 @@ void KlipperMotionBridge::on_row_strike(uint8_t pin_mask, int64_t absolute_micro
         if ((pin_mask & (1u << bit)) == 0) {
             continue;
         }
-        const std::string stepper = config_.emboss_stepper_name(bit + 1);
-        if (!stepper.empty()) {
-            client_.stepper_buzz(stepper, config_.stepper_buzz_duration_ms);
-        }
+        client_.emboss_dot(bit + 1, config_.emboss_stroke_mm, config_.emboss_speed_mm_s);
     }
 }
 
@@ -70,6 +70,19 @@ bool KlipperMotionBridge::feed_lines(int32_t delta)
     if (!ready_ || MotionGate::is_blocked() || delta == 0) {
         return false;
     }
+
+    // Return the carriage to the line start before moving paper. The last
+    // commanded X position is the travel-log value of the latest strike.
+    if (have_last_x_ && last_x_microsteps_ != 0) {
+        const double return_mm = braillatron::kinematics::microsteps_to_mm(last_x_microsteps_);
+        if (std::abs(return_mm) >= 0.001) {
+            client_.move_x_relative_mm(-return_mm, config_.x_move_speed_mm_s);
+        }
+    }
+    // The next line starts at X0 with a fresh travel log (MotionService
+    // resets it after this call), so strikes are measured from zero again.
+    last_x_microsteps_ = 0;
+    have_last_x_ = true;
 
     const double mm = config_.y_feed_mm_per_line * static_cast<double>(delta);
     return client_.feed_y_mm(mm, config_.y_feed_speed_mm_s);
@@ -89,6 +102,14 @@ bool KlipperMotionBridge::emergency_stop()
         return false;
     }
     return client_.emergency_stop();
+}
+
+bool KlipperMotionBridge::firmware_restart()
+{
+    if (!config_.enabled) {
+        return false;
+    }
+    return client_.firmware_restart();
 }
 
 bool KlipperMotionBridge::paper_edge_active() const

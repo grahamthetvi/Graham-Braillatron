@@ -18,10 +18,13 @@ public:
     MoonrakerClient &client() { return client_; }
     const MoonrakerClient &client() const { return client_; }
 
-    void attach_row_strike_handlers();
+    void attach_motion_handlers();
+    /** Y feed plus carriage return to line start; installed as the
+     *  MotionService line-feed handler. */
     bool feed_lines(int32_t delta);
     bool home_y();
     bool emergency_stop();
+    bool firmware_restart();
     bool paper_edge_active() const;
 
 private:

@@ -14,6 +14,9 @@ struct FuelGaugeReading {
     uint16_t battery_mv = 0;
     uint32_t charge_counts = 0;
     bool valid = false;
+    // False unless voltage LSB is datasheet-calibrated and the reading is a
+    // plausible 4S pack. Sentinel must not apply 20%/5% shutdown when false.
+    bool soc_trusted = false;
 };
 
 class Ltc2944 {

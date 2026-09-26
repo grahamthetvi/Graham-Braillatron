@@ -46,16 +46,42 @@ FuelGaugeReading Ltc2944::read()
         return reading;
     }
 
-    reading.battery_mv =
-        static_cast<uint16_t>(raw_voltage * config_.ltc2944_mv_per_lsb / 1000.0);
+    // LTC2944 voltage full scale is 70.8 V over 16 bits (~1.0803 mV/LSB).
+    const double scaled_mv = raw_voltage * config_.ltc2944_mv_per_lsb;
+    if (scaled_mv < 0.0 || scaled_mv > 65535.0) {
+        reading.valid = true;
+        return reading;
+    }
+    reading.battery_mv = static_cast<uint16_t>(scaled_mv);
     reading.charge_counts = raw_charge;
-    reading.temperature_c = static_cast<int8_t>(std::lround((raw_temp * 746.3 / 4096.0) - 274.6));
+    // Temperature full scale is 510 K over 16 bits (datasheet Table 3).
+    reading.temperature_c =
+        static_cast<int8_t>(std::lround((raw_temp * 510.0 / 65535.0) - 273.15));
     reading.valid = true;
 
-    if (config_.battery_full_charge_counts > config_.battery_empty_charge_counts) {
-        reading.soc_percent = soc_from_charge_counts(raw_charge);
-    } else {
+    const bool voltage_ok = ltc2944_voltage_scale_trusted(config_) &&
+                            reading.battery_mv >= 8000u && reading.battery_mv <= 20000u;
+    const bool charge_mode =
+        config_.battery_full_charge_counts > config_.battery_empty_charge_counts;
+
+    if (charge_mode) {
+        const uint8_t charge_soc = soc_from_charge_counts(raw_charge);
+        const uint8_t volt_soc = soc_from_voltage_mv(reading.battery_mv);
+        // A zeroed / unprogrammed charge register must not look like an empty
+        // pack if pack voltage is still in a healthy 4S window.
+        if (charge_soc == 0 && voltage_ok && volt_soc > config_.battery_critical_percent) {
+            reading.soc_percent = volt_soc;
+            reading.soc_trusted = true;
+        } else if (charge_soc == 0 && !voltage_ok) {
+            reading.soc_percent = 255;
+            reading.soc_trusted = false;
+        } else {
+            reading.soc_percent = charge_soc;
+            reading.soc_trusted = true;
+        }
+    } else if (voltage_ok) {
         reading.soc_percent = soc_from_voltage_mv(reading.battery_mv);
+        reading.soc_trusted = true;
     }
 
     return reading;

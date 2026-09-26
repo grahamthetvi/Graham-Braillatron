@@ -10,7 +10,16 @@
 
 **Co-Processor:** Arduino Micro (ATmega32U4, 5V Logic)
 
-*Canonical product and software specification. Hardware/PCB lifecycle detail and breadboard-to-manufacturing notes: [Master Architecture V4.9](Master%20Architecture%20V4.9.md). Wire protocol: `shared/protocol.h` and `shared/protocol.md`.*
+*Canonical **software** specification (apps, protocol, OS, implementation status). Hardware/PCB lifecycle notes: [Master Architecture V4.9](Master%20Architecture%20V4.9.md). Wire protocol: `shared/protocol.h` and `shared/protocol.md`.*
+
+**Hardware interconnect is not this document.** Order parts and wire against:
+
+| Domain | Source of truth |
+|--------|-----------------|
+| Power / keys / MPU / VMOT gate | [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) + `firmware-arduino/src/pins.h` — 12 physical keys, MPU INT **active-low latched FALLING on D7**, IP2368 **in parallel** on the WAGO bus, D12 cut |
+| Monster8 pins / endstops / currents | `klipper/printer.cfg` **only** |
+
+Interconnect language below that still disagrees with those three files is stale. Solenoid heads, MPU **INT0**, and MPU **active-high** INT are retired.
 
 ---
 
@@ -38,10 +47,10 @@ Whenever focus changes or a word is announced, the Output Hub distributes conten
 
 | Channel | Hardware / Software | Module |
 |---------|---------------------|--------|
-| TTS | eSpeak NG via Speech Dispatcher; MAX98357A I2S + 3.5 mm jack | `output_hub.cpp`, `backend.cpp` |
+| TTS | eSpeak NG via Speech Dispatcher over **ALSA** (3.5 mm aux default; **BlueALSA** for Bluetooth; I2S MAX98357A when selected). Not PipeWire. | `output_hub.cpp`, `backend.cpp` |
 | Refreshable Braille | BRLTTY brlapi + liblouis forward translation | `backend.cpp`, `liblouis_bridge.cpp` |
-| Visual Display | ST7789 SPI panel (240×240) + wireless remote browser viewer + ncurses dev fallback; UI chrome | `ui/display/*`, `display/*`, `output_hub.cpp` |
-| Embosser | Solenoid stagger head via `MotionService` | `motion_service.cpp`, `emboss_scheduler.cpp` |
+| Visual Display | ST7789 SPI panel (240×240) + wireless remote browser viewer + ncurses dev fallback. HDMI `/dev/fb0` is **opt-in** (`hdmi_enabled=false` by default). | `ui/display/*`, `display/*`, `output_hub.cpp` |
+| Embosser | Six NEMA14 punch steppers (Monster8 slots 2–7) via `MotionService` — **not solenoids** | `motion_service.cpp`, `emboss_scheduler.cpp` |
 | Haptics | DRV2605L LRA; Morse timed pulses | `drv2605l.cpp`, `morse_encoder.cpp` |
 
 **Deaf-blind menu parity:** When TTS is disabled and `deaf_blind_menu_parity` is enabled, the Output Hub embosses full menu text (no abbreviations) in addition to refreshable braille/haptics.
@@ -191,7 +200,7 @@ Authoritative definitions: `shared/protocol.h`, `shared/protocol.md`.
 
 **Telemetry limit flags** (Pi → Arduino relay): `BRAILLATRON_LIMIT_PAPER_EDGE` (TCRT5000), `BRAILLATRON_LIMIT_Y_HOME` (TCST2103), `BRAILLATRON_LIMIT_MOTION_BLOCKED`, `BRAILLATRON_LIMIT_BATTERY_CRITICAL`.
 
-**Safety fault codes** include `BRAILLATRON_FAULT_FREEFALL`, `BRAILLATRON_FAULT_COMMS_LOSS`, `BRAILLATRON_FAULT_BATTERY_CRITICAL`, `BRAILLATRON_FAULT_WATCHDOG_TIMEOUT`. Severity levels range from INFO through LATCHED (requires explicit clear).
+**Safety:** `SAFETY` is Arduino→Pi only (Pi never sends it); emitted codes are FREEFALL, COMMS_LOSS, SENSOR_FAILURE. `FAULT_WATCHDOG_TIMEOUT`, `FAULT_THERMAL`, and `ACK_NACK` are unused/reserved (comms gap uses COMMS_LOSS). Severity INFO through LATCHED (explicit `CLEAR_FAULT`).
 
 Invalid CRC frames are dropped. Pi sends `HEARTBEAT` on the configured interval when the serial device is open.
 
@@ -213,16 +222,22 @@ Implementation: `firmware-arduino/src/watchdog.cpp`, `fail_safes.cpp`.
 ### 5.1 Power Distribution
 
 ```
-[USB-C PD Input] → [IP2368 PD Charger] → [4S 30A BMS w/ Balancer] (14.8 V nominal)
+[USB-C PD Input] ──► [IP2368 PD Charger]
+                              │ BAT+/BAT−
+                              │  (PARALLEL on the pack bus — not series with BMS or the load)
+                              ▼
+[4S 30A BMS P+/P−] ── WAGO / star ── (14.8 V nominal)
          │
-         ├─ (15 A motor fuse, 85 °C thermal fuse) ──► Monster8 VIN+
+         ├─ (15 A motor fuse) ──► Monster8 VIN+
+         │         production: 85 °C thermal fuse on unified heatsink (REQUIRED)
+         │         skeleton V5.1: fuse DEFERRED; individual heatsinks
          │         Monster8 VIN− ──► [IRLZ44N Drain] ──► [IRLZ44N Source] ──► star ground
          │                                    ▲ Arduino D12 → TC4420 → Gate (low-side cut)
          │                                    └──► 8× TMC2209 VMOT on Monster8
          │
-         └─ (3–5 A logic fuse) ──► [TPS5430 5 V buck] ──┬──► Orange Pi 3B
-                                                          └──► Arduino Micro
-                                                                    │
+         └─ (5 A logic fuse — V5.1 BOM) ──► [TPS5430 5 V buck] ──┬──► Orange Pi 3B
+                                                                  └──► Arduino Micro
+                                                                            │
 Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 8 Ω 3 W speaker
 ```
 
@@ -231,20 +246,20 @@ Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 
 - **Audio isolation:** MAX98357A powered from 5 V with local 470 µF + 0.1 µF at VDD/GND to keep Class D switching noise off the logic bus.
 - **Battery telemetry:** LTC2944 on system I2C tracks capacity, current, and voltage (see §6.3).
 - **High-current routing:** Motor VMOT and returns use off-board dual-row terminal blocks (up to 15 A), not prototype-board traces.
-- **Thermal fuse:** Non-resettable 85 °C fuse clamped to a unified aluminum heatsink spanning all eight stepper drivers.
+- **Thermal fuse:** Production **requires** a non-resettable 85 °C fuse clamped to a unified aluminum heatsink spanning all eight stepper drivers. Skeleton V5.1 is a prototype **without** that fuse (individual heatsinks; V5.1 §2.6). Do not ship a production HAT without it.
 
 ### 5.2 Real-Time Hardware Interlock (MPU6050)
 
 - **Sensor:** MPU6050 on Arduino hardware I2C (SDA/SCL); freefall thresholds configured in hardware registers (`FF_THR` / `FF_DUR`) at boot.
-- **Interrupt:** MPU6050 INT → Arduino **D7** (INT6), active high. **Do not wire INT to D3** — D3 is SCL.
+- **Interrupt:** MPU6050 INT → Arduino **D7** (PE6 / INT6), **active-low latched**, ISR on **FALLING**. **Do not wire INT to D3** — D3 is SCL (**INT0**). Firmware `INT_PIN_CFG = 0xA0`. V9 historically said active-high / INT0; that polarity **misses freefall**. GY-521-style breakouts that default INT to active-high must be reconfigured.
 - **Gate drive:** IRLZ44N **low-side** on Monster8 VIN− return (see [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) §2.7); TC4420 drives the gate from Arduino D12.
 
 **Sub-10 ms isolation loop:**
 
-1. Freefall detected → MPU6050 INT pin goes high immediately.
-2. INT6 ISR runs (bypasses keyboard polling).
-3. ISR pulls gate driver low, cutting VMOT in under 10 ms.
-4. ISR transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL`.
+1. Freefall detected → MPU6050 INT pin goes **low** (latched) immediately.
+2. INT6 **FALLING** ISR runs (bypasses keyboard polling).
+3. ISR pulls gate driver low, cutting VMOT in under 10 ms. The ISR does **not** transmit serial.
+4. The **main loop** sees the pending latch and transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL` (`braillatron_app.cpp`).
 5. Pi `keyboard_service` blocks **MotionGate** and issues Klipper **M112** via Moonraker when Klipper is enabled; Output Hub alerts the user.
 
 ### 5.3 Dual-Bus TMC2209 UART Daisy Chain — RETIRED (Option A)
@@ -257,21 +272,23 @@ Orange Pi UART4 ──► TMC2209 drivers 1–4
 Orange Pi UART9 ──► TMC2209 drivers 5–8
 ```
 
-### 5.4 Staggered Embossing Head
+### 5.4 Staggered Embossing Head (six NEMA14 — not solenoids)
+
+**Do not order solenoids.** Live hardware is six **NEMA14 steppers** on Monster8 slots 2–7 (`manual_stepper emboss_1…6` in `klipper/printer.cfg`). Solenoid-stagger language in earlier V9 drafts is retired.
 
 Standard cells: left column dots 1–3, right column dots 4–6. Physical layout:
 
-- **Row A (top):** Solenoids for dots 1, 3, 5.
-- **Row B (bottom):** Solenoids for dots 2, 4, 6.
+- **Row A (top):** NEMA14 punches for dots 1, 3, 5 (slots 2, 4, 6).
+- **Row B (bottom):** NEMA14 punches for dots 2, 4, 6 (slots 3, 5, 7).
 - **Spatial offset:** 2.5 mm along the X-axis (carriage path).
 
-The motion controller must not fire all solenoids simultaneously. Row A fires as solenoids cross the target column; Row B data is buffered and fired after a velocity-derived delay equal to the time to travel 2.5 mm. Module: `emboss_scheduler.cpp`.
+The motion controller must not fire all punches simultaneously. Row A fires as the head crosses the target column; Row B data is buffered and fired after a velocity-derived delay equal to the time to travel 2.5 mm. Module: `emboss_scheduler.cpp`. Slot map, pin names, and `run_current` live **only** in `printer.cfg`.
 
 ### 5.5 Stepper Drivers, Homing & Paper Sensing
 
-- **Drivers:** TMC2209 SilentStepper for X (carriage) and Y (paper feed) axes.
-- **Y-axis homing:** TCST2103 optical slot sensor (transmissive photointerrupter) — reverse feed until triggered; set Y = 0.
-- **Paper edge / page boundary:** TCRT5000 reflective IR sensor on the cardstock path for page alignment and app-switch feed logic.
+- **Drivers:** Eight TMC2209 on Monster8 — slot 0 X carriage, slot 1 Y tractor, slots 2–7 six NEMA14 punch actuators. Pin names, endstops, and `run_current` live **only** in `klipper/printer.cfg`.
+- **Y-axis homing:** TCST2103 optical slot sensor on **Y-STOP `^PA15`** — reverse feed until triggered; set Y = 0.
+- **Paper edge / page boundary:** TCRT5000 reflective IR on **X-STOP `^PA14`** (`printer.cfg`). X is never G28-homed. Do **not** wire this sensor to E0-STOP or FIL_RUNOUT.
 
 ### 5.6 Engineering Constraints & Mitigations
 
@@ -280,8 +297,8 @@ The motion controller must not fire all solenoids simultaneously. Row A fires as
 | Heavy stepper EMI | Audio instability, SoC noise | Digital I2S audio (MAX98357A); local 470 µF + 0.1 µF on amp VDD/GND |
 | RK3566 pin limits | Cannot wire 8 independent driver UARTs | **MKS Monster8 V2 + Klipper over USB** — Pi issues motion via Moonraker, not Pi UART (§5.3) |
 | Sudden power loss | eMMC/SD corruption | Read-only root + tmpfs volatile mounts; atomic writes to `/data`; `braillatron-sync.timer` |
-| Drop during motion | Head/solenoid damage | MPU6050 hardware interrupt → sub-10 ms IRLZ44N cut + SAFETY broadcast |
-| Driver thermal runaway | Fire / hardware damage | Unified heatsink + 85 °C thermal fuse on motor rail |
+| Drop during motion | Head / NEMA14 punch damage | MPU6050 hardware interrupt (D7/INT6, active-low) → sub-10 ms IRLZ44N cut **in the ISR**; SAFETY frame from the **main loop** |
+| Driver thermal runaway | Fire / hardware damage | Production: unified heatsink + **required** 85 °C thermal fuse on motor rail. Skeleton V5.1 defers the fuse. |
 | Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin topology** — one GPIO per key, no matrix (§1.3) |
 
 ---
@@ -324,12 +341,12 @@ Sentry / Memfault via `crash_reporter.cpp`. Disabled when DSN/keys empty. **Neve
 
 ### 6.5 OTA / A/B Updates — NOT YET ADDRESSED
 
-> **Footnote:** Over-the-air A/B dual-bank updates (RAUC or Mender) are **not yet addressed**. Current deployment uses DietPi read-only root + `/data` transactional storage (`deploy/os/setup-overlay-ro.sh`). Future work must define partition layout and choose RAUC or Mender before client implementation.
+> **A/B OTA is not implemented.** There is no RAUC, Mender, dual-bank, or over-the-air update path in this repo. Current field updates are `deploy/install.sh` on an existing DietPi image, or a full SD/eMMC image refresh (Pi SD Image Software Build Guide). Read-only root + `/data` transactional storage (`deploy/os/setup-overlay-ro.sh`) is persistence, not an OTA mechanism. Do not treat this section as a planned implementation here.
 
 ### 6.6 Dependencies
 
-- **TTS:** eSpeak NG (Speech Dispatcher) — Piper excluded.
-- **STT:** Vosk-API + PipeWire capture.
+- **TTS:** eSpeak NG (Speech Dispatcher) over **ALSA** (aux default; BlueALSA for Bluetooth). Piper excluded. Not PipeWire.
+- **STT:** Vosk-API + **ALSA** capture (skeleton: Pi 3.5 mm jack). Production PDM MEMS (ICS-43432) has no V5.1 pinout.
 - **Braille:** liblouis (UEB G1/G2, Nemeth).
 - **Embosser:** C++ kinematics daemon (`motion_controller`, `emboss_scheduler`).
 - **Dictionary:** SQLite 3 (`libsqlite3`, `sqlite3` CLI for data install).
@@ -354,7 +371,7 @@ Production images use **DietPi ifupdown + wpa_supplicant** on **`wlan0`**, not N
 | **Quick Status** | Reads connected SSID from `wpa_cli -i wlan0 status` (`output_hub.cpp`) |
 | **connectd** | Network *apps* (YouTube, Weather, Gmail, …) — separate sidecar; requires IP connectivity but does not manage Wi‑Fi |
 
-Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so HDMI framebuffer UI is not cleared while `wlan0` associates (see Pi SD Image guide **Wi‑Fi and network connectivity**).
+Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so a late tty1 init does not wipe the framebuffer. HDMI UI chrome is **off** unless `hdmi_enabled=true` (default bench: remote display). See Pi SD Image guide **Wi‑Fi and network connectivity**.
 
 > **Legacy:** `deploy/os/setup-networkmanager.sh` is retained for manual recovery only — do not run on current images.
 
@@ -367,7 +384,7 @@ Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so
 | SBC | Orange Pi 3B (4 GB LPDDR4, RK3566, WiFi/BT) |
 | Motion controller | MKS Monster8 V2 (Klipper MCU, USB to Pi) |
 | Co-processor | Arduino Micro (ATmega32U4, 5 V, native USB) |
-| PD input / charge | IP2368 USB-C PD charger |
+| PD input / charge | IP2368 USB-C PD charger, **parallel** on WAGO/star (not series with BMS) |
 | Battery | 4S LiPo (14.8 V) BMS with active balancing |
 | Logic power | TPS5430 synchronous buck (5 V) |
 | Safety interlock | IRLZ44N N-channel MOSFET (low-side on Monster8 VIN−) + TC4420 gate driver |
@@ -379,9 +396,12 @@ Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so
 | Haptic actuator | LRA (linear resonant actuator) |
 | Paper edge sensor | TCRT5000 reflective IR |
 | Y-axis homing | TCST2103 optical slot (transmissive) |
-| Stepper drivers | 8× TMC2209 on Monster8 (slots 0–7, §5.3) |
-| Freefall sensor | MPU6050 (Arduino I2C + INT0) |
+| Stepper drivers | 8× TMC2209 on Monster8 (slots 0–7, §5.3); pin map in `printer.cfg` |
+| Emboss actuators | 6× NEMA14 steppers (slots 2–7) — **not solenoids** |
+| Freefall sensor | MPU6050 (Arduino I2C + INT on **D7 / PE6 / INT6**, active-low latched). **Not INT0** (INT0 is D3/SCL). |
 | Keyboard switches | 12× Cherry MX (direct pin, §1.3) |
+
+**Production-only / unspecified on skeleton V5.1 (do not invent pinouts):** PDM MEMS mic ICS-43432, grounded copper cage, custom HAT netlist, DRV2605L **EN** (breakout assumed strapped high).
 
 ---
 
@@ -423,7 +443,7 @@ Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so
 | Telemetry JSON bridge | Implemented | `telemetry_bridge.cpp` |
 | 20% battery warning | Implemented | `telemetry_sentinel.cpp`, UI poll |
 | Crash reporter | Implemented (optional build) | `crash_reporter.cpp` |
-| OTA A/B | **Not addressed** | — |
+| OTA A/B | **Not implemented** (`install.sh` / image refresh; §6.5) | — |
 | Piper TTS | **Excluded** | — |
 
 **Connectivity follow-up:** See [Connectivity Follow-Up Checklist](Connectivity%20Follow-Up%20Checklist.md).

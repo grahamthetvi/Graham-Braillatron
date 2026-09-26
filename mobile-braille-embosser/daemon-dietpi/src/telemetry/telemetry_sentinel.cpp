@@ -14,6 +14,8 @@ namespace braillatron::telemetry {
 
 namespace {
 
+// Optional sysfs GPIO. V5.1 does not wire IP2368 STAT to the Pi; live charging
+// is LTC2944 voltage-rise only unless a bench path is set.
 bool ip2368_charging_active(const std::string &path)
 {
     if (path.empty()) {
@@ -41,6 +43,12 @@ TelemetrySentinel::TelemetrySentinel(TelemetryConfig config)
 {
     if (!fuel_gauge_.bus_available()) {
         std::cerr << "[telemetry] I2C bus unavailable: " << config_.i2c_bus << "\n";
+    }
+    if (!ltc2944_voltage_scale_trusted(config_)) {
+        std::cerr << "[telemetry] LTC2944 voltage scale untrusted (mv/lsb="
+                  << config_.ltc2944_mv_per_lsb
+                  << "); 20%/5% SOC shutdown policy disabled until telemetry.conf "
+                     "sets datasheet 1.0803 mV/LSB\n";
     }
 }
 
@@ -81,7 +89,8 @@ void TelemetrySentinel::poll_once()
 
     TelemetrySnapshot snapshot {};
     snapshot.battery_percent =
-        gauge.valid ? gauge.soc_percent : BRAILLATRON_TELEMETRY_UNKNOWN;
+        (gauge.valid && gauge.soc_trusted) ? gauge.soc_percent
+                                          : BRAILLATRON_TELEMETRY_UNKNOWN;
     snapshot.temperature_c =
         gauge.valid ? gauge.temperature_c : BRAILLATRON_TELEMETRY_UNKNOWN_S8;
     snapshot.battery_mv = gauge.battery_mv;
@@ -92,7 +101,10 @@ void TelemetrySentinel::poll_once()
         snapshot.motion_blocked = true;
     }
 
-    if (gauge.valid && gauge.soc_percent < config_.battery_critical_percent) {
+    // Fail closed: never apply 20%/5% shutdown from an uncalibrated gauge,
+    // a uint16-overflowed millivolt reading, or coulomb-count zeros.
+    if (gauge.valid && gauge.soc_trusted &&
+        gauge.soc_percent < config_.battery_critical_percent) {
         snapshot.limit_status |= BRAILLATRON_LIMIT_BATTERY_CRITICAL;
         handle_battery_critical(gauge.soc_percent);
         snapshot.motion_blocked = true;

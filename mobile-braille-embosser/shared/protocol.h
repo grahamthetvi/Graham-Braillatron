@@ -45,10 +45,18 @@ extern "C" {
 typedef enum {
     BRAILLATRON_OP_KEYBOARD_MATRIX = 0x01u, /* Arduino -> Pi; edge-triggered */
     BRAILLATRON_OP_TELEMETRY       = 0x02u, /* Pi -> Arduino; periodic/alert */
-    BRAILLATRON_OP_SAFETY          = 0x03u, /* Bidirectional fault broadcast */
+    BRAILLATRON_OP_SAFETY          = 0x03u, /* Arduino -> Pi only; Pi never sends */
     BRAILLATRON_OP_HEARTBEAT       = 0x04u, /* Pi -> Arduino; zero payload */
-    BRAILLATRON_OP_ACK_NACK        = 0x05u, /* Reserved; no v1 payload struct */
+    BRAILLATRON_OP_ACK_NACK        = 0x05u, /* Unused in v1; neither side emits */
     BRAILLATRON_OP_CHORD           = 0x06u, /* Arduino -> Pi; assembled chord */
+    /*
+     * Pi -> Arduino; zero payload. Explicit recover for latched FREEFALL:
+     * firmware clears the MPU6050 INT latch and restores D12/VMOT if no
+     * other hold (comms loss, battery critical, MPU missing) is active.
+     * Do not auto-clear; ISR still cuts D12 immediately on FALLING D7.
+     * Unknown to v1 firmware that predate this opcode (silently ignored).
+     */
+    BRAILLATRON_OP_CLEAR_FAULT     = 0x07u,
 } braillatron_opcode_t;
 
 /* -------------------------------------------------------------------------- */
@@ -69,7 +77,10 @@ typedef struct __attribute__((packed)) {
 /*
  * Direct-pin keyboard (V5.1 topology). key_state uses the logical
  * BRAILLATRON_KEY_* bit positions below; the Arduino maps physical pins to
- * these bits on-device. Arduino transmits BRAILLATRON_OP_KEYBOARD_MATRIX
+ * these bits on-device. skeleton_v5 scans 12 keys; A5 is unwired and is not
+ * sampled unless firmware is built with BRAILLATRON_SCAN_MENU_KEY=1.
+ * BRAILLATRON_KEY_MENU remains in the protocol for software overlay / that
+ * optional 13th key. Arduino transmits BRAILLATRON_OP_KEYBOARD_MATRIX
  * only on debounced edge change (15 ms integrator). Braille dot chords are
  * assembled on the Arduino (40 ms window) and arrive via BRAILLATRON_OP_CHORD;
  * dot bits in key_state are informational only.
@@ -132,16 +143,24 @@ typedef struct __attribute__((packed)) {
  * detail conventions (fault-specific):
  *   FREEFALL:         0 = event asserted
  *   BATTERY_CRITICAL: lower byte = last known SOC %
- *   WATCHDOG_TIMEOUT: ms since last host heartbeat (lower 16 bits)
+ *   COMMS_LOSS:       ms since last host heartbeat (lower 16 bits)
+ *
+ * Arduino emits FREEFALL, COMMS_LOSS, and SENSOR_FAILURE. It does not emit
+ * WATCHDOG_TIMEOUT (comms gap uses COMMS_LOSS) or THERMAL (no thermal sensor).
+ * Pi never sends SAFETY; recover is CLEAR_FAULT (0x07), not a Pi SAFETY frame.
+ *
+ * FREEFALL is LATCHED (severity 3) until the Pi sends BRAILLATRON_OP_CLEAR_FAULT.
+ * MPU6050 INT is Arduino D7 / PE6 / INT6, active-low, FALLING. Do not wire INT
+ * to D3 / INT0 — that pin is I2C SCL.
  */
 
 typedef enum {
     BRAILLATRON_FAULT_NONE             = 0x00u,
-    BRAILLATRON_FAULT_FREEFALL         = 0x01u, /* MPU6050 INT0 */
-    BRAILLATRON_FAULT_WATCHDOG_TIMEOUT = 0x02u,
+    BRAILLATRON_FAULT_FREEFALL         = 0x01u, /* MPU6050 D7 / INT6, active-low */
+    BRAILLATRON_FAULT_WATCHDOG_TIMEOUT = 0x02u, /* Unused/reserved; never emitted */
     BRAILLATRON_FAULT_COMMS_LOSS       = 0x03u,
     BRAILLATRON_FAULT_BATTERY_CRITICAL = 0x04u, /* SOC < 5% */
-    BRAILLATRON_FAULT_THERMAL          = 0x05u,
+    BRAILLATRON_FAULT_THERMAL          = 0x05u, /* Unused/reserved; never emitted */
     BRAILLATRON_FAULT_ESTOP            = 0x06u,
     BRAILLATRON_FAULT_MOTION_BLOCKED   = 0x07u,
     BRAILLATRON_FAULT_SENSOR_FAILURE   = 0x08u, /* MPU6050 init/comm failure */
@@ -155,7 +174,7 @@ typedef enum {
 } braillatron_severity_t;
 
 #define BRAILLATRON_SOURCE_ARDUINO  0x01u
-#define BRAILLATRON_SOURCE_DAEMON     0x02u
+#define BRAILLATRON_SOURCE_DAEMON     0x02u /* Unused in v1; Pi never sends SAFETY */
 
 typedef struct __attribute__((packed)) {
     uint8_t  fault_code; /* braillatron_fault_code_t */

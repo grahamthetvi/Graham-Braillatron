@@ -15,26 +15,48 @@
 
 #include "protocol.h"
 
-#define PIN_UART_TX             1u
-#define PIN_UART_RX             0u
+/*
+ * Production link is USB CDC `Serial` (ATmega32U4 native USB), not USART1.
+ * D0/D1 (hardware UART RX/TX) are unused — do not wire a debug UART there
+ * as the Pi link. Serial1 is not opened.
+ */
 
 /* Hardware I2C (Wire library): SDA = D2, SCL = D3. */
 #define PIN_I2C_SDA             2u
 #define PIN_I2C_SCL             3u
 
-#define PIN_MPU6050_INT         7u  /* INT6 (PE6); active-low, latched */
+/*
+ * MPU6050 INT: D7 / PE6 / INT6, active-low, latched, attach FALLING.
+ * Do not use D3 / INT0 — that pin is hardware I2C SCL.
+ */
+#define PIN_MPU6050_INT         7u
 
 /* TC4420 gate driver input; HIGH = stepper rail enabled, LOW = rail cut. */
-#define PIN_STEPPER_CUT        12u  /* PD6 */
+#define PIN_STEPPER_CUT        12u  /* D12 / PD6; VMOT enable */
 #define STEPPER_CUT_PORT        PORTD
 #define STEPPER_CUT_BIT         6u
 
+/*
+ * V5.1 Part 3.1: 12 physical keys. A5 is left open (Menu is software overlay).
+ * Scanning A5 as INPUT_PULLUP on the skeleton glitches BRAILLATRON_KEY_MENU.
+ *
+ * A real 13th Menu key on another board profile only:
+ *   arduino-cli compile --fqbn arduino:avr:micro \
+ *     --build-property compiler.cpp.extra_flags=-DBRAILLATRON_SCAN_MENU_KEY=1
+ */
+#ifndef BRAILLATRON_SCAN_MENU_KEY
+#define BRAILLATRON_SCAN_MENU_KEY 0
+#endif
+
+#if BRAILLATRON_SCAN_MENU_KEY
 #define BUTTON_COUNT           13u
+#else
+#define BUTTON_COUNT           12u
+#endif
 
 /*
  * V5.1 Build Guide Part 3.1 wiring. Button 8 lives on A4 (moved off pin 13
- * to avoid the onboard LED circuitry). Button 13 (Menu) is an addition on A5
- * to cover all 13 logical keys defined in shared/protocol.h.
+ * to avoid the onboard LED circuitry).
  */
 static const uint8_t BUTTON_PINS[BUTTON_COUNT] = {
     4u,        /* Button 1  — dot 1 */
@@ -49,7 +71,9 @@ static const uint8_t BUTTON_PINS[BUTTON_COUNT] = {
     (uint8_t)A1, /* Button 10 — enter */
     (uint8_t)A2, /* Button 11 — shift / TTS */
     (uint8_t)A3, /* Button 12 — speech (push-to-talk) */
-    (uint8_t)A5, /* Button 13 — menu */
+#if BRAILLATRON_SCAN_MENU_KEY
+    (uint8_t)A5, /* Button 13 — menu (non-skeleton profiles only) */
+#endif
 };
 
 /* Logical protocol bit transmitted for each button (shared/protocol.h). */
@@ -66,7 +90,10 @@ static const uint16_t BUTTON_KEY_BITS[BUTTON_COUNT] = {
     BRAILLATRON_KEY_ENTER,
     BRAILLATRON_KEY_SHIFT_TTS,
     BRAILLATRON_KEY_SPEECH,
+#if BRAILLATRON_SCAN_MENU_KEY
     BRAILLATRON_KEY_MENU,
+#endif
 };
 
+/* USB CDC `Serial.begin` rate (not D0/D1 USART1). */
 #define UART_BAUD_RATE      115200u

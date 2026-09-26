@@ -80,7 +80,7 @@ Braillatron has two display layers with different audiences and hardware paths.
 
 ### Wired local display — `src/ui/display/` (inside `braillatron-ui`)
 
-Renders UI chrome on the physical screen attached to the Pi (fbdev/HDMI, SPI ST7789) or ncurses on a dev bench. Primary audience: sighted users or sighted helpers working alongside the braille user.
+Renders UI chrome on the physical screen attached to the Pi (SPI ST7789, or opt-in HDMI/`fbdev` when `hdmi_enabled=true`) or ncurses on a dev bench. Primary audience: sighted users or sighted helpers working alongside the braille user.
 
 Config: [`daemon-dietpi/config/display.conf`](daemon-dietpi/config/display.conf) (`backend`, `fbdev`, `hdmi_enabled`, etc.).
 
@@ -121,7 +121,7 @@ You should see startup status, missing-device notices (expected without hardware
 
 ```
 keyboard: evdev listening on /dev/input/eventN (bench mode)
-braillatron-ui profile=skeleton_v4
+braillatron-ui profile=skeleton_v5
 ```
 
 Press **Ctrl+C** to quit.
@@ -235,8 +235,8 @@ For a similar local-console experience on a **dev PC** (ncurses bench), use [`de
 | Surface | When | What you see |
 | --- | --- | --- |
 | **HDMI** | Default: `hdmi_enabled=true` and `/dev/fb0` | UI chrome on the monitor. `sudo fix-hdmi-appliance.sh` if the screen stays blank |
-| **SPI panel** | `/dev/spidev0.0` + GPIO configured | Same UI chrome on the HAT display |
-| **Remote display** | Settings → Remote display | Same chrome in a browser at `:8080` for a laptop assistant; USB keyboard stays on the Pi |
+| **SPI panel** | `/dev/spidev3.0` + GPIO configured | Same UI chrome on the HAT display |
+| **Remote display** | Settings → Remote display | Same chrome in a browser at `:8080` with pairing auth for a laptop assistant; USB keyboard stays on the Pi |
 | **SSH** | Always | Admin shell — use `ssh -L 8080:127.0.0.1:8080` when LAN access is disabled |
 
 A connected HDMI monitor shows the UI after reboot. For a sighted helper on another computer, enable **Remote display** in Settings, show the pairing code, and open `http://<pi-ip>:8080` (or `http://localhost:8080` through an SSH tunnel).
@@ -250,7 +250,7 @@ When `BRAILLATRON_CONFIG` is unset, the daemon reads from `./config/`. Important
 | File | Purpose |
 | --- | --- |
 | `hardware.conf` | Serial device, `allow_missing_arduino`, `motion_enabled`, Klipper config path |
-| `klipper.conf` | Moonraker URL, emboss stepper names, feed speeds |
+| `klipper.conf` | Moonraker URL, emboss stroke/speed, feed speeds |
 | `keyboard.conf` | Serial + evdev bench input |
 | `evdev_map.conf` | USB key → logical key map (edit for non-QWERTY layouts) |
 | `ui.conf` | TTS, braille, STT, haptics toggles, visual display toggle, document dictation |
@@ -329,11 +329,13 @@ sudo braillatron-install-vosk-model    # re-download STT model to /data
 
 On a read-only root, remount first: `sudo braillatron-remount-rw`. Full first-time setup still uses `sudo bash deploy/bootstrap-dietpi.sh`, which runs the same Vosk steps plus package install and appliance mode.
 
+**A/B OTA is not implemented.** There is no RAUC, Mender, or dual-bank update path. Field updates are `deploy/install.sh` on an existing image, or a full SD/eMMC image refresh ([Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md); V9 §6.5).
+
 Network apps require `braillatron-connectd` running (started by `braillatron.target` on the Pi). On-device bring-up: [Connectivity Follow-Up Checklist](specs/Connectivity%20Follow-Up%20Checklist.md).
 
 ## Klipper / Moonraker (Monster8 Option A)
 
-Production motion uses **MKS Monster8 V2 + Klipper over USB**, not Pi UART step pulses. See [Skeleton Prototype V5.1 Build Guide](specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md).
+Production motion uses **MKS Monster8 V2 + Klipper over USB**, not Pi UART step pulses. Canonical wiring: [Skeleton Prototype V5.1 Build Guide](specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Monster8 pins/endstops/currents: [`klipper/printer.cfg`](klipper/printer.cfg) only. Arduino keys/MPU/gate: [`firmware-arduino/src/pins.h`](firmware-arduino/src/pins.h). Cartesian `[stepper_z]` in `printer.cfg` is a **dummy** on unused EXP1 pins — do **not** attach a motor.
 
 1. Flash Monster8 with Klipper firmware; copy [`klipper/printer.cfg`](klipper/printer.cfg) to `~/printer_data/config/printer.cfg` on the Pi.
 2. Set `[mcu] serial` to your USB ID: `ls /dev/serial/by-id/usb-Klipper_*`
@@ -345,7 +347,7 @@ Factory diagnostics: launch **Factory Test** from the app list (PIN `1234` when 
 
 ## Wi‑Fi on the Pi
 
-Production images use **DietPi ifupdown + wpa_supplicant** on `wlan0` — not NetworkManager. Bootstrap configures this via `deploy/os/setup-dietpi-networking.sh`.
+Production images use **DietPi ifupdown + wpa_supplicant** on `wlan0` — not NetworkManager. Bootstrap configures this via `deploy/os/setup-dietpi-networking.sh`. On-board Wi‑Fi/Bluetooth silicon is whatever the **Orange Pi 3B board revision ships**; this repo does not pin a module PN.
 
 | Task | How |
 | --- | --- |
@@ -391,6 +393,6 @@ Protocol definitions are shared with the Pi daemons in [shared/](shared/) — ed
 
 - **Pi deployment** — [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md)
 - **connectd bring-up** — [Connectivity Follow-Up Checklist](specs/Connectivity%20Follow-Up%20Checklist.md)
-- **Architecture** — [Master Software Architecture V9](specs/Master%20Software%20Architecture%20V9.md)
+- **Architecture** — [Master Software Architecture V9](specs/Master%20Software%20Architecture%20V9.md) (software). Wiring: [V5.1 Build Guide](specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) + `pins.h` + `printer.cfg`.
 - **Serial protocol** — [shared/protocol.md](shared/protocol.md)
 - **Firmware** — [firmware-arduino/README.md](firmware-arduino/README.md) (compile and flash with arduino-cli)

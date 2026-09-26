@@ -4,6 +4,9 @@
 #include "../ui/output_hub.h"
 #include "keyboard_service.h"
 
+#include "../motion_gate.h"
+#include "../platform/serial_link.h"
+
 extern "C" {
 #include "protocol.h"
 }
@@ -16,6 +19,8 @@ ui::OutputHub *g_output_hub = nullptr;
 ui::AppRegistry *g_app_registry = nullptr;
 keyboard::KeyboardService *g_keyboard_service = nullptr;
 std::function<void()> g_klipper_emergency_stop;
+std::function<bool()> g_recover_motion_gate;
+platform::SerialLink *g_serial_link = nullptr;
 
 } // namespace
 
@@ -136,6 +141,35 @@ void on_safety_broadcast(uint8_t fault_code, uint8_t severity, uint16_t detail)
 void set_klipper_emergency_stop(std::function<void()> handler)
 {
     g_klipper_emergency_stop = std::move(handler);
+}
+
+void set_serial_link(platform::SerialLink *link)
+{
+    g_serial_link = link;
+}
+
+void set_recover_motion_gate(std::function<bool()> handler)
+{
+    g_recover_motion_gate = std::move(handler);
+}
+
+bool recover_motion_gate()
+{
+    if (!MotionGate::is_blocked()) {
+        return true;
+    }
+    // Arduino latches D12/VMOT on FREEFALL until BRAILLATRON_OP_CLEAR_FAULT.
+    // Never unblock MotionGate from a daemon-only path — Klipper would move
+    // while the rail is still cut.
+    if (g_serial_link == nullptr || !g_serial_link->is_open() ||
+        !g_serial_link->send_clear_fault()) {
+        return false;
+    }
+    if (g_recover_motion_gate) {
+        return g_recover_motion_gate();
+    }
+    MotionGate::unblock();
+    return true;
 }
 
 bool standalone_app_active()

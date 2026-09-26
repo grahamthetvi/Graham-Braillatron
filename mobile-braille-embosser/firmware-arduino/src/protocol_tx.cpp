@@ -39,6 +39,7 @@ static void protocol_tx_frame(uint8_t opcode, const void *payload, uint8_t paylo
 
 void protocol_tx_init(void)
 {
+    /* USB CDC `Serial`, not USART1 / D0/D1. */
     Serial.begin(UART_BAUD_RATE);
 }
 

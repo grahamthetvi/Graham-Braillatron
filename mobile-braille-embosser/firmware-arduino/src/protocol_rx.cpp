@@ -6,6 +6,7 @@
 
 #include "protocol_rx.h"
 
+#include "fail_safes.h"
 #include "protocol.h"
 #include "telemetry_handler.h"
 #include "watchdog.h"
@@ -47,7 +48,13 @@ static void dispatch_frame(uint32_t now_ms)
             telemetry_handler_apply(&payload);
         }
         break;
+    case BRAILLATRON_OP_CLEAR_FAULT:
+        if (g_expected_payload == 0u) {
+            fail_safes_recover_freefall();
+        }
+        break;
     default:
+        /* SAFETY and ACK_NACK are unused inbound: Pi never sends SAFETY. */
         break;
     }
 }

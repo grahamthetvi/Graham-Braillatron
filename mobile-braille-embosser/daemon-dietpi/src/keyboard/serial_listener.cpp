@@ -6,11 +6,8 @@ extern "C" {
 
 #include <cerrno>
 #include <cstring>
-#include <fcntl.h>
 #include <iostream>
 #include <optional>
-#include <poll.h>
-#include <termios.h>
 #include <unistd.h>
 #include <vector>
 
@@ -23,48 +20,6 @@ enum class ParseState {
     Header,
     Payload,
 };
-
-speed_t baud_to_termios(uint32_t baud_rate)
-{
-    switch (baud_rate) {
-    case 9600:
-        return B9600;
-    case 19200:
-        return B19200;
-    case 38400:
-        return B38400;
-    case 57600:
-        return B57600;
-    case 115200:
-        return B115200;
-    default:
-        return B115200;
-    }
-}
-
-bool configure_serial_port(int fd, uint32_t baud_rate)
-{
-    termios tty {};
-    if (tcgetattr(fd, &tty) != 0) {
-        return false;
-    }
-
-    cfmakeraw(&tty);
-    cfsetispeed(&tty, baud_to_termios(baud_rate));
-    cfsetospeed(&tty, baud_to_termios(baud_rate));
-
-    tty.c_cflag |= (CLOCAL | CREAD);
-    tty.c_cflag &= ~CSIZE;
-    tty.c_cflag |= CS8;
-    tty.c_cflag &= ~PARENB;
-    tty.c_cflag &= ~CSTOPB;
-    tty.c_cflag &= ~CRTSCTS;
-
-    tty.c_cc[VMIN] = 0;
-    tty.c_cc[VTIME] = 1;
-
-    return tcsetattr(fd, TCSANOW, &tty) == 0;
-}
 
 bool opcode_accepted(uint8_t opcode, size_t payload_size)
 {
@@ -177,9 +132,8 @@ private:
 
 } // namespace
 
-SerialListener::SerialListener(std::string device_path, uint32_t baud_rate)
-    : device_path_(std::move(device_path))
-    , baud_rate_(baud_rate)
+SerialListener::SerialListener(platform::SerialLink *link)
+    : link_(link)
 {
 }
 
@@ -205,15 +159,7 @@ bool SerialListener::start(FrameHandler handler)
     }
 
     handler_ = std::move(handler);
-    fd_ = open(device_path_.c_str(), O_RDONLY | O_NOCTTY | O_NONBLOCK);
-    if (fd_ < 0) {
-        connected_ = false;
-        return false;
-    }
-
-    if (!configure_serial_port(fd_, baud_rate_)) {
-        close(fd_);
-        fd_ = -1;
+    if (link_ == nullptr || !link_->try_open()) {
         connected_ = false;
         return false;
     }
@@ -226,11 +172,7 @@ bool SerialListener::start(FrameHandler handler)
         bool disconnect_reported = false;
 
         while (running_.load()) {
-            pollfd pfd {};
-            pfd.fd = fd_;
-            pfd.events = POLLIN;
-
-            const int poll_result = poll(&pfd, 1, 100);
+            const int poll_result = link_->poll_readable(100);
             if (poll_result < 0) {
                 if (errno == EINTR) {
                     continue;
@@ -242,7 +184,7 @@ bool SerialListener::start(FrameHandler handler)
                 continue;
             }
 
-            const ssize_t nbytes = read(fd_, chunk.data(), chunk.size());
+            const ssize_t nbytes = link_->read_bytes(chunk.data(), chunk.size());
             if (nbytes < 0) {
                 if (errno == EAGAIN || errno == EINTR) {
                     continue;
@@ -250,7 +192,7 @@ bool SerialListener::start(FrameHandler handler)
                 break;
             }
             if (nbytes == 0) {
-                continue;
+                break;
             }
 
             for (ssize_t i = 0; i < nbytes; ++i) {
@@ -263,14 +205,11 @@ bool SerialListener::start(FrameHandler handler)
         }
 
         connected_ = false;
-        if (fd_ >= 0) {
-            close(fd_);
-            fd_ = -1;
-        }
 
         if (!disconnect_reported) {
             disconnect_reported = true;
-            std::cerr << "[serial] disconnected from " << device_path_ << "\n";
+            const std::string path = (link_ != nullptr) ? link_->device_path() : std::string();
+            std::cerr << "[serial] disconnected from " << path << "\n";
             if (disconnect_handler_) {
                 disconnect_handler_();
             }
@@ -292,17 +231,11 @@ bool SerialListener::try_reconnect()
 
 void SerialListener::stop()
 {
-    if (!running_.load() && fd_ < 0) {
+    if (!running_.load() && !worker_.joinable()) {
         return;
     }
 
     running_ = false;
-
-    const int fd = fd_;
-    fd_ = -1;
-    if (fd >= 0) {
-        close(fd);
-    }
 
     if (worker_.joinable()) {
         worker_.join();

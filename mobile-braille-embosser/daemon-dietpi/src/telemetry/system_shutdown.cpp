@@ -5,20 +5,34 @@
 
 namespace braillatron::telemetry {
 
+namespace {
+
+// Fork before exec so the caller keeps running: UiApp::stop() must still
+// save BRF/coordinate state and finish TTS while systemd shuts us down.
+bool run_shutdown_command(const char *mode_flag)
+{
+    const pid_t pid = fork();
+    if (pid < 0) {
+        return false;
+    }
+    if (pid == 0) {
+        execl("/usr/sbin/shutdown", "shutdown", mode_flag, "now",
+              static_cast<char *>(nullptr));
+        _exit(127);
+    }
+    return true;
+}
+
+} // namespace
+
 bool request_clean_shutdown()
 {
-    const char *shutdown_path = "/usr/sbin/shutdown";
-    const char *argv[] = {"/usr/sbin/shutdown", "-h", "now", nullptr};
-    execv(shutdown_path, const_cast<char *const *>(argv));
-    return false;
+    return run_shutdown_command("-h");
 }
 
 bool request_clean_reboot()
 {
-    const char *shutdown_path = "/usr/sbin/shutdown";
-    const char *argv[] = {"/usr/sbin/shutdown", "-r", "now", nullptr};
-    execv(shutdown_path, const_cast<char *const *>(argv));
-    return false;
+    return run_shutdown_command("-r");
 }
 
 bool request_ui_restart()

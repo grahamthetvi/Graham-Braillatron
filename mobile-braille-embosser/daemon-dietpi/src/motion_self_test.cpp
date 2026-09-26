@@ -63,12 +63,15 @@ int main()
         return 1;
     }
 
-    motion.advance_line_10mm();
+    motion.log_carriage_microsteps(static_cast<int32_t>(MICROSTEPS_PER_CELL));
     if (motion.travel_log().position_microsteps() !=
-        static_cast<int64_t>(deferral + MICROSTEPS_PER_10MM_LINE)) {
-        std::cerr << "10 mm advance must be 1600 microsteps\n";
+        static_cast<int64_t>(deferral + MICROSTEPS_PER_CELL)) {
+        std::cerr << "6 mm cell advance must be 960 microsteps\n";
         return 1;
     }
+
+    static_assert(MICROSTEPS_PER_CELL > MICROSTEPS_ROW_B_OFFSET,
+                  "one cell advance must flush the Row B stagger");
 
     std::cout << "motion self-test ok\n";
     return 0;

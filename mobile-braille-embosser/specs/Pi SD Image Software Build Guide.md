@@ -237,10 +237,10 @@ Credentials are stored in `/etc/wpa_supplicant/wpa_supplicant.conf` on the root 
 
 DietPi can tie **`network-online.target`** to **`ifup@wlan0`**, which may take several minutes on a fresh image with no saved networks. Braillatron appliance setup:
 
-- Starts **`getty@tty1`** **before** `network-online.target` (see `deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf`) so the framebuffer UI is not wiped by a late tty1 init
-- Enables **`braillatron-fb-repaint.service`** to redraw HDMI/SPI chrome after the network comes up
+- Starts **`getty@tty1`** **before** `network-online.target` (see `deploy/systemd/getty@tty1.service.d/braillatron-appliance.conf`) so a late tty1 init does not wipe the console
+- Enables **`braillatron-fb-repaint.service`** to redraw SPI chrome (and HDMI chrome **only if** `hdmi_enabled=true`) after the network comes up
 
-If HDMI goes blank ~5 minutes after boot while Wi‑Fi is still associating, run `sudo braillatron-boot-diagnose.sh` and `sudo bash deploy/os/fix-hdmi-appliance.sh`.
+HDMI UI chrome is **off** unless `hdmi_enabled=true` in `display.conf` (default `false`). Default bench path is **remote display**. If an opt-in HDMI monitor goes blank ~5 minutes after boot while Wi‑Fi is still associating, run `sudo braillatron-boot-diagnose.sh` and `sudo bash deploy/os/fix-hdmi-appliance.sh`.
 
 ### Verify connectivity
 
@@ -296,7 +296,7 @@ This script runs, in order:
 
 3. **I2C1 overlay** — adds `i2c1` to `overlays=` in `/boot/dietpiEnv.txt` (LTC2944 fuel gauge, DRV2605L haptics on Pi `i2c-1`)
 
-4. **SPI overlay (optional)** — adds `spi3-spidev` only when `BRAILLATRON\_SPI\_PANEL=1` (ST7789 HAT fitted). Default bootstrap leaves SPI off so `/dev/spidev0.0` is absent and HDMI framebuffer UI works on skeleton bench
+4. **SPI overlay (optional)** — adds `spi3-spidev` only when `BRAILLATRON\_SPI\_PANEL=1` (ST7789 HAT fitted). Default bootstrap leaves SPI off so `/dev/spidev3.0` is absent. HDMI UI chrome stays **off** unless `hdmi_enabled=true` (default bench: remote display).
 
 5. **`/data` partition** — `deploy/os/setup-data-partition.sh` creates an ext4 partition labeled `braillatron-data` in unallocated tail space (requires ≥ 768 MB free at the disk end; does not shrink root)
 
@@ -314,7 +314,7 @@ This script runs, in order:
 
 12. **Audio default** — `setup-aux-audio.sh` routes ALSA + TTS to the 3.5 mm aux jack; optional Bluetooth via `setup-bluetooth-audio.sh`
 
-13. **Appliance mode** — `setup-appliance-mode.sh` disables local console login, routes display (SPI + HDMI framebuffer / headless stub), enables read-only root, keeps SSH (skipped when `BRAILLATRON\_APPLIANCE=0`)
+13. **Appliance mode** — `setup-appliance-mode.sh` disables local console login, routes display (SPI if fitted; HDMI only if `hdmi_enabled=true`; otherwise remote/headless stub), enables read-only root, keeps SSH (skipped when `BRAILLATRON\_APPLIANCE=0`)
 
 Bootstrap takes several minutes on first run (apt + compile + model download).
 
@@ -510,8 +510,9 @@ Feedback channels:
 | - | - |
 | **HDMI framebuffer** | UI chrome on `/dev/fb0` via `braillatron-ui.service` (default skeleton bench) |
 | **tty1** | Held without clearing on success; error text only when UI or display backend fails |
+| **Remote display** | Browser UI at `:8080` when enabled in Settings |
 | **Journal logs** | `journalctl -u braillatron-ui -f` |
-| **Speech** | TTS on startup and focus changes (aux jack, Bluetooth, or I2S + Speech Dispatcher) |
+| **Speech** | TTS on startup and focus changes (aux jack ALSA, BlueALSA Bluetooth, or I2S + Speech Dispatcher) |
 | **Braille display** | BRLTTY when a display is connected |
 
 
@@ -527,7 +528,7 @@ journalctl -u braillatron-ui -b --no-pager | grep '\\\[display\\\] backend='
 journalctl -u braillatron-ui -b --no-pager -n 20  
 grep evdev /etc/braillatron/keyboard.conf  
 ls /dev/input/event\*  
-test -f /etc/braillatron/appliance-spi && echo spi-panel || echo hdmi-framebuffer
+test -f /etc/braillatron/appliance-spi && echo spi-panel || grep hdmi_enabled /etc/braillatron/display.conf
 ```
 
 Healthy startup includes `\[ui\] Braillatron ready`, `\[ui\] Document`, and `braillatron-ui profile=skeleton\_v4`.
@@ -682,7 +683,7 @@ make host-chord-test && ./braillatron-host-chord-test
 | `/etc/braillatron/braillatron.conf` | Master config directory pointer |
 | `/etc/braillatron/hardware.conf` | Arduino serial path, `allow\_missing\_arduino`, motion enable, board profile |
 | `/etc/braillatron/ui.conf` | TTS, braille, STT, haptics, visual display toggle; Vosk model path |
-| `/etc/braillatron/display.conf` | Visual display backend (`auto`/`spi`/`ncurses`/`stub`), `/dev/spidev0.0`, GPIO placeholders |
+| `/etc/braillatron/display.conf` | Visual display backend (`auto`/`spi`/`ncurses`/`stub`), `/dev/spidev3.0`, `gpiochip4` DC/RST lines |
 | `/etc/braillatron/telemetry.conf` | I2C, GPIO limit sensors, persistence paths |
 | `/etc/braillatron/keyboard.conf` | Pi-side keyboard service; `evdev\_enabled` for USB bench input |
 | `/etc/braillatron/matrix\_map.conf` | Maps Arduino key-state bits to logical key names |
@@ -702,7 +703,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | Symptom | Check |
 | - | - |
 | `systemctl restart` shows nothing | Normal — use `journalctl -u braillatron-ui -f` or `systemctl status braillatron-ui` |
-| Monitor is blank after boot | `sudo braillatron-boot-diagnose.sh`; `journalctl -u braillatron-ui -b | grep '\\\[display\\\] backend='`; check `/dev/fb0`, `display.conf` `hdmi\_enabled=true`, and `braillatron-ui` `video` group |
+| Monitor is blank after boot | Expected when `hdmi_enabled=false` (default). For opt-in HDMI: set `hdmi_enabled=true`, then `sudo braillatron-boot-diagnose.sh`; `journalctl -u braillatron-ui -b | grep '\\\[display\\\] backend='`; check `/dev/fb0` and `braillatron-ui` `video` group. Default bench: remote display `:8080`. |
 | Keyboard does nothing over SSH | SSH laptop keys don't reach evdev; plug USB keyboard into Pi |
 | `braillatron-ui` exits immediately | `journalctl -u braillatron-ui -b`; confirm `/etc/braillatron/hardware.conf` exists |
 | `keyboard: no input sources available` | Set `evdev\_enabled=true` or connect Arduino |
@@ -722,7 +723,7 @@ Edit configs on a RW root, or remount RW when using RO overlay. Changes under `/
 | Config changes lost after rebuild | `make install` overwrites `/etc/braillatron/` — back up before install |
 | Monitor frozen on last boot line (`graphical.target`) | Boot may be done — SSH in and check `systemctl is-active braillatron-ui` and `journalctl -u braillatron-ui -b | grep backend=` |
 | Monitor shows DietPi "hit return to login" but Enter does nothing | Expected when getty is disabled — re-run `setup-appliance-mode.sh`; use SSH or USB keyboard on the Pi |
-| No framebuffer UI on HDMI after reboot | `sudo braillatron-boot-diagnose.sh`; check `test -f /etc/braillatron/appliance-headless && echo headless`; `journalctl -u braillatron-ui -b | grep backend=` (expect `fb` or `spi+fb`, not `stub`); `/dev/fb0` present; `grep hdmi\_enabled /etc/braillatron/display.conf`; run `sudo bash deploy/os/setup-appliance-mode.sh` and `sudo systemctl restart braillatron.target`. Stale `spi-spidev` or wrong SPI overlay in `/boot/dietpiEnv.txt` without a HAT — use `spi3-spidev`, ensure `appliance-spi` absent, reboot |
+| No framebuffer UI on HDMI after reboot | HDMI chrome is **opt-in**. Confirm `grep hdmi_enabled /etc/braillatron/display.conf` is `true`; then `sudo braillatron-boot-diagnose.sh`; `journalctl -u braillatron-ui -b | grep backend=` (expect `fb` or `spi+fb`, not `stub`); `/dev/fb0` present. Default (`hdmi_enabled=false`) is remote display, not HDMI. Stale `spi-spidev` or wrong SPI overlay in `/boot/dietpiEnv.txt` without a HAT — use `spi3-spidev`, ensure `appliance-spi` absent, reboot |
 | No local login prompt after bootstrap | Expected in appliance mode — use SSH; re-flash or `BRAILLATRON\_APPLIANCE=0` bootstrap for dev image |
 | SSH unreachable after bootstrap | `ip -4 addr`; `wpa_cli -i wlan0 status`; `systemctl status ifup@wlan0 ssh`; factory Wi‑Fi: `sudo bash deploy/os/setup-wifi-credentials.sh SSID PASS`; if locked out, re-flash and use `BRAILLATRON\_APPLIANCE=0` bootstrap for a dev image with local login |
 | Wi‑Fi scan empty in Network and Devices | Confirm `wpa_cli -i wlan0 ping` succeeds; `systemctl status ifup@wlan0`; check `rfkill list`; ensure NetworkManager is disabled (`systemctl is-enabled NetworkManager` → `disabled` or `masked`) |
@@ -741,7 +742,7 @@ flowchart TD
     MultiUser --\> Target\[braillatron.target\]  
     MultiUser --\> Getty\[getty@tty1\]  
     Target --\> SpiCheck\{appliance-spi?\}  
-    SpiCheck --\>|yes| UI\[braillatron-ui SPI and/or HDMI\]  
+    SpiCheck --\>|yes| UI\[braillatron-ui SPI; HDMI only if enabled\]  
     SpiCheck --\>|no| HeadlessCheck\{appliance-headless?\}  
     HeadlessCheck --\>|no| UI  
     HeadlessCheck --\>|yes| StubUI\[braillatron-ui-stub TTS only\]  

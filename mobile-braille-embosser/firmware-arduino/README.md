@@ -1,6 +1,6 @@
 # Arduino Micro firmware
 
-Real-time co-processor for the Braillatron: 13-key direct-pin keyboard scan, 40 ms braille chord assembly, MPU6050 freefall interlock, and USB CDC serial to the Pi at 115200 baud.
+Real-time co-processor for the Braillatron: **12 physical** Cherry MX keys (direct-pin scan; Menu is software overlay, A5 not scanned), 40 ms braille chord assembly, MPU6050 freefall interlock (**D7 / INT6, active-low latched FALLING**), D12 VMOT gate, and USB CDC serial to the Pi at 115200 baud.
 
 **Board:** Arduino Micro (`arduino:avr:micro`), profile `skeleton_v5` — see [src/pins.h](src/pins.h).
 
@@ -48,3 +48,11 @@ If upload fails, press the reset button on the Micro once and retry immediately.
 ## Pi-side pairing
 
 Set `arduino_device=` in [daemon-dietpi/config/hardware.conf](../daemon-dietpi/config/hardware.conf) to match the device node the Micro exposes on the Pi (typically `/dev/ttyACM0`).
+
+## Safety notes
+
+- Production serial is USB CDC `Serial`. Do not wire a debug UART on D0/D1 as the Pi link.
+- MPU6050 INT is **D7 / PE6 / INT6**, active-low, latched, `FALLING`. Do not wire INT to D3 / INT0 (SCL).
+- The freefall **ISR only drops D12** (VMOT cut). It does **not** transmit serial. The main loop later sends `BRAILLATRON_OP_SAFETY` / `BRAILLATRON_FAULT_FREEFALL`.
+- After a freefall cut, D12/VMOT stays off until the Pi sends `BRAILLATRON_OP_CLEAR_FAULT` (`0x07`, zero payload). Firmware does not auto-clear.
+- Default `skeleton_v5` scans **12 keys**. Leave A5 open. A physical 13th Menu key is compile-time only (`BRAILLATRON_SCAN_MENU_KEY=1`).

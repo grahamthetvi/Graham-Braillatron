@@ -1,5 +1,5 @@
 /*
- * Direct-pin keyboard reader (V5.1 topology).
+ * Direct-pin keyboard reader (V5.1 topology, 12 keys; A5 is not scanned).
  *
  * Non-blocking integrator debounce: each key has a counter that charges
  * toward DEBOUNCE_MS while the raw pin reads pressed and discharges toward 0

@@ -1,6 +1,7 @@
 #include "telemetry_config.h"
 
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -117,6 +118,14 @@ TelemetryConfig load_telemetry_config(const std::string &path)
     }
 
     return config;
+}
+
+bool ltc2944_voltage_scale_trusted(const TelemetryConfig &config)
+{
+    // Datasheet 70.8 V FS / 65535. Reject the historical 58.6 default and
+    // any other scale that would make 4S voltage-window SOC meaningless.
+    constexpr double kDatasheetMvPerLsb = 70.8e3 / 65535.0;
+    return std::fabs(config.ltc2944_mv_per_lsb - kDatasheetMvPerLsb) < 0.05;
 }
 
 } // namespace braillatron::telemetry

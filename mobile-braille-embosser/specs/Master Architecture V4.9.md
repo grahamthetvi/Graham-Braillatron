@@ -6,7 +6,16 @@
 
 **Operating System:** DietPi Linux (Debian 13 Trixie, Vendor Kernel 6.1.115)
 
-*Hardware and PCB lifecycle companion to [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md). V9 is the canonical spec for product behavior, applications, co-processor protocol, and implementation status. This document focuses on breadboard-to-PCB transition, power topology, driver bus layout, and board-level mitigations.*
+*Hardware and PCB lifecycle companion to [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md). V9 is the canonical spec for **product behavior**, applications, co-processor protocol, and implementation status. This document covers breadboard-to-PCB transition and production power topology. Live skeleton wiring is [Skeleton Prototype V5.1](Skeleton%20Prototype%20V5.1%20Build%20Guide.md).*
+
+**Hardware interconnect source of truth (do not order from this document alone):**
+
+| Domain | Source of truth |
+|--------|-----------------|
+| Power / keys / MPU / VMOT gate | V5.1 + `firmware-arduino/src/pins.h` — 12 keys, MPU INT **active-low** on D7, IP2368 **parallel** on the WAGO bus, D12 cut |
+| Monster8 pins / endstops / currents | `klipper/printer.cfg` **only** |
+
+Solenoid heads, series USB-C → IP2368 → BMS drawings, MPU INT0 / active-high INT, and E0-STOP paper-edge wiring are retired.
 
 ---
 
@@ -30,8 +39,8 @@ V4.9 marks the transition from breadboard concepts to custom PCB manufacturing. 
 
 **Platform dependencies (unchanged at hardware level):**
 
-- Offline TTS: eSpeak NG via PipeWire and Speech Dispatcher
-- Offline STT: Vosk-API with Rockchip PDM capture
+- Offline TTS: eSpeak NG via **ALSA** and Speech Dispatcher (Bluetooth: **BlueALSA**). Not PipeWire.
+- Offline STT: Vosk-API. Skeleton captures from the Pi 3.5 mm jack (ALSA). Rockchip PDM + ICS-43432 is **production-only** (no V5.1 pinout).
 - Embosser motion: C++ daemons on Orange Pi; TMC2209 steppers on motor rail
 
 ---
@@ -52,41 +61,41 @@ System audio over Rockchip **I2S1** to **MAX98357A** Class D mono amp (on-silico
 
 Local **470 µF + 0.1 µF** at MAX98357A VDD/GND (see §3.1).
 
-### 2.3 Microphone (PDM MEMS)
+### 2.3 Microphone (PDM MEMS) — production-only
 
-Digital PDM MEMS (e.g. ICS-43432) on the Top UI board inside a grounded copper-tape cage to reduce capacitive coupling and stepper EMI; routed to Rockchip PDM.
+Digital PDM MEMS (e.g. ICS-43432) on the production Top UI board inside a grounded copper-tape cage to reduce capacitive coupling and stepper EMI; routed to Rockchip PDM. **Not on skeleton V5.1** — no pinout in the V5.1 guide. Skeleton STT uses the Pi 3.5 mm aux jack.
 
 ### 2.4 Haptics
 
-**DRV2605L** I2C driver + **10 mm LRA** for navigation boundaries, errors, Morse patterns, and deaf-blind tactile feedback. Pi-side haptic commands and menu policy: [V9 §1.2](Master%20Software%20Architecture%20V9.md#12-universal-outputs-distribution-hub).
+**DRV2605L** I2C driver + **10 mm LRA** for navigation boundaries, errors, Morse patterns, and deaf-blind tactile feedback. Pi-side haptic commands and menu policy: [V9 §1.2](Master%20Software%20Architecture%20V9.md#12-universal-outputs-distribution-hub). **EN** is unspecified on V5.1 (breakout assumed strapped high). There is **no HAT netlist** in this repo.
 
 ---
 
 ## 3. Compute & power infrastructure
 
-Block diagram for custom PCB and HAT routing:
+Block diagram for custom PCB and HAT routing. The **HAT netlist is unspecified** (not in this repo; do not invent one). Skeleton wiring is V5.1.
 
 ```
 [USB-C PD Input]
          │
          ▼
-[IP2368 PD Charger]
-         │
-         ▼
-[4S 30A BMS w/ Balancer] (14.8 V nominal)
-         │
-         ├─────────────────────────────────┐
-         ▼ (15 A motor fuse)               ▼ (5 A logic fuse — see V5.1 Part 1 BOM)
-   [85 °C thermal fuse]                     ▼
-         │                        [Mini560 / TPS5430 5 V buck]
-         ▼                                 │
-   [IRLZ44N MOSFET]                         ├──────────────► [Orange Pi 3B]
-   (low-side on Monster8 VIN−)              └──────────────► [Arduino Micro]
-         │
-         ▼
-[15 A star power terminal block]
-         ├──► Monster8 VIN+ → 8× TMC2209 VMOT
-         └──► star ground return
+[IP2368 PD Charger] BAT+ ──┐
+                           ├── WAGO positive bus (PARALLEL — IP2368 is NOT in series
+[BMS P+] ──────────────────┤    with the pack or the load)
+                           ├── (15 A motor fuse) ──► Monster8 VIN+
+                           │         production: [85 °C thermal fuse] REQUIRED
+                           │         skeleton V5.1: fuse DEFERRED
+                           └── (5 A logic fuse — V5.1 Part 1 BOM)
+                                      ▼
+                             [Mini560 / TPS5430 5 V buck]
+                                      │
+                                      ├──────────────► [Orange Pi 3B]
+                                      └──────────────► [Arduino Micro]
+
+[IP2368] BAT- ──┐
+[BMS P-] ───────┴── star ground ── IRLZ44N Source; Mini560 IN−
+Monster8 VIN− ──► IRLZ44N Drain (low-side cut; Arduino D12 → TC4420)
+Monster8 VIN+ → 8× TMC2209 VMOT
 
 Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [8 Ω 3 W speaker]
 ```
@@ -94,7 +103,7 @@ Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [8 Ω 3 W speaker]
 ### 3.1 Structural safety interlocks
 
 - **High-current terminals:** VMOT and returns use dual-row terminal blocks (up to 15 A), not prototype-board traces.
-- **Thermal fuse:** Optional on skeleton (individual heatsinks). Production target: unified aluminum bar + 85 °C fuse on motor rail (§3.1).
+- **Thermal fuse:** Skeleton V5.1 is a **prototype without** the fuse (individual heatsinks; optional on the highest-risk P+ lead only). Production **must** have a unified aluminum bar across all eight drivers plus an 85 °C non-resettable fuse on the motor rail. Do not drop the production requirement because the skeleton defers it.
 - **Motor rail gate:** **IRLZ44N low-side** on Monster8 VIN− return (Drain → VIN−, Source → star ground); **TC4420** gate driver from Arduino D12. Cut on freefall, comms loss, or watchdog fault ([V9 §5.2](Master%20Software%20Architecture%20V9.md#52-real-time-hardware-interlock-mpu6050), `shared/protocol.h`). Pi also issues Klipper **M112** on freefall SAFETY frames.
 - **Audio filtering:** 470 µF low-ESR + 0.1 µF ceramic at MAX98357A VDD/GND to keep Class D switching noise off the 5 V logic bus.
 
@@ -134,7 +143,7 @@ The **Arduino Micro** (Tier 3) isolates real-time safety from the Orange Pi:
 | Function | Hardware |
 |----------|----------|
 | Keyboard scan / debounce / chords | 12 direct-pin GPIOs (+ Menu via software overlay) |
-| Freefall interlock | MPU6050 → INT6 (D7); ISR cuts IRLZ44N in <10 ms |
+| Freefall interlock | MPU6050 → D7 / PE6 / INT6, **active-low latched FALLING**; ISR cuts IRLZ44N in <10 ms. Not INT0 (D3/SCL). |
 | Host liveness | Pi `HEARTBEAT` over USB CDC; comms timeout cuts VMOT |
 | MCU hang recovery | AVR 500 ms hardware WDT |
 
@@ -163,8 +172,8 @@ Full deploy procedure: [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Soft
 | Heavy stepper EMI | Audio hum, SoC instability | Digital I2S (MAX98357A); local 470 µF + 0.1 µF on amp |
 | RK3566 pin limits | Cannot wire 8 independent driver UARTs | **MKS Monster8 V2 + Klipper over USB** — Pi issues motion via Moonraker, not Pi UART (§4) |
 | Sudden power loss | eMMC/SD corruption | Read-only root, overlayfs, atomic `/data` writes, sync timer (§6) |
-| Drop during motion | Head/solenoid damage | MPU6050 hardware INT → sub-10 ms IRLZ44N cut + SAFETY frame (§5) |
-| Driver thermal runaway | Fire / hardware damage | Unified heatsink + 85 °C thermal fuse on motor rail (§3.1) |
+| Drop during motion | Head / NEMA14 punch damage | MPU6050 hardware INT (D7/INT6, active-low) → sub-10 ms IRLZ44N cut **in the ISR**; SAFETY frame from the **main loop** (§5) |
+| Driver thermal runaway | Fire / hardware damage | Production: unified heatsink + **required** 85 °C thermal fuse (§3.1). Skeleton V5.1 defers the fuse. |
 | Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin keyboard** — one GPIO per key, no matrix (§2.1) |
 
 Standardized BOM: [V9 §7](Master%20Software%20Architecture%20V9.md#7-standardized-hardware-reference). Prototype breadboard part list and fuse ratings: [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) Part 1.
@@ -176,7 +185,7 @@ Standardized BOM: [V9 §7](Master%20Software%20Architecture%20V9.md#7-standardiz
 | Retired | Superseded by |
 |---------|----------------|
 | Raspberry Pi 3B | Orange Pi 3B |
-| Servo-driven 6-key embosser array | Staggered solenoid head ([V9 §5.4](Master%20Software%20Architecture%20V9.md#54-staggered-embossing-head)) |
+| Servo-driven 6-key embosser array | Six NEMA14 punch steppers on Monster8 slots 2–7 ([V9 §5.4](Master%20Software%20Architecture%20V9.md#54-staggered-embossing-head), V5.1 BOM). **Solenoid heads are retired — do not order.** |
 | 18650 TBD battery pack | 4S LiPo + LTC2944 |
 | 4×4 keyboard matrix + per-key diodes | Direct-pin Arduino topology (§2.1) |
 | Piper TTS | eSpeak NG ([V9 §6.6](Master%20Software%20Architecture%20V9.md#66-dependencies)) |

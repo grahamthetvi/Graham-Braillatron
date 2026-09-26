@@ -1,7 +1,9 @@
 #include "serial_link.h"
 
+#include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <poll.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -45,6 +47,9 @@ bool configure_serial_port(int fd, uint32_t baud_rate)
     tty.c_cflag &= ~CSTOPB;
     tty.c_cflag &= ~CRTSCTS;
 
+    tty.c_cc[VMIN] = 0;
+    tty.c_cc[VTIME] = 0;
+
     return tcsetattr(fd, TCSANOW, &tty) == 0;
 }
 
@@ -63,11 +68,13 @@ SerialLink::~SerialLink()
 
 bool SerialLink::is_open() const
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     return fd_ >= 0;
 }
 
 bool SerialLink::try_open()
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (fd_ >= 0) {
         return true;
     }
@@ -78,7 +85,8 @@ bool SerialLink::try_open()
     }
 
     if (!configure_serial_port(fd_, baud_rate_)) {
-        close();
+        ::close(fd_);
+        fd_ = -1;
         return false;
     }
 
@@ -87,14 +95,49 @@ bool SerialLink::try_open()
 
 void SerialLink::close()
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (fd_ >= 0) {
         ::close(fd_);
         fd_ = -1;
     }
 }
 
+int SerialLink::poll_readable(int timeout_ms)
+{
+    int fd = -1;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        fd = fd_;
+    }
+    if (fd < 0) {
+        errno = EBADF;
+        return -1;
+    }
+
+    pollfd pfd {};
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    const int rc = ::poll(&pfd, 1, timeout_ms);
+    if (rc > 0 && (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+        errno = EIO;
+        return -1;
+    }
+    return rc;
+}
+
+ssize_t SerialLink::read_bytes(void *buf, size_t len)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (fd_ < 0) {
+        errno = EBADF;
+        return -1;
+    }
+    return ::read(fd_, buf, len);
+}
+
 bool SerialLink::write_frame(uint8_t opcode, const void *payload, uint8_t payload_len)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (fd_ < 0) {
         return false;
     }
@@ -131,6 +174,11 @@ bool SerialLink::send_telemetry(const braillatron_telemetry_t &payload)
 {
     return write_frame(static_cast<uint8_t>(BRAILLATRON_OP_TELEMETRY), &payload,
                        sizeof(payload));
+}
+
+bool SerialLink::send_clear_fault()
+{
+    return write_frame(static_cast<uint8_t>(BRAILLATRON_OP_CLEAR_FAULT), nullptr, 0);
 }
 
 } // namespace braillatron::platform

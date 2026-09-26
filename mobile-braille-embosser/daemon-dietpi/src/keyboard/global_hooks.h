@@ -15,6 +15,10 @@ namespace braillatron::keyboard {
 class KeyboardService;
 }
 
+namespace braillatron::platform {
+class SerialLink;
+}
+
 namespace braillatron::hooks {
 
 void set_output_hub(ui::OutputHub *hub);
@@ -39,6 +43,10 @@ void on_menu_back();
 void on_safety_broadcast(uint8_t fault_code, uint8_t severity, uint16_t detail);
 
 void set_klipper_emergency_stop(std::function<void()> handler);
+void set_serial_link(platform::SerialLink *link);
+/** Explicit recover after a latched SAFETY/freefall (never from a move). */
+void set_recover_motion_gate(std::function<bool()> handler);
+bool recover_motion_gate();
 
 bool standalone_app_active();
 bool inline_app_active();

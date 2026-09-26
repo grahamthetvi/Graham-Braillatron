@@ -2,12 +2,14 @@
  * MPU6050 freefall interlock (V5.1 Part 3.3 / 4.2).
  *
  * Uses hardware I2C (Wire, SDA = D2, SCL = D3) and the MPU6050's native
- * free-fall detection engine. The interrupt line is configured active-low
- * and latched, so a momentary event is held until INT_STATUS is read; with
- * INPUT_PULLUP a disconnected wire idles HIGH and cannot false-trigger.
+ * free-fall detection engine. INT is Arduino D7 / PE6 / INT6 — never D3 /
+ * INT0 (that pin is SCL). The interrupt line is configured active-low
+ * (INT_PIN_CFG=0xA0) and latched, sampled FALLING; with INPUT_PULLUP a
+ * disconnected wire idles HIGH and cannot false-trigger.
  *
- * The ISR cuts the stepper rail with a direct port write so the <10 ms
- * interlock budget holds regardless of main-loop activity.
+ * The ISR cuts D12/VMOT with a direct port write so the <10 ms interlock
+ * budget holds regardless of main-loop activity. The latch is cleared only
+ * by an explicit BRAILLATRON_OP_CLEAR_FAULT from the Pi — never on loop.
  */
 
 #include "mpu6050_isr.h"
@@ -36,6 +38,7 @@
 #define MPU6050_INT_ENABLE_FF       0x80u /* FF_EN */
 
 static volatile bool g_freefall_pending = false;
+static bool g_mpu_ready = false;
 
 static bool mpu6050_write_reg(uint8_t reg, uint8_t value)
 {
@@ -93,7 +96,13 @@ bool mpu6050_isr_init(void)
     pinMode(PIN_MPU6050_INT, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(PIN_MPU6050_INT), freefall_isr, FALLING);
 
+    g_mpu_ready = ok;
     return ok;
+}
+
+bool mpu6050_isr_ready(void)
+{
+    return g_mpu_ready;
 }
 
 bool mpu6050_freefall_pending(void)
@@ -105,5 +114,11 @@ void mpu6050_clear_freefall(void)
 {
     uint8_t status = 0u;
     (void)mpu6050_read_reg(MPU6050_REG_INT_STATUS, &status);
+    /* Active-low latched INT: if still LOW after the status read, the event
+     * is ongoing and there may be no new FALLING edge — keep the latch. */
+    if (digitalRead(PIN_MPU6050_INT) == LOW) {
+        g_freefall_pending = true;
+        return;
+    }
     g_freefall_pending = false;
 }

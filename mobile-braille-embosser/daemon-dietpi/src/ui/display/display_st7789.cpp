@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <linux/spi/spidev.h>
+#include <string>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <vector>
@@ -19,12 +20,24 @@ namespace braillatron::ui {
 
 namespace {
 
-#ifdef BRAILLATRON_GPIOD_V2
+#ifdef BRAILLATRON_GPIOD
+#if defined(BRAILLATRON_GPIOD_V2)
 
-void *request_gpio_output(const char *consumer, unsigned int offset,
+std::string gpio_chip_devnode(const std::string &chip)
+{
+    if (chip.empty()) {
+        return "/dev/gpiochip4";
+    }
+    if (chip[0] == '/') {
+        return chip;
+    }
+    return "/dev/" + chip;
+}
+
+void *request_gpio_output(const char *chip_path, const char *consumer, unsigned int offset,
                           enum gpiod_line_value default_value)
 {
-    struct gpiod_chip *chip = gpiod_chip_open("/dev/gpiochip0");
+    struct gpiod_chip *chip = gpiod_chip_open(chip_path);
     if (chip == nullptr) {
         return nullptr;
     }
@@ -81,7 +94,20 @@ void release_gpio_handle(void *handle)
     gpiod_line_request_release(static_cast<struct gpiod_line_request *>(handle));
 }
 
+#else
+std::string gpio_chip_gpiod_name(const std::string &chip)
+{
+    if (chip.empty()) {
+        return "gpiochip4";
+    }
+    if (chip[0] == '/') {
+        const auto slash = chip.find_last_of('/');
+        return slash == std::string::npos ? chip : chip.substr(slash + 1);
+    }
+    return chip;
+}
 #endif // BRAILLATRON_GPIOD_V2
+#endif // BRAILLATRON_GPIOD
 
 } // namespace
 
@@ -104,10 +130,14 @@ St7789DisplayBackend::St7789DisplayBackend(const DisplayConfig &config)
     ioctl(spi_fd_, SPI_IOC_WR_MAX_SPEED_HZ, &speed);
 
 #ifdef BRAILLATRON_GPIOD
+    // V5.1 §3.6: DC=header 22 / RES=header 26 are GPIO4 lines 9/7. On DietPi
+    // RK3566 that bank is gpiochip4 (not the old gpiochip0 hardcode). Confirm
+    // with gpioinfo if a kernel inserts extra chips ahead of GPIO4.
 #if defined(BRAILLATRON_GPIOD_V2)
+    const std::string chip_path = gpio_chip_devnode(config.gpio_chip);
     if (config.gpio_dc >= 0) {
         gpio_dc_offset_ = config.gpio_dc;
-        gpio_dc_handle_ = request_gpio_output("braillatron-dc",
+        gpio_dc_handle_ = request_gpio_output(chip_path.c_str(), "braillatron-dc",
                                               static_cast<unsigned int>(gpio_dc_offset_),
                                               GPIOD_LINE_VALUE_INACTIVE);
         if (gpio_dc_handle_ == nullptr) {
@@ -117,7 +147,7 @@ St7789DisplayBackend::St7789DisplayBackend(const DisplayConfig &config)
 
     if (config.gpio_rst >= 0) {
         gpio_rst_offset_ = config.gpio_rst;
-        gpio_rst_handle_ = request_gpio_output("braillatron-rst",
+        gpio_rst_handle_ = request_gpio_output(chip_path.c_str(), "braillatron-rst",
                                                static_cast<unsigned int>(gpio_rst_offset_),
                                                GPIOD_LINE_VALUE_ACTIVE);
         if (gpio_rst_handle_ != nullptr) {
@@ -132,8 +162,9 @@ St7789DisplayBackend::St7789DisplayBackend(const DisplayConfig &config)
         }
     }
 #else
+    const std::string chip_name = gpio_chip_gpiod_name(config.gpio_chip);
     if (config.gpio_dc >= 0) {
-        gpio_chip_ = gpiod_chip_open_by_name("gpiochip0");
+        gpio_chip_ = gpiod_chip_open_by_name(chip_name.c_str());
         if (gpio_chip_ != nullptr) {
             gpio_dc_handle_ =
                 gpiod_chip_get_line(static_cast<gpiod_chip *>(gpio_chip_), config.gpio_dc);
