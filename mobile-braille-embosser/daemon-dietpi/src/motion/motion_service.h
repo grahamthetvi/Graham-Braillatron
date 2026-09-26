@@ -25,7 +25,9 @@ public:
                      const braillatron::documents::BrailleTranslationService &braille);
     /** Emboss North American BRF cells. Does not forward-translate. */
     void emboss_brf(const std::string &brf);
+    /** Returns false when motion is gated or the physical line feed fails. */
     bool advance_line();
+    /** Returns false when motion is gated or a physical feed fails. */
     bool feed_lines(int32_t delta);
     void reset_from_coordinate(int64_t x_microsteps, int32_t y_line_index);
 
