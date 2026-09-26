@@ -1,5 +1,6 @@
 #include "../../connect/connect_client.h"
 #include "../../connect/json_utils.h"
+#include "../../documents/brf_format.h"
 #include "../../documents/library_store.h"
 #include "../../documents/liblouis_bridge.h"
 #include "../../motion/motion_service.h"
@@ -1511,6 +1512,9 @@ private:
             announce(ctx, "Could not open " + book.title + ".");
             return;
         }
+        if (doc->format() == "brf" && ctx.braille != nullptr) {
+            doc->apply_back_translation(*ctx.braille);
+        }
 
         document_ = std::move(doc);
         current_book_ = store_.find_by_id(book.id);
@@ -1530,6 +1534,15 @@ private:
         sync_chrome(ctx);
         announce(ctx, "Reading " + book.title +
                            (book.author.empty() ? "" : " by " + book.author) + ".");
+        if (document_->format() == "brf") {
+            const bool translated =
+                !document_->sections().empty() &&
+                document_->sections().front().text.find("Back translation unavailable") ==
+                    std::string::npos;
+            announce(ctx, translated
+                              ? "Speech is the back translation. Print embosses the original Braille."
+                              : "Back translation unavailable. Print embosses the original Braille.");
+        }
         announce_section(ctx);
     }
 
@@ -1600,7 +1613,13 @@ private:
         }
         const documents::BookSection &section = sections[static_cast<size_t>(section_index_)];
         section_title_ = section.title.empty() ? "Section" : section.title;
-        section_lines_ = wrap_text_lines(section.text);
+        section_brf_lines_.clear();
+        if (!section.emboss_brf.empty()) {
+            section_lines_ = documents::split_brf_lines(section.text);
+            section_brf_lines_ = documents::split_brf_lines(section.emboss_brf);
+        } else {
+            section_lines_ = wrap_text_lines(section.text);
+        }
         if (section_lines_.empty() && !section.text.empty()) {
             section_lines_.push_back(section.text);
         }
@@ -1628,6 +1647,7 @@ private:
         if (key == keyboard::ControlKey::Backspace) {
             phase_ = Phase::Reading;
             section_lines_.clear();
+            section_brf_lines_.clear();
             section_line_index_ = 0;
             section_title_.clear();
             rebuild_browse();
@@ -1655,6 +1675,21 @@ private:
             return;
         }
         if (key == keyboard::ControlKey::Enter && ctx.motion != nullptr && ctx.braille != nullptr) {
+            if (!section_brf_lines_.empty() &&
+                section_brf_lines_.size() == section_lines_.size()) {
+                ctx.motion->emboss_brf(section_brf_lines_[section_line_index_] + "\n");
+                announce(ctx, "Embossing Braille line");
+                return;
+            }
+            if (!section_brf_lines_.empty() && document_ != nullptr) {
+                const auto &sections = document_->sections();
+                if (section_index_ >= 0 && section_index_ < static_cast<int>(sections.size()) &&
+                    !sections[static_cast<size_t>(section_index_)].emboss_brf.empty()) {
+                    ctx.motion->emboss_brf(sections[static_cast<size_t>(section_index_)].emboss_brf);
+                    announce(ctx, "Embossing Braille file");
+                    return;
+                }
+            }
             ctx.motion->emboss_text(section_lines_[section_line_index_], *ctx.braille);
             announce(ctx, "Embossing line");
         }
@@ -1709,7 +1744,14 @@ private:
             announce(ctx, "Embossing not available");
             return;
         }
-        if (phase_before_print_ == Phase::ReadingText && !section_lines_.empty()) {
+        if (phase_before_print_ == Phase::ReadingText && !section_brf_lines_.empty() &&
+            section_brf_lines_.size() == section_lines_.size()) {
+            ctx.motion->emboss_brf(section_brf_lines_[section_line_index_] + "\n");
+            announce(ctx, "Printing Braille line");
+            return;
+        }
+        if (phase_before_print_ == Phase::ReadingText && !section_lines_.empty() &&
+            section_brf_lines_.empty()) {
             ctx.motion->emboss_text(section_lines_[section_line_index_], *ctx.braille);
             announce(ctx, "Printing page");
             return;
@@ -1719,8 +1761,17 @@ private:
             announce(ctx, "Nothing to print");
             return;
         }
-        const std::vector<std::string> lines =
-            wrap_text_lines(sections[static_cast<size_t>(section_index_)].text);
+        const documents::BookSection &section = sections[static_cast<size_t>(section_index_)];
+        if (!section.emboss_brf.empty()) {
+            const size_t page_end = section.emboss_brf.find('\f');
+            const std::string page = page_end == std::string::npos
+                                         ? section.emboss_brf
+                                         : section.emboss_brf.substr(0, page_end);
+            ctx.motion->emboss_brf(page);
+            announce(ctx, "Printing Braille page");
+            return;
+        }
+        const std::vector<std::string> lines = wrap_text_lines(section.text);
         if (lines.empty()) {
             announce(ctx, "Nothing to print");
             return;
@@ -1740,12 +1791,17 @@ private:
             announce(ctx, "Nothing to print");
             return;
         }
-        const std::string &text = sections[static_cast<size_t>(section_index_)].text;
-        if (text.empty()) {
+        const documents::BookSection &section = sections[static_cast<size_t>(section_index_)];
+        if (!section.emboss_brf.empty()) {
+            ctx.motion->emboss_brf(section.emboss_brf);
+            announce(ctx, "Printing Braille section");
+            return;
+        }
+        if (section.text.empty()) {
             announce(ctx, "Empty section");
             return;
         }
-        ctx.motion->emboss_text(text, *ctx.braille);
+        ctx.motion->emboss_text(section.text, *ctx.braille);
         announce(ctx, "Printing section");
     }
 
@@ -1753,6 +1809,32 @@ private:
     {
         if (ctx.motion == nullptr || ctx.braille == nullptr || document_ == nullptr) {
             announce(ctx, "Embossing not available");
+            return;
+        }
+        bool any_brf = false;
+        for (const auto &section : document_->sections()) {
+            if (!section.emboss_brf.empty()) {
+                any_brf = true;
+                break;
+            }
+        }
+        if (any_brf) {
+            std::string brf;
+            for (const auto &section : document_->sections()) {
+                if (section.emboss_brf.empty()) {
+                    continue;
+                }
+                if (!brf.empty() && brf.back() != '\f' && brf.back() != '\n') {
+                    brf.push_back('\f');
+                }
+                brf += section.emboss_brf;
+            }
+            if (brf.empty()) {
+                announce(ctx, "Nothing to print");
+                return;
+            }
+            ctx.motion->emboss_brf(brf);
+            announce(ctx, "Printing Braille book");
             return;
         }
         std::string text;
@@ -1821,6 +1903,7 @@ private:
     std::unique_ptr<documents::EbookDocument> document_;
     int section_index_ = 0;
     std::vector<std::string> section_lines_;
+    std::vector<std::string> section_brf_lines_;
     size_t section_line_index_ = 0;
     std::string section_title_;
     Phase phase_before_print_ = Phase::Reading;
