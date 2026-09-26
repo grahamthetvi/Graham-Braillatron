@@ -42,7 +42,7 @@ MOTION_OBJS := $(call module_objs,src/motion,moonraker_self_test.cpp)
 HAPTICS_OBJS := $(call module_objs,src/haptics,)
 
 DOCUMENT_OBJS := \
-	$(call module_objs,src/documents,liblouis_bridge.cpp liblouis_self_test.cpp dictionary_self_test.cpp spelling_self_test.cpp contacts_self_test.cpp library_self_test.cpp) \
+	$(call module_objs,src/documents,liblouis_bridge.cpp liblouis_self_test.cpp dictionary_self_test.cpp spelling_self_test.cpp contacts_self_test.cpp library_self_test.cpp brf_self_test.cpp) \
 	$(LIBLOUIS_BRIDGE_OBJ)
 
 APP_OBJS := $(call module_objs,src/ui/apps,calculator_self_test.cpp)
@@ -170,6 +170,7 @@ TELEMETRY_OBJS := \
 	src/sentinel_main.o
 
 LIBLOUIS_TEST_OBJS := \
+	src/documents/brf_format.o \
 	src/documents/liblouis_bridge_louis.o \
 	src/documents/liblouis_self_test.o
 
@@ -228,8 +229,15 @@ RADIO_TEST_OBJS := \
 	src/connect/radio_self_test.o
 
 LIBRARY_TEST_OBJS := \
+	src/documents/brf_format.o \
+	$(LIBLOUIS_BRIDGE_OBJ) \
 	src/documents/library_store.o \
 	src/documents/library_self_test.o
+
+BRF_TEST_OBJS := \
+	src/documents/brf_format.o \
+	src/documents/brf_cable.o \
+	src/documents/brf_self_test.o
 
 LIBRARY_BACKEND_TEST_OBJS := \
 	src/connect/connect_config.o \
@@ -256,7 +264,7 @@ GMAIL_TEST_OBJS := \
 CALCULATOR_TEST_OBJS := \
 	src/ui/apps/calculator_self_test.o
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(MOONRAKER_TEST_OBJS) $(MOTION_GATE_SYNC_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(REMOTE_DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(WORTHWHILE_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CALCULATOR_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS) $(DISPLAYD_OBJS))
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(MOONRAKER_TEST_OBJS) $(MOTION_GATE_SYNC_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(REMOTE_DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(WORTHWHILE_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CALCULATOR_TEST_OBJS) $(BRF_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS) $(DISPLAYD_OBJS))
 
 CHECK_TEST_BINS := \
 	braillatron-motion-test \
@@ -278,6 +286,7 @@ CHECK_TEST_BINS := \
 	braillatron-podcasts-test \
 	braillatron-radio-test \
 	braillatron-library-test \
+	braillatron-brf-test \
 	braillatron-library-backend-test \
 	braillatron-worthwhile-test \
 	braillatron-gmail-test \
@@ -290,6 +299,7 @@ ALL_BINS := \
 	braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test \
 	braillatron-contacts-test braillatron-music-test braillatron-weather-test \
 	braillatron-podcasts-test braillatron-radio-test braillatron-library-test \
+	braillatron-brf-test \
 	braillatron-library-backend-test braillatron-worthwhile-test braillatron-gmail-test \
 	braillatron-calculator-test braillatron-connect-test braillatron-sentinel \
 	braillatron-connectd braillatron-displayd

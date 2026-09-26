@@ -1,8 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
+
+#include "liblouis_bridge.h"
 
 namespace braillatron::documents {
 
@@ -20,7 +23,13 @@ struct BookSection {
     std::string id;
     std::string href;
     std::string title;
+    /** Print text. For a BRF book this is the back-translation. */
     std::string text;
+    /**
+     * Original North American BRF when this section was imported from Braille.
+     * Empty for print books. Emboss this instead of forward-translating `text`.
+     */
+    std::string emboss_brf;
     int spine_index = 0;
 };
 
@@ -46,6 +55,8 @@ LibraryStoreConfig load_library_store_config(const std::string &path);
 class EbookDocument {
 public:
     bool open(const std::string &path);
+    /** Re-run BRF back-translation with the caller's grade. No-op for print books. */
+    void apply_back_translation(const BrailleTranslationService &braille);
     const std::vector<BookSection> &sections() const { return sections_; }
     const std::string &title() const { return title_; }
     const std::string &author() const { return author_; }
@@ -60,6 +71,7 @@ private:
     std::string find_opf_path(const std::string &container_xml) const;
     std::string html_to_text(const std::string &html) const;
     std::string read_file(const std::string &path) const;
+    bool open_brf(const std::string &path);
 
     std::string title_;
     std::string author_;
@@ -83,6 +95,8 @@ public:
     bool remove_book(const std::string &id);
     bool rename_book(const std::string &id, const std::string &new_title);
     bool import_file(const std::string &src_path);
+    /** Write a BRF document into the library and register it. Returns the stored path. */
+    std::optional<std::string> import_brf_text(const std::string &filename, const std::string &brf);
     std::vector<std::string> list_removable_mounts() const;
     bool save_document_text(const std::string &text, const std::string &title_hint = {});
     bool register_media_file(const std::string &path, const std::string &title,

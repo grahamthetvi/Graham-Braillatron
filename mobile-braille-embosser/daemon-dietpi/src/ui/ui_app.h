@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../documents/brf_cable.h"
 #include "../documents/brf_store.h"
 #include "../documents/coordinate_state.h"
 #include "../documents/edit_session.h"
@@ -51,6 +52,8 @@ private:
     void send_heartbeat_if_due(uint64_t now_ms);
     void send_telemetry_if_due(uint64_t now_ms);
     void handle_activate(size_t index, const std::string &label);
+    void handle_brf_cable_jobs(uint64_t now_ms);
+    bool on_brf_cable_key(keyboard::ControlKey key, bool pressed);
     static uint64_t now_ms();
 
     hardware::HardwareConfig hardware_;
@@ -78,6 +81,11 @@ private:
     AppRegistry app_registry_;
     UiContext ui_context_;
     keyboard::KeyboardService keyboard_;
+
+    documents::BrfCableReceiver brf_cable_;
+    std::string pending_brf_;
+    std::string pending_brf_title_;
+    uint64_t pending_brf_deadline_ms_ = 0;
 
     std::unique_ptr<motion::KlipperMotionBridge> klipper_bridge_;
 

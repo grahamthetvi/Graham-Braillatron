@@ -1,5 +1,7 @@
 #include "library_store.h"
 
+#include "brf_format.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -572,8 +574,82 @@ bool EbookDocument::open(const std::string &path)
         sections_.push_back(std::move(section));
         return true;
     }
+    if (lower.size() >= 4 && lower.substr(lower.size() - 4) == ".brf") {
+        return open_brf(path);
+    }
 
     return false;
+}
+
+namespace {
+
+constexpr const char *kBrfBackTranslationUnavailable =
+    "Back translation unavailable. Print embosses the Braille file.";
+
+std::string safe_brf_filename(const std::string &filename)
+{
+    std::string base = fs::path(filename).filename().string();
+    std::string cleaned;
+    cleaned.reserve(base.size());
+    for (unsigned char ch : base) {
+        if (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.') {
+            cleaned.push_back(static_cast<char>(ch));
+        } else if (ch == ' ') {
+            cleaned.push_back('_');
+        }
+    }
+    if (cleaned.empty() || cleaned == "." || cleaned == "..") {
+        cleaned = "cable.brf";
+    }
+    const std::string lower = lower_copy(cleaned);
+    if (lower.size() < 4 || lower.substr(lower.size() - 4) != ".brf") {
+        cleaned += ".brf";
+    }
+    return cleaned;
+}
+
+} // namespace
+
+bool EbookDocument::open_brf(const std::string &path)
+{
+    const std::string normalized = normalize_brf_document(read_file(path));
+    if (normalized.find_first_not_of(" \t\n\r\f") == std::string::npos) {
+        return false;
+    }
+
+    format_ = "brf";
+    title_ = fs::path(path).stem().string();
+    BookSection section;
+    section.id = "brf";
+    section.title = title_;
+    section.emboss_brf = normalized;
+    section.text = kBrfBackTranslationUnavailable;
+    section.spine_index = 0;
+    sections_.push_back(std::move(section));
+    apply_back_translation(BrailleTranslationService {});
+    return true;
+}
+
+void EbookDocument::apply_back_translation(const BrailleTranslationService &braille)
+{
+    if (format_ != "brf") {
+        return;
+    }
+    for (BookSection &section : sections_) {
+        if (section.emboss_brf.empty()) {
+            continue;
+        }
+        const std::optional<std::string> plain = braille.back_translate_brf(section.emboss_brf);
+        if (!plain.has_value()) {
+            section.text = kBrfBackTranslationUnavailable;
+            continue;
+        }
+        if (plain->find_first_not_of(" \t\n\r\f") == std::string::npos) {
+            section.text = kBrfBackTranslationUnavailable;
+            continue;
+        }
+        section.text = *plain;
+    }
 }
 
 LibraryStore::LibraryStore(LibraryStoreConfig config)
@@ -873,6 +949,55 @@ bool LibraryStore::import_file(const std::string &src_path)
     book.local_path = dest.string();
     book.source = "usb";
     return register_book(std::move(book));
+}
+
+std::optional<std::string> LibraryStore::import_brf_text(const std::string &filename,
+                                                        const std::string &brf)
+{
+    const std::string normalized = normalize_brf_document(brf);
+    if (normalized.find_first_not_of(" \t\n\r\f") == std::string::npos) {
+        return std::nullopt;
+    }
+
+    std::error_code ec;
+    fs::create_directories(config_.books_dir, ec);
+    const std::string cleaned = safe_brf_filename(filename);
+    const fs::path cleaned_path(cleaned);
+    fs::path dest = fs::path(config_.books_dir) / cleaned;
+    int suffix = 1;
+    while (fs::exists(dest, ec)) {
+        dest = fs::path(config_.books_dir) /
+               (cleaned_path.stem().string() + "-" + std::to_string(suffix++) + ".brf");
+    }
+
+    const std::string temp_path = dest.string() + ".tmp";
+    {
+        std::ofstream out(temp_path, std::ios::binary);
+        if (!out.is_open()) {
+            return std::nullopt;
+        }
+        out << normalized;
+        if (!out.good()) {
+            fs::remove(temp_path, ec);
+            return std::nullopt;
+        }
+    }
+    fs::rename(temp_path, dest, ec);
+    if (ec) {
+        fs::remove(temp_path, ec);
+        return std::nullopt;
+    }
+
+    LibraryBook book;
+    book.title = cleaned_path.stem().string();
+    book.format = "brf";
+    book.local_path = dest.string();
+    book.source = "cable";
+    if (!register_book(std::move(book))) {
+        fs::remove(dest, ec);
+        return std::nullopt;
+    }
+    return dest.string();
 }
 
 std::vector<std::string> LibraryStore::list_removable_mounts() const
