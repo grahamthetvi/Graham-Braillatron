@@ -17,6 +17,9 @@ daemon-dietpi/braillatron-*
 # arduino-cli build output
 firmware-arduino/build/
 
+# Host build of the embosser pipeline
+firmware-embosser/emboss_pipeline_test
+
 # Agent-local credentials (never commit)
 .cursor/pi.local.env
 .cursor/*.local.env
