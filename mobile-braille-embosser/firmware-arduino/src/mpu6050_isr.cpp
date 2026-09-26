@@ -7,9 +7,9 @@
  * (INT_PIN_CFG=0xA0) and latched, sampled FALLING; with INPUT_PULLUP a
  * disconnected wire idles HIGH and cannot false-trigger.
  *
- * The ISR cuts D12/VMOT with a direct port write so the <10 ms interlock
- * budget holds regardless of main-loop activity. The latch is cleared only
- * by an explicit BRAILLATRON_OP_CLEAR_FAULT from the Pi — never on loop.
+ * The ISR cuts D12 with a direct port write and does not touch serial or
+ * I2C. Qualification time is FF_THR / FF_DUR (not the port write). The
+ * latch is cleared only by BRAILLATRON_OP_CLEAR_FAULT — never on loop.
  */
 
 #include "mpu6050_isr.h"

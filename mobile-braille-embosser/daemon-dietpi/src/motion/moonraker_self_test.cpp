@@ -36,6 +36,20 @@ int main()
     expect_true(loaded.emboss_stroke_mm > 0.0, "emboss stroke configured");
     expect_true(loaded.emboss_speed_mm_s > 0.0, "emboss speed configured");
 
+    const std::string klipper_query =
+        "{\"result\":{\"status\":{\"query_endstops\":{\"last_query\":"
+        "{\"x\":\"open\",\"y\":\"TRIGGERED\",\"z\":\"open\"}}}}}";
+    expect_true(braillatron::motion::endstop_value_triggered(klipper_query, "y"),
+                "TRIGGERED string counts as y home");
+    expect_true(!braillatron::motion::endstop_value_triggered(klipper_query, "x"),
+                "open string is not a paper-edge trip");
+
+    const std::string boolean_query = "{\"x\":false,\"y\":true}";
+    expect_true(braillatron::motion::endstop_value_triggered(boolean_query, "y"),
+                "JSON true still counts");
+    expect_true(!braillatron::motion::endstop_value_triggered(boolean_query, "x"),
+                "JSON false is not triggered");
+
     std::cerr << "braillatron-moonraker-test passed\n";
     return 0;
 }

@@ -12,7 +12,7 @@
 
 | Domain | Source of truth |
 |--------|-----------------|
-| Power / keys / MPU / VMOT gate | V5.1 + `firmware-arduino/src/pins.h` — 12 keys, MPU INT **active-low** on D7, IP2368 **parallel** on the WAGO bus, D12 cut |
+| Power / keys / MPU / VMOT gate | V5.1 + `firmware-arduino/src/pins.h` — 12 keys, MPU INT **active-low** on D7, IP2368 **parallel** on the WAGO bus, D12 high-side enable on VIN+. Open bench work: [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md) |
 | Monster8 pins / endstops / currents | `klipper/printer.cfg` **only** |
 
 Solenoid heads, series USB-C → IP2368 → BMS drawings, MPU INT0 / active-high INT, and E0-STOP paper-edge wiring are retired.
@@ -82,7 +82,7 @@ Block diagram for custom PCB and HAT routing. The **HAT netlist is unspecified**
 [IP2368 PD Charger] BAT+ ──┐
                            ├── WAGO positive bus (PARALLEL — IP2368 is NOT in series
 [BMS P+] ──────────────────┤    with the pack or the load)
-                           ├── (15 A motor fuse) ──► Monster8 VIN+
+                           ├── (15 A motor fuse) ──► [high-side switch] ──► Monster8 VIN+
                            │         production: [85 °C thermal fuse] REQUIRED
                            │         skeleton V5.1: fuse DEFERRED
                            └── (5 A logic fuse — V5.1 Part 1 BOM)
@@ -93,8 +93,8 @@ Block diagram for custom PCB and HAT routing. The **HAT netlist is unspecified**
                                       └──────────────► [Arduino Micro]
 
 [IP2368] BAT- ──┐
-[BMS P-] ───────┴── star ground ── IRLZ44N Source; Mini560 IN−
-Monster8 VIN− ──► IRLZ44N Drain (low-side cut; Arduino D12 → TC4420)
+[BMS P-] ───────┴── star ground ── Monster8 VIN− and Mini560 IN− (no FET in the return)
+Arduino D12 ──► high-side switch enable (HIGH = VIN+ on)
 Monster8 VIN+ → 8× TMC2209 VMOT
 
 Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [8 Ω 3 W speaker]
@@ -104,7 +104,7 @@ Orange Pi I2S1 ──► [MAX98357A + local filter] ──► [8 Ω 3 W speaker]
 
 - **High-current terminals:** VMOT and returns use dual-row terminal blocks (up to 15 A), not prototype-board traces.
 - **Thermal fuse:** Skeleton V5.1 is a **prototype without** the fuse (individual heatsinks; optional on the highest-risk P+ lead only). Production **must** have a unified aluminum bar across all eight drivers plus an 85 °C non-resettable fuse on the motor rail. Do not drop the production requirement because the skeleton defers it.
-- **Motor rail gate:** **IRLZ44N low-side** on Monster8 VIN− return (Drain → VIN−, Source → star ground); **TC4420** gate driver from Arduino D12. Cut on freefall, comms loss, or watchdog fault ([V9 §5.2](Master%20Software%20Architecture%20V9.md#52-real-time-hardware-interlock-mpu6050), `shared/protocol.h`). Pi also issues Klipper **M112** on freefall SAFETY frames.
+- **Motor rail gate:** high-side switch on Monster8 VIN+, enabled by Arduino D12 (HIGH = on). VIN− stays on star ground with USB ground. A low-side FET there is bypassed by the Klipper USB cable. Cut on freefall or a latched comms loss ([V9 §5.2](Master%20Software%20Architecture%20V9.md#52-real-time-hardware-interlock-mpu6050), `shared/protocol.h`). The Pi also issues Klipper emergency stop on critical SAFETY frames. The switch part is not selected: [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md).
 - **Audio filtering:** 470 µF low-ESR + 0.1 µF ceramic at MAX98357A VDD/GND to keep Class D switching noise off the 5 V logic bus.
 
 ### 3.2 Battery & telemetry
@@ -143,7 +143,7 @@ The **Arduino Micro** (Tier 3) isolates real-time safety from the Orange Pi:
 | Function | Hardware |
 |----------|----------|
 | Keyboard scan / debounce / chords | 12 direct-pin GPIOs (+ Menu via software overlay) |
-| Freefall interlock | MPU6050 → D7 / PE6 / INT6, **active-low latched FALLING**; ISR cuts IRLZ44N in <10 ms. Not INT0 (D3/SCL). |
+| Freefall interlock | MPU6050 → D7 / PE6 / INT6, **active-low latched FALLING**; ISR drives D12 low. Not INT0 (D3/SCL). Sensor qualification is about 20 ms (`FF_DUR`). |
 | Host liveness | Pi `HEARTBEAT` over USB CDC; comms timeout cuts VMOT |
 | MCU hang recovery | AVR 500 ms hardware WDT |
 
@@ -172,7 +172,7 @@ Full deploy procedure: [Pi SD Image Software Build Guide](Pi%20SD%20Image%20Soft
 | Heavy stepper EMI | Audio hum, SoC instability | Digital I2S (MAX98357A); local 470 µF + 0.1 µF on amp |
 | RK3566 pin limits | Cannot wire 8 independent driver UARTs | **MKS Monster8 V2 + Klipper over USB** — Pi issues motion via Moonraker, not Pi UART (§4) |
 | Sudden power loss | eMMC/SD corruption | Read-only root, overlayfs, atomic `/data` writes, sync timer (§6) |
-| Drop during motion | Head / NEMA14 punch damage | MPU6050 hardware INT (D7/INT6, active-low) → sub-10 ms IRLZ44N cut **in the ISR**; SAFETY frame from the **main loop** (§5) |
+| Drop during motion | Head / NEMA14 punch damage | MPU6050 hardware INT (D7/INT6, active-low) → ISR drives D12 low; SAFETY frame from the **main loop** (§5). The cut has to be high-side on VIN+. |
 | Driver thermal runaway | Fire / hardware damage | Production: unified heatsink + **required** 85 °C thermal fuse (§3.1). Skeleton V5.1 defers the fuse. |
 | Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin keyboard** — one GPIO per key, no matrix (§2.1) |
 
@@ -186,7 +186,7 @@ Standardized BOM: [V9 §7](Master%20Software%20Architecture%20V9.md#7-standardiz
 |---------|----------------|
 | Raspberry Pi 3B | Orange Pi 3B |
 | Servo-driven 6-key embosser array | Six NEMA14 punch steppers on Monster8 slots 2–7 ([V9 §5.4](Master%20Software%20Architecture%20V9.md#54-staggered-embossing-head), V5.1 BOM). **Solenoid heads are retired — do not order.** |
-| 18650 TBD battery pack | 4S LiPo + LTC2944 |
+| 18650 TBD battery pack | 4S1P Molicel P28A (V5.1 BOM) + LTC2944 |
 | 4×4 keyboard matrix + per-key diodes | Direct-pin Arduino topology (§2.1) |
 | Piper TTS | eSpeak NG ([V9 §6.6](Master%20Software%20Architecture%20V9.md#66-dependencies)) |
 

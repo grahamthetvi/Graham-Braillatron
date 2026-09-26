@@ -160,6 +160,30 @@ bool MoonrakerClient::stepper_buzz(const std::string &stepper_name)
     return run_gcode(script.str());
 }
 
+bool endstop_value_triggered(const std::string &response, const char *name)
+{
+    const std::string needle = std::string("\"") + name + "\":";
+    const size_t pos = response.find(needle);
+    if (pos == std::string::npos) {
+        return false;
+    }
+
+    size_t value_start = pos + needle.size();
+    while (value_start < response.size() &&
+           (response[value_start] == ' ' || response[value_start] == '\t')) {
+        ++value_start;
+    }
+    if (value_start < response.size() && response[value_start] == '"') {
+        ++value_start;
+    }
+
+    if (response.compare(value_start, 4, "true") == 0 ||
+        response.compare(value_start, 9, "TRIGGERED") == 0) {
+        return true;
+    }
+    return value_start < response.size() && response[value_start] == '1';
+}
+
 EndstopState MoonrakerClient::query_endstops() const
 {
     EndstopState state {};
@@ -184,28 +208,12 @@ EndstopState MoonrakerClient::query_endstops() const
 
     state.query_ok = true;
 
-    // last_query holds JSON booleans keyed by rail name, e.g.
-    // {"last_query": {"x": false, "y": true, "z": false}}.
-    const auto endstop_triggered = [&](const char *name) {
-        const std::string needle = std::string("\"") + name + "\":";
-        size_t pos = response.find(needle);
-        if (pos == std::string::npos) {
-            return false;
-        }
-        size_t value_start = pos + needle.size();
-        while (value_start < response.size() &&
-               (response[value_start] == ' ' || response[value_start] == '\t')) {
-            ++value_start;
-        }
-        return response.compare(value_start, 4, "true") == 0 ||
-               response.compare(value_start, 1, "1") == 0;
-    };
-
-    state.y_home = endstop_triggered("y");
+    // Klipper reports "TRIGGERED" / "open". A boolean payload is accepted too.
+    state.y_home = endstop_value_triggered(response, "y");
     // Paper edge (TCRT5000) is wired to Monster8 X-STOP ^PA14 and configured
     // as the stepper_x endstop; QUERY_ENDSTOPS reports it as rail "x".
     // Not E0-STOP / FIL_RUNOUT. X is never homed with G28.
-    state.paper_edge = endstop_triggered("x");
+    state.paper_edge = endstop_value_triggered(response, "x");
     return state;
 }
 

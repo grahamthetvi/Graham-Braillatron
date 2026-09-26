@@ -131,6 +131,27 @@ int main()
         }
     }
 
+    service.set_grade_preset(BrailleGradePreset::UebG1Math);
+    const auto letter = service.back_translate_brf("A");
+    if (!letter.has_value() || *letter != "a") {
+        std::cerr << "liblouis self-test: BRF 'A' expected 'a' got '"
+                  << (letter ? *letter : std::string("(null)")) << "'\n";
+        return 1;
+    }
+    const auto line = service.back_translate_brf("ABC");
+    if (!line.has_value() || *line != "abc") {
+        std::cerr << "liblouis self-test: BRF 'ABC' expected 'abc' got '"
+                  << (line ? *line : std::string("(null)")) << "'\n";
+        return 1;
+    }
+    service.set_grade_preset(BrailleGradePreset::UebG2Math);
+    const auto contraction = service.back_translate_brf("&");
+    if (!contraction.has_value() || contraction->find("and") == std::string::npos) {
+        std::cerr << "liblouis self-test: BRF '&' expected to contain 'and' got '"
+                  << (contraction ? *contraction : std::string("(null)")) << "'\n";
+        return 1;
+    }
+
     std::cout << "liblouis self-test ok\n";
     return 0;
 }

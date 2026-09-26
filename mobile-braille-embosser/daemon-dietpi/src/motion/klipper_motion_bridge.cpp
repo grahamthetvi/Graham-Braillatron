@@ -45,23 +45,28 @@ void KlipperMotionBridge::on_row_strike(uint8_t pin_mask, int64_t absolute_micro
     }
 
     // EmbossScheduler passes absolute travel-log position, not a relative delta.
+    // The first strike of a session assumes the carriage is already there.
+    // A restored coords.json X after a power loss is not a measured position.
     if (!have_last_x_) {
         last_x_microsteps_ = absolute_microsteps;
         have_last_x_ = true;
     } else {
         const int64_t delta = absolute_microsteps - last_x_microsteps_;
-        last_x_microsteps_ = absolute_microsteps;
         const double mm = braillatron::kinematics::microsteps_to_mm(delta);
-        if (std::abs(mm) >= 0.001) {
-            client_.move_x_relative_mm(mm, config_.x_move_speed_mm_s);
+        if (std::abs(mm) >= 0.001 &&
+            !client_.move_x_relative_mm(mm, config_.x_move_speed_mm_s)) {
+            return;
         }
+        last_x_microsteps_ = absolute_microsteps;
     }
 
     for (unsigned bit = 0; bit < 6; ++bit) {
         if ((pin_mask & (1u << bit)) == 0) {
             continue;
         }
-        client_.emboss_dot(bit + 1, config_.emboss_stroke_mm, config_.emboss_speed_mm_s);
+        if (!client_.emboss_dot(bit + 1, config_.emboss_stroke_mm, config_.emboss_speed_mm_s)) {
+            return;
+        }
     }
 }
 
@@ -75,8 +80,9 @@ bool KlipperMotionBridge::feed_lines(int32_t delta)
     // commanded X position is the travel-log value of the latest strike.
     if (have_last_x_ && last_x_microsteps_ != 0) {
         const double return_mm = braillatron::kinematics::microsteps_to_mm(last_x_microsteps_);
-        if (std::abs(return_mm) >= 0.001) {
-            client_.move_x_relative_mm(-return_mm, config_.x_move_speed_mm_s);
+        if (std::abs(return_mm) >= 0.001 &&
+            !client_.move_x_relative_mm(-return_mm, config_.x_move_speed_mm_s)) {
+            return false;
         }
     }
     // The next line starts at X0 with a fresh travel log (MotionService

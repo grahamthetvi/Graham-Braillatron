@@ -16,7 +16,7 @@
 
 | Domain | Source of truth |
 |--------|-----------------|
-| Power / keys / MPU / VMOT gate | [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) + `firmware-arduino/src/pins.h` — 12 physical keys, MPU INT **active-low latched FALLING on D7**, IP2368 **in parallel** on the WAGO bus, D12 cut |
+| Power / keys / MPU / VMOT gate | [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) + `firmware-arduino/src/pins.h` — 12 physical keys, MPU INT **active-low latched FALLING on D7**, IP2368 **in parallel** on the WAGO bus, D12 high-side enable. Open bench work: [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md) |
 | Monster8 pins / endstops / currents | `klipper/printer.cfg` **only** |
 
 Interconnect language below that still disagrees with those three files is stale. Solenoid heads, MPU **INT0**, and MPU **active-high** INT are retired.
@@ -36,7 +36,7 @@ Users can utilize multiple input methods simultaneously without locking out othe
   - **Enter:** Right of the D-pad.
   - **Shift / TTS:** Directly beneath Enter; hardware pause/resume for speech synthesis.
   - **Speech:** Push-to-talk for Vosk STT (menus, naming prompts, writing).
-  - **Menu:** Invokes the global system overlay.
+  - **Menu:** Software overlay (backtick on a USB keyboard). Not a physical key.
 - **Peripheral QWERTY:** USB/Bluetooth; Windows/Super = Menu, Win+H = Dictation.
 - **Refreshable Braille Displays:** USB/Bluetooth via BRLTTY (e.g. Mantis Q40).
 - All inputs process concurrently without locking out others.
@@ -49,7 +49,7 @@ Whenever focus changes or a word is announced, the Output Hub distributes conten
 |---------|---------------------|--------|
 | TTS | eSpeak NG via Speech Dispatcher over **ALSA** (3.5 mm aux default; **BlueALSA** for Bluetooth; I2S MAX98357A when selected). Not PipeWire. | `output_hub.cpp`, `backend.cpp` |
 | Refreshable Braille | BRLTTY brlapi + liblouis forward translation | `backend.cpp`, `liblouis_bridge.cpp` |
-| Visual Display | ST7789 SPI panel (240×240) + wireless remote browser viewer + ncurses dev fallback. HDMI `/dev/fb0` is **opt-in** (`hdmi_enabled=false` by default). | `ui/display/*`, `display/*`, `output_hub.cpp` |
+| Visual Display | ST7789 SPI panel (240×240) + wireless remote browser viewer + ncurses dev fallback. Shipped `display.conf` sets `hdmi_enabled=true`. | `ui/display/*`, `display/*`, `output_hub.cpp` |
 | Embosser | Six NEMA14 punch steppers (Monster8 slots 2–7) via `MotionService` — **not solenoids** | `motion_service.cpp`, `emboss_scheduler.cpp` |
 | Haptics | DRV2605L LRA; Morse timed pulses | `drv2605l.cpp`, `morse_encoder.cpp` |
 
@@ -77,22 +77,22 @@ Take primary control of embosser head and paper feed. Launched from the main app
 
 | Application | Description | Code Module |
 |-------------|-------------|-------------|
-| **Brailler (Document)** | `.brf` editor; edit modes; optional PTT dictation; worksheet auto-record | `apps/brailler_app.cpp` |
+| **Brailler (Document)** | `.brf` editor; full-cell replace; optional PTT dictation. The three named edit modes are not selected by the UI | `apps/brailler_app.cpp` |
 | **Calculator** | Nemeth math; char/silent/space-affirm audio modes | `apps/calculator_app.cpp` |
 | **Transcriber** | Vosk STT → liblouis → emboss; buffer failsafe | `apps/transcriber_app.cpp` |
 | **Dictionary** | Offline SQLite lookup; prefix search; TTS/braille read | `dictionary_store.cpp`, `apps/dictionary_app.cpp` |
 | **Spelling** | Bundled + imported word lists; Learn / Quiz / Review modes | `spelling_list_store.cpp`, `apps/spelling_app.cpp` |
 | **Contacts** | Offline address book; CSV/vCard import; emboss card | `contacts_store.cpp`, `apps/contacts_app.cpp` |
 | **Library** | Local EPUB/DAISY reading; Gutendex public-domain search/download | `library_store.cpp`, `library_backend.cpp`, `apps/library_app.cpp` |
-| **LocalSend** | Local file transfer (scaffold) | `apps/localsend_app.cpp` |
-| **Wikipedia** | Offline-capable article lookup | `apps/wikipedia_app.cpp` |
+| **LocalSend** | Receive-only sidecar. The unit is installed and not pulled in by `braillatron.target` until enabled | `apps/localsend_app.cpp` |
+| **Wikipedia** | Live English Wikipedia API. Not an offline reader | `apps/wikipedia_app.cpp` |
 | **YouTube** | Search and audio playback via connectd + shared mpv | `apps/youtube_app.cpp`, `youtube_backend.cpp` |
 | **Messages** | Signal chat list, thread read, compose/reply | `apps/messages_app.cpp`, `signal_backend.cpp` |
 | **Music** | Local library scan/play; resume state; shared mpv | `apps/music_app.cpp`, `music_backend.cpp` |
 | **Weather** | Open-Meteo fetch/cache; current/hourly/daily views | `apps/weather_app.cpp`, `weather_backend.cpp` |
 | **Podcasts** | RSS/OPML subscriptions; episode download + mpv playback | `apps/podcasts_app.cpp`, `rss_backend.cpp` |
 | **Radio** | Internet radio streams; favorites; ICY metadata | `apps/radio_app.cpp`, `radio_backend.cpp` |
-| **Gmail** | OAuth device flow; inbox/read/compose/reply; BRF export | `apps/gmail_app.cpp`, `gmail_backend.cpp` |
+| **Gmail** | OAuth device flow; inbox/read/compose/reply; BRF export. IMAP-linked school accounts can read; SMTP send is not wired | `apps/gmail_app.cpp`, `gmail_backend.cpp` |
 | **Morse Learning** | Morse alphabet lessons and quiz via haptics | `apps/morse_learn_app.cpp` |
 | **Network & Devices** | Wi-Fi scan/connect via wpa_supplicant (`wpa_cli`) | `apps/network_app.cpp` |
 | **Bluetooth Setup** | Bluetooth scan; pair by name or MAC via `bluetoothctl` | `apps/bluetooth_setup_app.cpp` |
@@ -128,7 +128,7 @@ Tractor-fed paper cannot erase dots. Software maintains digital/physical sync.
 2. **Edit via Audio & Emboss:** TTS reads line-by-line; user full-cells (⠿, mask `0x3F`) over mistake; embosser advances to blank line; replacement chord syncs digital `.brf`.
 3. **Emboss & Edit:** Full document embossed; menu paper navigation + same full-cell replace mechanic.
 
-Implementation: `edit_session.cpp`, `brf_store.cpp`.
+What runs today is typing, save, and full-cell replace. `EditMode` is stored by `set_mode()` and the UI never selects the three modes above, so a session stays on the emboss path. Implementation: `edit_session.cpp`, `brf_store.cpp`.
 
 ### 3.2 Coordinate Memory
 
@@ -144,7 +144,7 @@ Module: `homing_service.cpp` in `braillatron-sentinel`; status at `/run/braillat
 
 ### 3.4 App Switching (Forward Feed)
 
-When switching Standalone apps: reverse to paper-edge sensor (TCRT5000), measure page, feed to a **fresh page (33 lines)** on 100 lb cardstock (0.5 in perf spacing). Module: `paper_separator.cpp`.
+When switching Standalone apps: feed to a **fresh page (33 lines)** on 100 lb cardstock (0.5 in perf spacing). With the paper-edge sensor installed, `paper_separator.cpp` reverses until that sensor trips (200-line cap), then feeds the fixed 33 lines. A rejected feed, or an edge that never appears, skips the forward feed and `switch_app` stays on the current app. The reverse distance is not stored. With no sensor (dev bench, Klipper not connected) only the forward 33-line feed runs. Edge polarity is still a bench check; see [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md).
 
 ---
 
@@ -160,7 +160,7 @@ Low-level, high-frequency physical I/O is offloaded to the Arduino Micro so OS s
 │                 ARDUINO MICRO CO-PROCESSOR                  │
 │  - 15 ms integrator debounce                                │
 │  - 40 ms temporal chord integration                         │
-│  - Sub-10 ms freefall interlock (MPU6050 → IRLZ44N gate)    │
+│  - Freefall interlock (MPU6050 → D12 high-side enable)     │
 │  - AVR hardware WDT + host comms watchdog                   │
 └──────────────────────────────┬──────────────────────────────┘
                                │
@@ -181,7 +181,7 @@ The main loop samples all **12 physical key** pins at 1 kHz. ISRs are reserved f
 
 Authoritative definitions: `shared/protocol.h`, `shared/protocol.md`.
 
-**Physical layer:** UART 115200 bps (device configurable via `hardware.conf`), little-endian, CRC16-CCITT-FALSE over header + payload.
+**Physical layer:** USB CDC at 115200 (`Serial` on the Micro, typically `/dev/ttyACM0` on the Pi; device set in `hardware.conf`). Not USART1 on D0/D1. Little-endian, CRC16-CCITT-FALSE over header + payload.
 
 **Frame layout:** `[sync | version | opcode | sequence_id | payload_len | payload | crc16]`
 
@@ -193,10 +193,11 @@ Authoritative definitions: `shared/protocol.h`, `shared/protocol.md`.
 |--------|-----------|---------|---------|
 | `0x01` KEYBOARD_MATRIX | Arduino → Pi | 2-byte `key_state` | Edge-triggered function keys |
 | `0x02` TELEMETRY | Pi → Arduino | 3-byte telemetry | Battery %, temperature, limit flags |
-| `0x03` SAFETY | Bidirectional | 5-byte fault broadcast | Freefall, comms loss, battery critical, etc. |
-| `0x04` HEARTBEAT | Pi → Arduino | none | Periodic liveness; disarms after boot grace |
-| `0x05` ACK_NACK | Reserved | — | Future use |
+| `0x03` SAFETY | Arduino → Pi | 5-byte fault broadcast | Freefall, comms loss, sensor failure. Pi never sends it |
+| `0x04` HEARTBEAT | Pi → Arduino | none | Periodic liveness. Rail stays off until the first one |
+| `0x05` ACK_NACK | Reserved | — | Unused on both sides |
 | `0x06` CHORD | Arduino → Pi | 1-byte `dot_mask` | Assembled Braille chord |
+| `0x07` CLEAR_FAULT | Pi → Arduino | none | Drop latched freefall and comms-loss, then re-apply the rail |
 
 **Telemetry limit flags** (Pi → Arduino relay): `BRAILLATRON_LIMIT_PAPER_EDGE` (TCRT5000), `BRAILLATRON_LIMIT_Y_HOME` (TCST2103), `BRAILLATRON_LIMIT_MOTION_BLOCKED`, `BRAILLATRON_LIMIT_BATTERY_CRITICAL`.
 
@@ -206,8 +207,8 @@ Invalid CRC frames are dropped. Pi sends `HEARTBEAT` on the configured interval 
 
 ### 4.3 Two-Layer Watchdog
 
-1. **AVR hardware WDT (500 ms):** A hung main loop resets the MCU. Stepper rail defaults off until firmware completes a clean boot.
-2. **Host comms watchdog:** After the first Pi heartbeat, a gap longer than the comms timeout (3 s) cuts VMOT and latches `BRAILLATRON_FAULT_COMMS_LOSS` until heartbeats resume.
+1. **AVR hardware WDT (500 ms):** A hung main loop resets the MCU. Setup drives D12 low. The rail stays off until the first heartbeat after a good MPU init. A pulldown on the switch enable is still required during reset; see the bring-up to-do.
+2. **Host comms watchdog:** Before the first heartbeat the rail stays off. After that, a gap longer than 3 s cuts VMOT and latches `BRAILLATRON_FAULT_COMMS_LOSS` until `CLEAR_FAULT`. The next heartbeat does not restore the rail.
 
 Implementation: `firmware-arduino/src/watchdog.cpp`, `fail_safes.cpp`.
 
@@ -228,12 +229,12 @@ Implementation: `firmware-arduino/src/watchdog.cpp`, `fail_safes.cpp`.
                               ▼
 [4S 30A BMS P+/P−] ── WAGO / star ── (14.8 V nominal)
          │
-         ├─ (15 A motor fuse) ──► Monster8 VIN+
+         ├─ (15 A motor fuse) ──► [high-side switch] ──► Monster8 VIN+
          │         production: 85 °C thermal fuse on unified heatsink (REQUIRED)
          │         skeleton V5.1: fuse DEFERRED; individual heatsinks
-         │         Monster8 VIN− ──► [IRLZ44N Drain] ──► [IRLZ44N Source] ──► star ground
-         │                                    ▲ Arduino D12 → TC4420 → Gate (low-side cut)
-         │                                    └──► 8× TMC2209 VMOT on Monster8
+         │         Monster8 VIN− ──► star ground (same net as USB GND; no FET)
+         │         Arduino D12 HIGH = switch on
+         │         VIN+ ──► 8× TMC2209 VMOT on Monster8
          │
          └─ (5 A logic fuse — V5.1 BOM) ──► [TPS5430 5 V buck] ──┬──► Orange Pi 3B
                                                                   └──► Arduino Micro
@@ -242,7 +243,7 @@ Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 
 ```
 
 - **Logic rail:** TPS5430 buck from battery to filtered 5 V for Orange Pi and Arduino.
-- **Motor rail:** 14.8 V to Monster8 VIN+; **IRLZ44N low-side** on VIN− return (Drain → VIN−, Source → star ground); TC4420 gate driver from Arduino D12.
+- **Motor rail:** 14.8 V through a high-side switch to Monster8 VIN+. VIN− ties to star ground. Arduino D12 is active-high enable. A low-side FET on VIN− is bypassed by USB ground.
 - **Audio isolation:** MAX98357A powered from 5 V with local 470 µF + 0.1 µF at VDD/GND to keep Class D switching noise off the logic bus.
 - **Battery telemetry:** LTC2944 on system I2C tracks capacity, current, and voltage (see §6.3).
 - **High-current routing:** Motor VMOT and returns use off-board dual-row terminal blocks (up to 15 A), not prototype-board traces.
@@ -252,19 +253,19 @@ Orange Pi I2S1 ──► [MAX98357A + 470 µF + 0.1 µF local filter] ──► 
 
 - **Sensor:** MPU6050 on Arduino hardware I2C (SDA/SCL); freefall thresholds configured in hardware registers (`FF_THR` / `FF_DUR`) at boot.
 - **Interrupt:** MPU6050 INT → Arduino **D7** (PE6 / INT6), **active-low latched**, ISR on **FALLING**. **Do not wire INT to D3** — D3 is SCL (**INT0**). Firmware `INT_PIN_CFG = 0xA0`. V9 historically said active-high / INT0; that polarity **misses freefall**. GY-521-style breakouts that default INT to active-high must be reconfigured.
-- **Gate drive:** IRLZ44N **low-side** on Monster8 VIN− return (see [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) §2.7); TC4420 drives the gate from Arduino D12.
+- **Gate drive:** high-side switch on Monster8 VIN+, enabled by Arduino D12 (see [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md) §2.7). The part is not selected.
 
-**Sub-10 ms isolation loop:**
+**Freefall path:**
 
-1. Freefall detected → MPU6050 INT pin goes **low** (latched) immediately.
+1. The MPU free-fall counter (`FF_THR` / `FF_DUR`, about 20 ms in firmware) qualifies the drop, then INT goes **low** and latches.
 2. INT6 **FALLING** ISR runs (bypasses keyboard polling).
-3. ISR pulls gate driver low, cutting VMOT in under 10 ms. The ISR does **not** transmit serial.
-4. The **main loop** sees the pending latch and transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL` (`braillatron_app.cpp`).
-5. Pi `keyboard_service` blocks **MotionGate** and issues Klipper **M112** via Moonraker when Klipper is enabled; Output Hub alerts the user.
+3. ISR drives D12 low. The ISR does **not** transmit serial. The main loop re-asserts that hold.
+4. The **main loop** transmits `BRAILLATRON_OP_SAFETY` with `BRAILLATRON_FAULT_FREEFALL` (`braillatron_app.cpp`).
+5. Pi `keyboard_service` blocks **MotionGate** and issues Klipper emergency stop when Klipper is enabled; Output Hub alerts the user. Comms loss and sensor failure take the same stop.
 
 ### 5.3 Dual-Bus TMC2209 UART Daisy Chain — RETIRED (Option A)
 
-**Canonical motion path:** MKS Monster8 V2 + Klipper over USB ([Skeleton Prototype V5.1 Build Guide](specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md)). The Pi-native UART4/UART9 daisy chain below is **not wired** on new builds.
+**Canonical motion path:** MKS Monster8 V2 + Klipper over USB ([Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md)). The Pi-native UART4/UART9 daisy chain below is **not wired** on new builds.
 
 ```
 [RETIRED]
@@ -280,9 +281,9 @@ Standard cells: left column dots 1–3, right column dots 4–6. Physical layout
 
 - **Row A (top):** NEMA14 punches for dots 1, 3, 5 (slots 2, 4, 6).
 - **Row B (bottom):** NEMA14 punches for dots 2, 4, 6 (slots 3, 5, 7).
-- **Spatial offset:** 2.5 mm along the X-axis (carriage path).
+- **Spatial offset:** 2.5 mm along the X-axis (carriage path). `EmbossScheduler` uses that fixed pitch. It does not add crank dwell.
 
-The motion controller must not fire all punches simultaneously. Row A fires as the head crosses the target column; Row B data is buffered and fired after a velocity-derived delay equal to the time to travel 2.5 mm. Module: `emboss_scheduler.cpp`. Slot map, pin names, and `run_current` live **only** in `printer.cfg`.
+The motion controller must not fire all punches simultaneously. Row A fires at the current travel-log position; Row B is buffered and fired 2.5 mm further along +X. Module: `emboss_scheduler.cpp`. Slot map, pin names, and `run_current` live **only** in `printer.cfg`. Punch stroke in millimetres is still a placeholder (`emboss_stroke_mm=2.0` on `rotation_distance` 40).
 
 ### 5.5 Stepper Drivers, Homing & Paper Sensing
 
@@ -297,7 +298,7 @@ The motion controller must not fire all punches simultaneously. Row A fires as t
 | Heavy stepper EMI | Audio instability, SoC noise | Digital I2S audio (MAX98357A); local 470 µF + 0.1 µF on amp VDD/GND |
 | RK3566 pin limits | Cannot wire 8 independent driver UARTs | **MKS Monster8 V2 + Klipper over USB** — Pi issues motion via Moonraker, not Pi UART (§5.3) |
 | Sudden power loss | eMMC/SD corruption | Read-only root + tmpfs volatile mounts; atomic writes to `/data`; `braillatron-sync.timer` |
-| Drop during motion | Head / NEMA14 punch damage | MPU6050 hardware interrupt (D7/INT6, active-low) → sub-10 ms IRLZ44N cut **in the ISR**; SAFETY frame from the **main loop** |
+| Drop during motion | Head / NEMA14 punch damage | MPU6050 hardware interrupt (D7/INT6, active-low) → ISR drives D12 low; SAFETY frame from the **main loop**. Cut is high-side on VIN+ |
 | Driver thermal runaway | Fire / hardware damage | Production: unified heatsink + **required** 85 °C thermal fuse on motor rail. Skeleton V5.1 defers the fuse. |
 | Multi-key Braille chords | Ghost keys (legacy matrix) | **Direct-pin topology** — one GPIO per key, no matrix (§1.3) |
 
@@ -317,7 +318,7 @@ The motion controller must not fire all punches simultaneously. Row A fires as t
 Production images boot directly into Braillatron — no login prompt, no local shell. End users power on and interact through the ScreenReader (physical keyboard, TTS, refreshable braille, SPI display). Bootstrap applies this via `deploy/os/setup-appliance-mode.sh`:
 
 - **`braillatron.target`** starts at multi-user boot (systemd, not a login session).
-- **Local getty disabled** — an attached monitor does not show a login prompt.
+- **`getty@tty1` stays enabled** and launches the Braillatron UI instead of a login shell. Serial getty is masked.
 - **Root `/` read-only** — volatile paths (`/tmp`, `/var/log`, `/var/tmp`) on tmpfs; remount helpers at `/usr/local/sbin/braillatron-remount-rw` and `braillatron-remount-ro`.
 - **SSH enabled** — development and maintenance over the network only.
 
@@ -371,7 +372,7 @@ Production images use **DietPi ifupdown + wpa_supplicant** on **`wlan0`**, not N
 | **Quick Status** | Reads connected SSID from `wpa_cli -i wlan0 status` (`output_hub.cpp`) |
 | **connectd** | Network *apps* (YouTube, Weather, Gmail, …) — separate sidecar; requires IP connectivity but does not manage Wi‑Fi |
 
-Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so a late tty1 init does not wipe the framebuffer. HDMI UI chrome is **off** unless `hdmi_enabled=true` (default bench: remote display). See Pi SD Image guide **Wi‑Fi and network connectivity**.
+Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so a late tty1 init does not wipe the framebuffer. Shipped `display.conf` sets `hdmi_enabled=true`, so a connected HDMI monitor shows UI chrome. See Pi SD Image guide **Wi‑Fi and network connectivity**.
 
 > **Legacy:** `deploy/os/setup-networkmanager.sh` is retained for manual recovery only — do not run on current images.
 
@@ -385,9 +386,9 @@ Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so
 | Motion controller | MKS Monster8 V2 (Klipper MCU, USB to Pi) |
 | Co-processor | Arduino Micro (ATmega32U4, 5 V, native USB) |
 | PD input / charge | IP2368 USB-C PD charger, **parallel** on WAGO/star (not series with BMS) |
-| Battery | 4S LiPo (14.8 V) BMS with active balancing |
+| Battery | 4S1P Molicel P28A (14.8 V nominal) + 4S BMS with active balancing |
 | Logic power | TPS5430 synchronous buck (5 V) |
-| Safety interlock | IRLZ44N N-channel MOSFET (low-side on Monster8 VIN−) + TC4420 gate driver |
+| Safety interlock | High-side switch on Monster8 VIN+, Arduino D12 active-high enable. Part not selected |
 | Battery gas gauge | LTC2944 (I2C coulomb counter) |
 | Audio amp | MAX98357A I2S Class D mono (Rockchip I2S1 bypass) |
 | Internal speaker | 8 Ω 3 W enclosed capsule (foam-isolated) |
@@ -416,7 +417,7 @@ Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so
 | Embosser output channel | Implemented | `EmbosserBackend`, `motion_service.cpp` |
 | Deaf-blind menu parity | Implemented | `OutputHub::emit` policy |
 | App registry / Standalone-Inline | Implemented | `app_registry.cpp` |
-| Brailler + edit FSM | Implemented | `brailler_app.cpp`, `edit_session.cpp` |
+| Brailler + edit FSM | Partial — full-cell replace works; the three named modes are not selected by the UI | `brailler_app.cpp`, `edit_session.cpp` |
 | Document dictation (PTT → BRF) | Implemented | `brailler_app.cpp`, Settings toggle |
 | Coordinate memory | Implemented | `coordinate_state.cpp` |
 | Boot homing | Implemented | `homing_service.cpp` |
@@ -437,8 +438,8 @@ Appliance boot ordering keeps **`getty@tty1`** ahead of slow Wi‑Fi bring-up so
 | Podcasts | Implemented | `rss_backend.cpp`, `podcasts_app.cpp`, OPML import, shared mpv |
 | Internet Radio | Implemented | `radio_backend.cpp`, `radio_app.cpp`, ICY metadata, favorites |
 | connectd async IPC + global poll | Implemented | `connect_job_queue.cpp`, `connect_client.cpp`, `ui_app.cpp` |
-| Library / LocalSend | **Implemented** (EPUB/DAISY/Gutendex; BARD/Bookshare deferred) | `library_app.cpp`, `library_store.cpp`, `library_backend.cpp`, `localsend_app.cpp` |
-| Gmail | Implemented (needs device validation) | `gmail_app.cpp`, `gmail_backend.cpp`, OAuth device flow, BRF export to `documents/gmail/` |
+| Library / LocalSend | Library implemented (EPUB/DAISY/Gutendex; BARD/Bookshare deferred). LocalSend receive path exists and is not started by `braillatron.target` until the unit is enabled | `library_app.cpp`, `localsend_app.cpp` |
+| Gmail | OAuth inbox/read/send implemented (needs device validation). IMAP-linked accounts can read; SMTP send is not wired | `gmail_app.cpp`, `gmail_backend.cpp` |
 | Inter-processor protocol v1 | Implemented | `shared/protocol.h`, firmware + daemon parsers |
 | Telemetry JSON bridge | Implemented | `telemetry_bridge.cpp` |
 | 20% battery warning | Implemented | `telemetry_sentinel.cpp`, UI poll |

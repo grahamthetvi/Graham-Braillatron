@@ -3,6 +3,7 @@
 list-tests:
 	@printf '%-32s %-34s %s\n' 'TARGET' 'COVERAGE' 'DEPS'
 	@printf '%-32s %-34s %s\n' 'braillatron-motion-test' 'kinematics math' 'none'
+	@printf '%-32s %-34s %s\n' 'braillatron-moonraker-test' 'Moonraker endstop parser' 'none'
 	@printf '%-32s %-34s %s\n' 'braillatron-motion-gate-sync-test' 'motion gate / telemetry sync' 'none'
 	@printf '%-32s %-34s %s\n' 'braillatron-host-chord-test' 'evdev chord assembly' 'none'
 	@printf '%-32s %-34s %s\n' 'braillatron-wikipedia-test' 'Wikipedia HTTP client' 'none (stub network)'
@@ -20,8 +21,10 @@ list-tests:
 	@printf '%-32s %-34s %s\n' 'braillatron-podcasts-test' 'podcast RSS + mpv IPC' 'none (stub)'
 	@printf '%-32s %-34s %s\n' 'braillatron-radio-test' 'radio stream backend' 'none (stub)'
 	@printf '%-32s %-34s %s\n' 'braillatron-library-test' 'library document store' 'none'
+	@printf '%-32s %-34s %s\n' 'braillatron-brf-test' 'BRF codec and cable parser' 'none'
 	@printf '%-32s %-34s %s\n' 'braillatron-library-backend-test' 'library network backend' 'none (stub)'
 	@printf '%-32s %-34s %s\n' 'braillatron-worthwhile-test' 'Worthwhile Secret backend' 'none (stub)'
 	@printf '%-32s %-34s %s\n' 'braillatron-gmail-test' 'Gmail backend' 'none (stub)'
 	@printf '%-32s %-34s %s\n' 'braillatron-calculator-test' 'calculator app logic' 'none'
+	@printf '%-32s %-34s %s\n' 'braillatron-paper-separator-test' 'app-switch fresh page' 'none'
 	@printf '%-32s %-34s %s\n' 'braillatron-liblouis-test' 'braille translation bridge' 'liblouis (check-liblouis only)'

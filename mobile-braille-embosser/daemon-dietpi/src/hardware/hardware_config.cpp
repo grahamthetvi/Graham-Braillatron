@@ -70,6 +70,14 @@ HardwareConfig load_hardware_config(const std::string &path)
             config.telemetry_config = value;
         } else if (key == "klipper_config") {
             config.klipper_config = value;
+        } else if (key == "brf_cable_enabled") {
+            config.brf_cable_enabled = parse_bool(value);
+        } else if (key == "brf_cable_device") {
+            config.brf_cable_device = value;
+        } else if (key == "brf_cable_baud") {
+            config.brf_cable_baud = static_cast<uint32_t>(std::stoul(value));
+        } else if (key == "brf_cable_emboss") {
+            config.brf_cable_emboss = value;
         }
     }
 

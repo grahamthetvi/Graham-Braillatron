@@ -1,5 +1,8 @@
 #include "ui_app.h"
 
+#include "../documents/brf_cable.h"
+#include "../documents/brf_format.h"
+#include "../documents/library_store.h"
 #include "../keyboard/global_hooks.h"
 #include "../motion/klipper_config.h"
 #include "../motion_gate.h"
@@ -7,6 +10,9 @@
 
 #include <chrono>
 #include <iostream>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace braillatron::ui {
 
@@ -36,6 +42,7 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
                       braillatron::connect::default_connect_config().event_path)
     , timer_service_("/data/braillatron/timer/state.json")
     , keyboard_(keyboard_config_, &serial_link_)
+    , brf_cable_(hardware_.brf_cable_device, hardware_.brf_cable_baud, hardware_.arduino_device)
 {
     timer_service_.set_alert_handler([this](const std::string &message) {
         output_hub_.announce_message(message);
@@ -48,7 +55,7 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     // that KlipperMotionBridge installs on connect — no direct bridge call,
     // which would double-feed the paper.
     paper_separator_.set_feed_handler([this](int32_t delta) {
-        motion_service_.feed_lines(delta);
+        return motion_service_.feed_lines(delta);
     });
 
     ui_context_.output = &output_hub_;
@@ -85,6 +92,10 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     });
 
     keyboard_.set_braille_service(&braille_input_service_);
+    brf_cable_.set_enabled(hardware_.brf_cable_enabled);
+    hooks::set_brf_cable_key_handler([this](keyboard::ControlKey key, bool pressed) {
+        return on_brf_cable_key(key, pressed);
+    });
 
     motion_service_.reset_from_coordinate(coord_store_.state().x_microsteps,
                                           coord_store_.state().y_line_index);
@@ -162,6 +173,7 @@ void UiApp::start()
 void UiApp::stop()
 {
     running_ = false;
+    hooks::set_brf_cable_key_handler(nullptr);
     app_registry_.exit();
     brf_store_.save();
     coord_store_.save();
@@ -193,6 +205,7 @@ void UiApp::poll()
     }
 
     const uint64_t now = now_ms();
+    handle_brf_cable_jobs(now);
     keyboard_.poll();
     connect_client_.poll_events([this](const braillatron::connect::ConnectEvent &event) {
         output_hub_.on_connect_event(event);
@@ -274,6 +287,89 @@ void UiApp::send_telemetry_if_due(uint64_t now_ms)
     if (!serial_link_.send_telemetry(payload)) {
         serial_link_.close();
     }
+}
+
+void UiApp::handle_brf_cable_jobs(uint64_t now_ms)
+{
+    if (!pending_brf_.empty() && now_ms >= pending_brf_deadline_ms_) {
+        output_hub_.announce_message("Kept " + pending_brf_title_ + " in the library");
+        pending_brf_.clear();
+        pending_brf_title_.clear();
+    }
+
+    const std::vector<documents::BrfCableJob> jobs = brf_cable_.poll(now_ms);
+    for (const documents::BrfCableJob &job : jobs) {
+        if (!job.accepted || job.brf.empty()) {
+            output_hub_.announce_message("Cable data was not Braille");
+            continue;
+        }
+
+        documents::LibraryStore store(
+            documents::load_library_store_config("/etc/braillatron/library.conf"));
+        store.load();
+        const std::string filename = job.filename.empty() ? "cable.brf" : job.filename;
+        const std::optional<std::string> stored = store.import_brf_text(filename, job.brf);
+        std::string title = filename;
+        const size_t dot = title.rfind('.');
+        if (dot != std::string::npos && dot > 0) {
+            title = title.substr(0, dot);
+        }
+        if (title.empty()) {
+            title = "Braille file";
+        }
+
+        if (!stored.has_value()) {
+            output_hub_.announce_message("Could not store " + title);
+        }
+
+        const std::string mode = hardware_.brf_cable_emboss;
+        if (mode == "always") {
+            motion_service_.emboss_brf(job.brf);
+            output_hub_.announce_message("Embossing " + title);
+            pending_brf_.clear();
+            pending_brf_title_.clear();
+            continue;
+        }
+        if (mode != "ask") {
+            output_hub_.announce_message("Stored " + title + " in the library");
+            pending_brf_.clear();
+            pending_brf_title_.clear();
+            continue;
+        }
+
+        if (!pending_brf_.empty()) {
+            output_hub_.announce_message("Kept " + pending_brf_title_ + " in the library");
+        }
+        pending_brf_ = job.brf;
+        pending_brf_title_ = title;
+        pending_brf_deadline_ms_ = now_ms + 45000;
+        if (stored.has_value()) {
+            output_hub_.announce_message(
+                "Received " + title +
+                ". Stored in the library. Enter embosses it. Backspace keeps it.");
+        } else {
+            output_hub_.announce_message("Received " + title + ". Enter embosses it. Backspace dismisses it.");
+        }
+    }
+}
+
+bool UiApp::on_brf_cable_key(keyboard::ControlKey key, bool pressed)
+{
+    if (!pressed || pending_brf_.empty()) {
+        return false;
+    }
+    if (key != keyboard::ControlKey::Enter && key != keyboard::ControlKey::Backspace) {
+        return false;
+    }
+    if (key == keyboard::ControlKey::Enter) {
+        motion_service_.emboss_brf(pending_brf_);
+        output_hub_.announce_message("Embossing " + pending_brf_title_);
+    } else {
+        output_hub_.announce_message("Kept " + pending_brf_title_ + " in the library");
+    }
+    pending_brf_.clear();
+    pending_brf_title_.clear();
+    return true;
 }
 
 void UiApp::handle_activate(size_t index, const std::string &label)

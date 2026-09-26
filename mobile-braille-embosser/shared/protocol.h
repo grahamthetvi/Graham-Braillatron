@@ -149,7 +149,8 @@ typedef struct __attribute__((packed)) {
  * WATCHDOG_TIMEOUT (comms gap uses COMMS_LOSS) or THERMAL (no thermal sensor).
  * Pi never sends SAFETY; recover is CLEAR_FAULT (0x07), not a Pi SAFETY frame.
  *
- * FREEFALL is LATCHED (severity 3) until the Pi sends BRAILLATRON_OP_CLEAR_FAULT.
+ * FREEFALL and COMMS_LOSS stay latched until the Pi sends
+ * BRAILLATRON_OP_CLEAR_FAULT. A resumed heartbeat does not restore the rail.
  * MPU6050 INT is Arduino D7 / PE6 / INT6, active-low, FALLING. Do not wire INT
  * to D3 / INT0 — that pin is I2C SCL.
  */

@@ -7,10 +7,8 @@ namespace braillatron::kinematics {
 
 EmbossScheduler::EmbossScheduler(KinematicsConfig config, TravelLog &travel_log,
                                    RowStrikeHandler row_a_handler, RowStrikeHandler row_b_handler)
-    : config_(std::move(config))
-    , travel_log_(travel_log)
-    , linkage_(config_)
-    , delay_line_(config_.spatial_delay_line_capacity)
+    : travel_log_(travel_log)
+    , delay_line_(config.spatial_delay_line_capacity)
     , row_a_handler_(std::move(row_a_handler))
     , row_b_handler_(std::move(row_b_handler))
 {
@@ -63,7 +61,9 @@ void EmbossScheduler::set_row_handlers(RowStrikeHandler row_a_handler,
 
 uint32_t EmbossScheduler::row_b_deferral_microsteps() const
 {
-    return MICROSTEPS_ROW_B_OFFSET + linkage_.tdc_dwell_microsteps();
+    /* Fixed 2.5 mm column pitch. Crank radius in kinematics.conf is not
+     * applied here; that model was shifting Row B before the linkage exists. */
+    return MICROSTEPS_ROW_B_OFFSET;
 }
 
 void EmbossScheduler::schedule_row_b(int64_t row_a_strike_microsteps, uint8_t row_b_mask)

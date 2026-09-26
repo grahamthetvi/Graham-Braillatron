@@ -480,10 +480,8 @@ void KeyboardService::handle_chord(uint8_t dot_mask)
 
 void KeyboardService::handle_safety(const braillatron_safety_broadcast_t &payload)
 {
+    /* Firmware never emits FAULT_NONE. Do not treat it as a rail clear. */
     if (payload.fault_code == BRAILLATRON_FAULT_NONE) {
-        MotionGate::unblock();
-        last_announced_fault_ = 0;
-        last_announced_severity_ = 0;
         return;
     }
 
@@ -507,6 +505,10 @@ void KeyboardService::handle_safety(const braillatron_safety_broadcast_t &payloa
 
 void KeyboardService::handle_control_edge(const ControlEdge &edge)
 {
+    if (hooks::handle_brf_cable_key(edge.key, edge.pressed)) {
+        return;
+    }
+
     const bool menu_open = hooks::menu_overlay_open();
 
     // Any non-Speech key press abandons an in-progress dictation take.

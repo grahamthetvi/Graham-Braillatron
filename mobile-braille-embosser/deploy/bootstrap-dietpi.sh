@@ -30,7 +30,10 @@ if ! grep -q 'rk3566-i2s1-overlay' /boot/dietpiEnv.txt 2>/dev/null; then
   fi
 fi
 
-echo "Configuring I2C1 overlay (LTC2944, DRV2605L)..."
+# Header pins 3 and 5 are RK3566 I2C2 (SDA2/SCL2). `i2c1` is the overlay
+# name this script has been appending; it may not mux those pins. Confirm
+# with i2cdetect before trusting /dev/i2c-1. See specs/Hardware Bring-Up To-Do.md.
+echo "Configuring I2C overlay (LTC2944, DRV2605L)..."
 if ! grep -q 'i2c1' /boot/dietpiEnv.txt 2>/dev/null; then
   if grep -q '^overlays=' /boot/dietpiEnv.txt 2>/dev/null; then
     sed -i 's/^overlays=.*/& i2c1/' /boot/dietpiEnv.txt

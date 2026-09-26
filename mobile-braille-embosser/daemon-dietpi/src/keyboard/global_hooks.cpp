@@ -20,6 +20,7 @@ ui::AppRegistry *g_app_registry = nullptr;
 keyboard::KeyboardService *g_keyboard_service = nullptr;
 std::function<void()> g_klipper_emergency_stop;
 std::function<bool()> g_recover_motion_gate;
+std::function<bool(keyboard::ControlKey key, bool pressed)> g_brf_cable_key;
 platform::SerialLink *g_serial_link = nullptr;
 
 } // namespace
@@ -129,7 +130,9 @@ void on_menu_back()
 
 void on_safety_broadcast(uint8_t fault_code, uint8_t severity, uint16_t detail)
 {
-    if (fault_code == BRAILLATRON_FAULT_FREEFALL && g_klipper_emergency_stop) {
+    /* Freefall, comms loss, and sensor failure all mean the rail is cut
+     * while Klipper may still be inside a move. Stop the MCU too. */
+    if (severity >= BRAILLATRON_SEVERITY_CRITICAL && g_klipper_emergency_stop) {
         g_klipper_emergency_stop();
     }
 
@@ -151,6 +154,19 @@ void set_serial_link(platform::SerialLink *link)
 void set_recover_motion_gate(std::function<bool()> handler)
 {
     g_recover_motion_gate = std::move(handler);
+}
+
+void set_brf_cable_key_handler(std::function<bool(keyboard::ControlKey, bool)> handler)
+{
+    g_brf_cable_key = std::move(handler);
+}
+
+bool handle_brf_cable_key(keyboard::ControlKey key, bool pressed)
+{
+    if (!g_brf_cable_key) {
+        return false;
+    }
+    return g_brf_cable_key(key, pressed);
 }
 
 bool recover_motion_gate()
