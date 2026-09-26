@@ -225,8 +225,11 @@ void AppRegistry::exit()
 
 bool AppRegistry::switch_app(const std::string &id)
 {
-    if (ctx_.paper_sep != nullptr) {
-        ctx_.paper_sep->separate_to_fresh_page();
+    if (ctx_.paper_sep != nullptr && !ctx_.paper_sep->separate_to_fresh_page()) {
+        if (ctx_.output != nullptr) {
+            ctx_.output->announce_message("Could not reach a fresh page");
+        }
+        return false;
     }
     return enter(id);
 }
@@ -412,8 +415,7 @@ std::vector<MenuItem> AppRegistry::build_launcher_menu()
             {},
             [this, app_id](MenuOverlay &mo) {
                 (void)mo;
-                switch_app(app_id);
-                if (ctx_.output != nullptr) {
+                if (switch_app(app_id) && ctx_.output != nullptr) {
                     ctx_.output->menu_overlay().close();
                 }
             },

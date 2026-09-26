@@ -48,7 +48,7 @@ UiApp::UiApp(hardware::HardwareConfig hardware,
     // that KlipperMotionBridge installs on connect — no direct bridge call,
     // which would double-feed the paper.
     paper_separator_.set_feed_handler([this](int32_t delta) {
-        motion_service_.feed_lines(delta);
+        return motion_service_.feed_lines(delta);
     });
 
     ui_context_.output = &output_hub_;

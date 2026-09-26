@@ -42,7 +42,7 @@ MOTION_OBJS := $(call module_objs,src/motion,moonraker_self_test.cpp)
 HAPTICS_OBJS := $(call module_objs,src/haptics,)
 
 DOCUMENT_OBJS := \
-	$(call module_objs,src/documents,liblouis_bridge.cpp liblouis_self_test.cpp dictionary_self_test.cpp spelling_self_test.cpp contacts_self_test.cpp library_self_test.cpp) \
+	$(call module_objs,src/documents,liblouis_bridge.cpp liblouis_self_test.cpp dictionary_self_test.cpp spelling_self_test.cpp contacts_self_test.cpp library_self_test.cpp paper_separator_self_test.cpp) \
 	$(LIBLOUIS_BRIDGE_OBJ)
 
 APP_OBJS := $(call module_objs,src/ui/apps,calculator_self_test.cpp)
@@ -256,7 +256,11 @@ GMAIL_TEST_OBJS := \
 CALCULATOR_TEST_OBJS := \
 	src/ui/apps/calculator_self_test.o
 
-ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(MOONRAKER_TEST_OBJS) $(MOTION_GATE_SYNC_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(REMOTE_DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(WORTHWHILE_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CALCULATOR_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS) $(DISPLAYD_OBJS))
+PAPER_SEPARATOR_TEST_OBJS := \
+	src/documents/paper_separator.o \
+	src/documents/paper_separator_self_test.o
+
+ALL_OBJS := $(sort $(UI_OBJS) $(UI_TEST_OBJS) $(MOTION_TEST_OBJS) $(MOONRAKER_TEST_OBJS) $(MOTION_GATE_SYNC_TEST_OBJS) $(HOST_CHORD_TEST_OBJS) $(WIKIPEDIA_TEST_OBJS) $(AUDIO_OUTPUT_TEST_OBJS) $(DISPLAY_TEST_OBJS) $(REMOTE_DISPLAY_TEST_OBJS) $(LIBLOUIS_TEST_OBJS) $(TIMER_TEST_OBJS) $(DICTIONARY_TEST_OBJS) $(SPELLING_TEST_OBJS) $(CONTACTS_TEST_OBJS) $(MUSIC_TEST_OBJS) $(WEATHER_TEST_OBJS) $(PODCASTS_TEST_OBJS) $(RADIO_TEST_OBJS) $(LIBRARY_TEST_OBJS) $(LIBRARY_BACKEND_TEST_OBJS) $(WORTHWHILE_TEST_OBJS) $(GMAIL_TEST_OBJS) $(CALCULATOR_TEST_OBJS) $(PAPER_SEPARATOR_TEST_OBJS) $(CONNECT_TEST_OBJS) $(TELEMETRY_OBJS) $(CONNECTD_OBJS) $(DISPLAYD_OBJS))
 
 CHECK_TEST_BINS := \
 	braillatron-motion-test \
@@ -281,7 +285,8 @@ CHECK_TEST_BINS := \
 	braillatron-library-backend-test \
 	braillatron-worthwhile-test \
 	braillatron-gmail-test \
-	braillatron-calculator-test
+	braillatron-calculator-test \
+	braillatron-paper-separator-test
 
 ALL_BINS := \
 	braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-moonraker-test braillatron-motion-gate-sync-test \
@@ -291,5 +296,6 @@ ALL_BINS := \
 	braillatron-contacts-test braillatron-music-test braillatron-weather-test \
 	braillatron-podcasts-test braillatron-radio-test braillatron-library-test \
 	braillatron-library-backend-test braillatron-worthwhile-test braillatron-gmail-test \
-	braillatron-calculator-test braillatron-connect-test braillatron-sentinel \
+	braillatron-calculator-test braillatron-paper-separator-test \
+	braillatron-connect-test braillatron-sentinel \
 	braillatron-connectd braillatron-displayd

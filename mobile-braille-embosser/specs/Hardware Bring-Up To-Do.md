@@ -45,7 +45,7 @@ Software cannot know these. Punches stay backed off the paper until the numbers 
 
 - [ ] After any rail cut, re-home with `G28 Y` only and jog the carriage to a mark before embossing. Recovery sends `CLEAR_FAULT` and Klipper `firmware_restart`, which runs `SET_KINEMATIC_POSITION` and marks X, Y, and Z homed at 0. There is no carriage home sensor. `CLEAR_FAULT` has no acknowledgement: the Pi unblocks motion when the serial write succeeds, even if the Arduino kept D12 off.
 - [ ] The first strike of a session punches where the carriage already is. A restored `coords.json` X is not a measured position after power loss.
-- [ ] App-switch page separate always aims at 33 lines. It does not keep the distance it just traveled, and Y cannot move below 0 immediately after homing, so the reverse pass can fail while the line index still changes.
+- [ ] Confirm paper-edge polarity on X-STOP before relying on an app switch. Software refuses the switch unless the sensor trips, then feeds a fixed 33 lines and does not keep the reverse distance. A failed feed leaves the paper index unchanged. Right after homing, Y is at 0, so the reverse move is rejected and the switch stays on the current app until the sheet can move back to the edge. A bench with no Klipper connection has no sensor and still does only the forward 33-line feed.
 - [ ] Dot 1’s plug is Monster8 slot 2 (silkscreen Z). Slots 3–7 are dots 2–6. Do not put a motor on EXP1; that header is the dummy cartesian Z.
 
 ## 5. Mechanical parts this repository does not specify

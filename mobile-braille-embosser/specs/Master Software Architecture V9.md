@@ -144,7 +144,7 @@ Module: `homing_service.cpp` in `braillatron-sentinel`; status at `/run/braillat
 
 ### 3.4 App Switching (Forward Feed)
 
-When switching Standalone apps: feed to a **fresh page (33 lines)** on 100 lb cardstock (0.5 in perf spacing). `paper_separator.cpp` uses that fixed line count. It does not keep the distance measured on the way back to the paper edge. See [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md).
+When switching Standalone apps: feed to a **fresh page (33 lines)** on 100 lb cardstock (0.5 in perf spacing). With the paper-edge sensor installed, `paper_separator.cpp` reverses until that sensor trips (200-line cap), then feeds the fixed 33 lines. A rejected feed, or an edge that never appears, skips the forward feed and `switch_app` stays on the current app. The reverse distance is not stored. With no sensor (dev bench, Klipper not connected) only the forward 33-line feed runs. Edge polarity is still a bench check; see [Hardware Bring-Up To-Do](Hardware%20Bring-Up%20To-Do.md).
 
 ---
 
