@@ -35,6 +35,13 @@ void emboss_spider_init(emboss_spider *spider, emboss_pipeline *pipeline,
 void emboss_spider_rx(emboss_spider *spider, const uint8_t *data, size_t len, uint64_t now_ms);
 void emboss_spider_poll(emboss_spider *spider, uint64_t now_ms);
 
+/*
+ * Motor stall. Disarms and takes the same safety cut as a heartbeat gap:
+ * fault safety, motors off, and no later cells until clear-fault and a new
+ * heartbeat. Does not re-arm.
+ */
+void emboss_spider_stall(emboss_spider *spider);
+
 #ifdef __cplusplus
 }
 #endif

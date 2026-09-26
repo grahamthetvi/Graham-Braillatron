@@ -130,3 +130,19 @@ void emboss_spider_poll(emboss_spider *spider, uint64_t now_ms)
     emboss_pipeline_safety_cut(spider->pipeline);
     emit_status(spider);
 }
+
+void emboss_spider_stall(emboss_spider *spider)
+{
+    if (spider->pipeline == NULL) {
+        spider->armed = 0;
+        return;
+    }
+    spider->armed = 0;
+    if (emboss_pipeline_state(spider->pipeline) == BRAILLATRON_JOB_FAULT) {
+        emboss_pipeline_set_armed(spider->pipeline, 0);
+        emit_status(spider);
+        return;
+    }
+    emboss_pipeline_safety_cut(spider->pipeline);
+    emit_status(spider);
+}

@@ -16,8 +16,10 @@
  * A newline then travels one more offset, the same extra log as
  * MotionService::advance_line, so a Row B still inside that window fires
  * before the carriage returns to X = 0 and Y advances one line. With a
- * 6.0 mm cell and a 2.5 mm offset the queue is already empty here. Any
- * strike still pending past that window is dropped on the return. The Pi
+ * 6.0 mm cell and a 2.5 mm offset the queue is already empty here. When
+ * travel_x is set, that return is a real move of (0 - x_um); otherwise the
+ * position snaps and no callback runs. Any strike still pending past that
+ * window is dropped on the return. The Pi
  * leaves those entries in the delay line across reset_position(0); that
  * only matters when a fire position sits beyond the flush, which this
  * geometry does not produce.
@@ -103,21 +105,48 @@ static void enqueue_row_b(emboss_pipeline *pipeline, int32_t due_x_um, uint8_t m
     pipeline->pending_count++;
 }
 
-/* Advance +X and fire any Row B whose due position is on or before the target. */
+static void move_x(emboss_pipeline *pipeline, int32_t delta_um)
+{
+    if (delta_um == 0 || pipeline->motor.travel_x == NULL) {
+        return;
+    }
+    pipeline->motor.travel_x(pipeline->motor.user, delta_um);
+}
+
+/*
+ * Advance +X and fire any Row B whose due position is on or before the target.
+ * A NULL travel_x keeps today's jump: strikes still use absolute due X, and
+ * x_um is assigned only at the end. A callback gets each gap, including the
+ * remainder after the last due strike.
+ */
 static void travel_to(emboss_pipeline *pipeline, int32_t target_x_um)
 {
+    int segmented = pipeline->motor.travel_x != NULL;
+
     while (pipeline->pending_count > 0 &&
            pending_front(pipeline)->due_x_um <= target_x_um) {
         emboss_pending_row_b row = *pending_front(pipeline);
+
         pop_pending(pipeline);
+        if (segmented) {
+            move_x(pipeline, row.due_x_um - pipeline->x_um);
+            pipeline->x_um = row.due_x_um;
+            if (pipeline->state == BRAILLATRON_JOB_FAULT) {
+                return;
+            }
+        }
         do_strike(pipeline, row.mask, row.due_x_um);
         if (pipeline->state == BRAILLATRON_JOB_FAULT) {
             return;
         }
     }
-    if (pipeline->state != BRAILLATRON_JOB_FAULT) {
-        pipeline->x_um = target_x_um;
+    if (pipeline->state == BRAILLATRON_JOB_FAULT) {
+        return;
     }
+    if (segmented) {
+        move_x(pipeline, target_x_um - pipeline->x_um);
+    }
+    pipeline->x_um = target_x_um;
 }
 
 static void travel_by(emboss_pipeline *pipeline, int32_t delta_um)
@@ -129,9 +158,21 @@ static void travel_by(emboss_pipeline *pipeline, int32_t delta_um)
     travel_to(pipeline, pipeline->x_um + delta_um);
 }
 
+static int refuse_if_no_paper(emboss_pipeline *pipeline)
+{
+    if (!pipeline->paper_known || pipeline->paper_present) {
+        return 0;
+    }
+    enter_fault(pipeline, BRAILLATRON_PRINT_FAULT_PAPER);
+    return 1;
+}
+
 static void newline(emboss_pipeline *pipeline)
 {
     if (!pipeline->motors_enabled || pipeline->state == BRAILLATRON_JOB_FAULT) {
+        return;
+    }
+    if (refuse_if_no_paper(pipeline)) {
         return;
     }
     travel_by(pipeline, BRAILLATRON_ROW_B_OFFSET_UM);
@@ -140,7 +181,11 @@ static void newline(emboss_pipeline *pipeline)
     }
     pipeline->pending_count = 0;
     pipeline->pending_head = 0;
+    move_x(pipeline, 0 - pipeline->x_um);
     pipeline->x_um = 0;
+    if (pipeline->state == BRAILLATRON_JOB_FAULT) {
+        return;
+    }
     if (pipeline->motor.feed_y != NULL) {
         pipeline->motor.feed_y(pipeline->motor.user, BRAILLATRON_LINE_ADVANCE_UM);
     }
@@ -163,6 +208,9 @@ static void form_feed(emboss_pipeline *pipeline)
     int32_t i;
 
     if (pipeline->state == BRAILLATRON_JOB_FAULT) {
+        return;
+    }
+    if (refuse_if_no_paper(pipeline)) {
         return;
     }
     if (pipeline->line_open) {
@@ -192,6 +240,9 @@ static void submit_cell(emboss_pipeline *pipeline, uint8_t mask)
     uint8_t row_b;
 
     if (!pipeline->motors_enabled || pipeline->state == BRAILLATRON_JOB_FAULT) {
+        return;
+    }
+    if (refuse_if_no_paper(pipeline)) {
         return;
     }
     row_a = (uint8_t)(mask & BRAILLATRON_ROW_A_DOT_MASK);
@@ -320,6 +371,12 @@ void emboss_pipeline_init(emboss_pipeline *pipeline, const emboss_motor *motor,
         pipeline->motor.set_enable(pipeline->motor.user, 1);
     }
     publish_status(pipeline);
+}
+
+void emboss_pipeline_set_paper_present(emboss_pipeline *pipeline, int present)
+{
+    pipeline->paper_known = 1;
+    pipeline->paper_present = present ? 1 : 0;
 }
 
 void emboss_pipeline_set_armed(emboss_pipeline *pipeline, int armed)

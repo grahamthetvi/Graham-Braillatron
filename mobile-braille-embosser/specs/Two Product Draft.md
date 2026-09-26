@@ -1,6 +1,6 @@
 # Two products, one roof — rough draft
 
-**Status:** brainstorm for the university build. This note maps the split. It does not replace [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md), [Master Architecture V4.9](Master%20Architecture%20V4.9.md), or the [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Those remain the personal-computer spec. The embosser motor section below is the working choice: a FYSETC Spider (or a comparable eight-socket board such as the BTT Octopus) plus one ESP32-S3. A WROOM-32 is not a second module. The UART those two chips share is host-tested in `shared/embosser_link.h`. There is still no step generator on the Spider and no ESP-IDF port.
+**Status:** brainstorm for the university build. This note maps the split. It does not replace [Master Software Architecture V9](Master%20Software%20Architecture%20V9.md), [Master Architecture V4.9](Master%20Architecture%20V4.9.md), or the [Skeleton Prototype V5.1 Build Guide](Skeleton%20Prototype%20V5.1%20Build%20Guide.md). Those remain the personal-computer spec. The embosser motor section below is the working choice: a FYSETC Spider (or a comparable eight-socket board such as the BTT Octopus) plus one ESP32-S3. A WROOM-32 is not a second module. The UART those two chips share is host-tested in `shared/embosser_link.h`. The socket step list is host-tested in `firmware-embosser/emboss_steps.h`. There is still no step ISR on the Spider and no ESP-IDF port.
 
 Commit `54a3621` replaced `firmware-arduino/firmware-arduino.ino` (the Arduino Micro entry point, `braillatron_setup` / `braillatron_loop`) with an ESP32-S3 BLE keyboard bridge: a phone writes Nordic UART, and the chip types those bytes as USB HID. That bridge is a third idea (a phone typing into a host). It now lives in `firmware-keyboard-bridge/`. It is not the embosser, and it is not the motor-rail interlock. `firmware-arduino/firmware-arduino.ino` again calls `braillatron_setup` / `braillatron_loop`. The safety sources under `firmware-arduino/src/` are unchanged.
 
@@ -172,7 +172,7 @@ mobile-braille-embosser/
 - The wire markers: `BRF1 `, form feed, 115200, idle gap 1500 ms.
 - The status line: `BRFSTAT <state>` or `BRFSTAT fault <reason>`.
 
-The Pi files keep their behavior. `motion_constants.h` static-asserts against `print_contract.h` so the two cannot drift. The embosser firmware includes the header. Its host pipeline schedules strikes; the step generator is still unwritten. `EmbossScheduler` is not ported line by line.
+The Pi files keep their behavior. `motion_constants.h` static-asserts against `print_contract.h` so the two cannot drift. The embosser firmware includes the header. Its host pipeline schedules strikes, and `emboss_steps` turns those moves into socket step counts. The ISR that clocks the pulses out is still unwritten. `EmbossScheduler` is not ported line by line.
 
 The personal computer can send a document to a standalone embosser by writing the same bytes `BrfCableParser` already accepts, to a USB serial port or to that TCP port. Local embossing stays `emboss_brf`. Two destinations, one file.
 
@@ -180,25 +180,26 @@ The personal computer can send a document to a standalone embosser by writing th
 
 ## First build slice
 
-Landed in the tree. The motor section is a FYSETC Spider plus one ESP32-S3. The UART between them is host-tested. There is no Spider step generator and no ESP-IDF port yet.
+Landed in the tree. The motor section is a FYSETC Spider plus one ESP32-S3. The UART between them is host-tested, and so is the socket step list. There is no Spider step ISR and no ESP-IDF port yet.
 
 1. `shared/print_contract.h` is the roof in C: micrometre geometry, row masks, logical names `emboss_1` … `emboss_6`, the 64-byte North American BRF table, job states, fault reasons, and the wire markers (`BRF1 `, form feed, 115200, 1500 ms). `braillatron_print_status_line` writes `BRFSTAT <state>` or `BRFSTAT fault <reason>`. `shared/print_contract.md` points at the header as the source of truth.
 2. The Pi daemon includes that header. `motion_constants.h` static-asserts the millimetre constants and row masks. `MotionService::emboss_brf` static-asserts the 33-line page. `brf_format.cpp` uses the shared table. `BrfCableParser::kIdleCompleteMs` stays 1500 and is checked against the contract. The embosser does not take the Pi's 2 MB job buffer. `make brf-test` still covers the codec.
 3. `firmware-embosser/` streams BRF on the host: optional `BRF1` header, Row A at the cell, Row B at that X plus 2.5 mm during the cell advance, newline flush, 33-line form feed, and `BRFSTAT` lines. Motor output is function pointers. `emboss_pipeline_safety_cut` drops enable and enters `fault safety`. `make check` at the repo root runs this test after the daemon check. `queued` is in the contract for a later spool; this pipeline does not emit it.
 4. DietPi, Klipper, and the Arduino Micro safety firmware stay on the personal-computer path. The ESP32-S3 BLE HID sketch is `firmware-keyboard-bridge/` and is not on the AVR CI job.
 5. `shared/embosser_link.h` is the UART between the ESP32-S3 and the Spider. Sync is `0xA6` (the co-processor frame stays `0xA5`). The ESP32 sends heartbeat, cell, newline, form feed, finish, and clear-fault. The Spider answers with job state and fault reason. `firmware-embosser/` tests both ends on the host: no heartbeat means no strike, a 1000 ms gap is `fault safety`, and clear-fault leaves the motors off until the next heartbeat. `make check` runs that test after the pipeline test.
+6. `firmware-embosser/emboss_steps.h` is the step list. Sockets are 0 = X, 1 = Y, 2–7 = `emboss_1` … `emboss_6`. Counts come from micrometres, rotation distance, full steps per rev, and microsteps. The host-test defaults are 40 mm/rev on X (a 6.0 mm cell is 480 microsteps, the 2.5 mm Row B offset is 200), 20 mm/rev on Y (a 10 mm line is 1600), and a 2.0 mm punch stroke out and back (160 steps each way at 40 mm/rev). Row A fires at the submit X, then the carriage moves to the Row B point, then the rest of the cell. A newline flushes 2.5 mm, returns the carriage to X = 0, and feeds Y. `emboss_pipeline_set_paper_present(0)` is `fault paper` with no steps; until that call, no sensor is fitted. `emboss_spider_stall` is the same motor cut as a missed heartbeat.
 
 ---
 
 ## Open questions
 
-The motor section is chosen: a FYSETC Spider for the steps, one ESP32-S3 for Wi-Fi and USB. A WROOM-32 is not on this board. The UART frame is host-tested. These are the decisions that still block the firmware port.
+The motor section is chosen: a FYSETC Spider for the steps, one ESP32-S3 for Wi-Fi and USB. A WROOM-32 is not on this board. The UART frame and the socket step list are host-tested. What still needs the board in hand is the UART header, the endstop pins, the high-side MOSFET pin, and the step pulse timing.
 
-1. **Spider UART.** Landed as a host test. The frame is `shared/embosser_link.h`: sync `0xA6`, CRC-16/CCITT-FALSE, heartbeat required before the Spider enables motors, 1000 ms gap cuts power, status opcode back. Still open is which Spider UART pins the cable uses, and the step ISR that consumes a cell.
-2. **Octopus as the alternate.** Use a BTT Octopus only when a Spider cannot be sourced. The firmware should talk to the driver sockets, not to one board’s silkscreen names, so the swap stays possible.
-3. **Wi-Fi bring-up on a headless printer.** Join a network with credentials sent over the USB serial link, or boot an access point for first setup?
-4. **Job size.** Stream line by line, or spool a whole `.brf` to a flash chip first so a dropped Wi-Fi session can resume?
-5. **Local keys.** Headless only, or a feed key and a cancel key on the embosser?
-6. **Sensors.** Same TCST2103 home and TCRT5000 paper-edge parts, on the Spider’s endstop inputs?
-7. **Battery and the drop switch.** Same pack as the personal computer, with the Spider’s STM32 owning the high-side enable?
-8. **Who writes the step generator.** The university team can own the Spider firmware. The frozen input is `print_contract.h`, `embosser_link.h`, and this note’s pipeline. The ESP32-S3 only receives the job and forwards cells. Step timing on the STM32 is what they settle on the bench.
+1. **Spider UART.** The frame is landed in `shared/embosser_link.h`. Still open: which Spider UART pins the cable uses. The step ISR that clocks a cell out is also still open; the counts it must emit are in `emboss_steps.h`.
+2. **Octopus as the alternate.** Decided. Use a BTT Octopus only when a Spider cannot be sourced. The step list addresses sockets 0–7, not one board’s silkscreen names.
+3. **Wi-Fi bring-up.** Decided. Credentials arrive over the USB serial link. An access point is not part of this slice. The join itself is still unwritten.
+4. **Job size.** Decided. Stream line by line. `queued` stays reserved for a later spool. There is no flash chip in this slice.
+5. **Local keys.** Decided. Headless. No feed key and no cancel key.
+6. **Sensors.** Decided: the same TCST2103 home and TCRT5000 paper-edge parts. `emboss_pipeline_set_paper_present(0)` faults the job and emits no steps. Until that call, no sensor is fitted and motion runs. Endstop pin numbers, and reverse-to-edge homing, stay open.
+7. **Battery and the drop switch.** Decided: the same pack, and the Spider’s STM32 owns the high-side enable. A 1000 ms heartbeat gap and `emboss_spider_stall` both cut motor power. The MOSFET pin stays open.
+8. **Who writes the step generator.** The university team owns the Spider step ISR. The frozen input is `print_contract.h`, `embosser_link.h`, and `emboss_steps.h`. Pulse timing is what they settle on the bench.

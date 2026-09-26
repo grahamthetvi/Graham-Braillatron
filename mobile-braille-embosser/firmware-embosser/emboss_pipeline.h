@@ -25,6 +25,9 @@ typedef struct emboss_pending_row_b {
 
 /*
  * strike is the row mask (Row A or Row B bits only) at absolute carriage X.
+ * travel_x delta is micrometres; positive moves +X, negative returns toward
+ * home. NULL leaves the carriage jump: strikes still report absolute X and
+ * x_um lands on the target, with no motion callback.
  * feed_y delta is micrometres; positive feeds paper forward.
  * set_enable: nonzero allows the motors to run. A NULL strike is allowed;
  * position is still tracked. Tests should pass a recorder.
@@ -32,6 +35,7 @@ typedef struct emboss_pending_row_b {
 typedef struct emboss_motor {
     void *user;
     void (*strike)(void *user, uint8_t dot_mask, int32_t x_um);
+    void (*travel_x)(void *user, int32_t delta_um);
     void (*feed_y)(void *user, int32_t delta_um);
     void (*set_enable)(void *user, int enabled);
 } emboss_motor;
@@ -43,6 +47,8 @@ typedef struct emboss_pipeline {
     braillatron_job_state state;
     braillatron_fault_reason fault;
     int motors_enabled;
+    int paper_known;
+    int paper_present;
     int32_t x_um;
     int32_t y_um;
     int32_t y_line;
@@ -73,6 +79,14 @@ void emboss_pipeline_finish(emboss_pipeline *pipeline);
  * The Spider stays disarmed until a heartbeat.
  */
 void emboss_pipeline_set_armed(emboss_pipeline *pipeline, int armed);
+
+/*
+ * Zero means the sensor sees no paper: the next cell, newline, or form feed
+ * faults with paper and does not move. Nonzero means paper is loaded.
+ * Until this is called, no sensor is fitted and motion runs as usual.
+ * Heartbeat and set_armed do not consult it.
+ */
+void emboss_pipeline_set_paper_present(emboss_pipeline *pipeline, int present);
 
 /* Drop cuts motor power. No further strikes until clear_fault. */
 void emboss_pipeline_safety_cut(emboss_pipeline *pipeline);
