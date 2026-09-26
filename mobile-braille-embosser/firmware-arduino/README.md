@@ -53,6 +53,8 @@ Set `arduino_device=` in [daemon-dietpi/config/hardware.conf](../daemon-dietpi/c
 
 - Production serial is USB CDC `Serial`. Do not wire a debug UART on D0/D1 as the Pi link.
 - MPU6050 INT is **D7 / PE6 / INT6**, active-low, latched, `FALLING`. Do not wire INT to D3 / INT0 (SCL).
-- The freefall **ISR only drops D12** (VMOT cut). It does **not** transmit serial. The main loop later sends `BRAILLATRON_OP_SAFETY` / `BRAILLATRON_FAULT_FREEFALL`.
-- After a freefall cut, D12/VMOT stays off until the Pi sends `BRAILLATRON_OP_CLEAR_FAULT` (`0x07`, zero payload). Firmware does not auto-clear.
+- D12 is active-high enable for a **high-side** switch on Monster8 VIN+. Do not put a low-side FET on VIN−; USB ground bypasses it. See the [V5.1 guide](../specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) §2.7 and the [bring-up to-do](../specs/Hardware%20Bring-Up%20To-Do.md).
+- Setup drives D12 low. The rail stays off until the first Pi heartbeat and a good MPU init.
+- The freefall **ISR only drops D12**. It does **not** transmit serial. The main loop later sends `BRAILLATRON_OP_SAFETY` / `BRAILLATRON_FAULT_FREEFALL` and keeps D12 low.
+- Freefall and comms-loss stay latched until the Pi sends `BRAILLATRON_OP_CLEAR_FAULT` (`0x07`, zero payload). A later heartbeat does not turn the rail back on.
 - Default `skeleton_v5` scans **12 keys**. Leave A5 open. A physical 13th Menu key is compile-time only (`BRAILLATRON_SCAN_MENU_KEY=1`).

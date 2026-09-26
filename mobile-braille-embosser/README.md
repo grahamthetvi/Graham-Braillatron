@@ -52,7 +52,7 @@ make display   # BRAILLATRON_DISPLAY=1 — ncurses UI chrome when stdout is a TT
 Other useful targets:
 
 ```bash
-make check                                              # build + run 22 host self-tests
+make check                                              # build + run 24 host self-tests
 make list-tests                                         # index of all self-test binaries
 make host-chord-test && ./braillatron-host-chord-test   # evdev chord commit logic, no keyboard
 make motion-test && ./braillatron-motion-test           # kinematics math only
@@ -416,6 +416,6 @@ Protocol definitions are shared with the Pi daemons in [shared/](shared/) — ed
 
 - **Pi deployment** — [Pi SD Image Software Build Guide](specs/Pi%20SD%20Image%20Software%20Build%20Guide.md)
 - **connectd bring-up** — [Connectivity Follow-Up Checklist](specs/Connectivity%20Follow-Up%20Checklist.md)
-- **Architecture** — [Master Software Architecture V9](specs/Master%20Software%20Architecture%20V9.md) (software). Wiring: [V5.1 Build Guide](specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) + `pins.h` + `printer.cfg`.
+- **Architecture** — [Master Software Architecture V9](specs/Master%20Software%20Architecture%20V9.md) (software). Wiring: [V5.1 Build Guide](specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) + `pins.h` + `printer.cfg`. Open bench work: [Hardware Bring-Up To-Do](specs/Hardware%20Bring-Up%20To-Do.md).
 - **Serial protocol** — [shared/protocol.md](shared/protocol.md)
 - **Firmware** — [firmware-arduino/README.md](firmware-arduino/README.md) (compile and flash with arduino-cli)

@@ -290,7 +290,8 @@ CHECK_TEST_BINS := \
 	braillatron-library-backend-test \
 	braillatron-worthwhile-test \
 	braillatron-gmail-test \
-	braillatron-calculator-test
+	braillatron-calculator-test \
+	braillatron-paper-separator-test
 
 ALL_BINS := \
 	braillatron-ui braillatron-ui-test braillatron-motion-test braillatron-moonraker-test braillatron-motion-gate-sync-test \
@@ -301,5 +302,6 @@ ALL_BINS := \
 	braillatron-podcasts-test braillatron-radio-test braillatron-library-test \
 	braillatron-brf-test \
 	braillatron-library-backend-test braillatron-worthwhile-test braillatron-gmail-test \
-	braillatron-calculator-test braillatron-connect-test braillatron-sentinel \
+	braillatron-calculator-test braillatron-paper-separator-test \
+	braillatron-connect-test braillatron-sentinel \
 	braillatron-connectd braillatron-displayd

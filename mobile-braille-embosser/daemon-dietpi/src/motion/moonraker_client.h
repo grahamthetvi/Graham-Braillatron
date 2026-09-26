@@ -13,6 +13,10 @@ struct EndstopState {
     bool query_ok = false;
 };
 
+/* Klipper query_endstops.last_query uses the strings "TRIGGERED" and "open".
+ * Older comments in this client assumed JSON booleans. Both forms count. */
+bool endstop_value_triggered(const std::string &response, const char *name);
+
 class MoonrakerClient {
 public:
     explicit MoonrakerClient(KlipperConfig config);

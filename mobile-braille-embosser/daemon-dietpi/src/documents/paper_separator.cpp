@@ -1,6 +1,15 @@
 #include "paper_separator.h"
 
+#include <iostream>
+
 namespace braillatron::documents {
+
+namespace {
+
+constexpr int32_t kFreshPageLines = 33;
+constexpr int32_t kMaxReverseLines = 200;
+
+} // namespace
 
 void PaperSeparator::set_feed_handler(FeedFn fn)
 {
@@ -12,24 +21,35 @@ void PaperSeparator::set_paper_edge_sensor(SensorFn fn)
     paper_edge_ = std::move(fn);
 }
 
-void PaperSeparator::separate_to_fresh_page()
+bool PaperSeparator::separate_to_fresh_page()
 {
     if (!feed_) {
-        return;
+        return false;
     }
 
-    int32_t reverse_steps = 0;
     if (paper_edge_) {
-        while (!paper_edge_() && reverse_steps > -200) {
-            feed_(-1);
-            --reverse_steps;
+        int32_t reversed = 0;
+        while (!paper_edge_() && reversed < kMaxReverseLines) {
+            if (!feed_(-1)) {
+                std::cerr << "[paper] reverse stopped before the paper edge\n";
+                return false;
+            }
+            ++reversed;
+        }
+        if (!paper_edge_()) {
+            std::cerr << "[paper] paper edge not reached within " << kMaxReverseLines
+                      << " lines; fresh-page feed skipped\n";
+            return false;
         }
     }
 
-    constexpr int32_t kFreshPageLines = 33;
     for (int32_t i = 0; i < kFreshPageLines; ++i) {
-        feed_(1);
+        if (!feed_(1)) {
+            std::cerr << "[paper] fresh-page feed stopped after " << i << " lines\n";
+            return false;
+        }
     }
+    return true;
 }
 
 } // namespace braillatron::documents

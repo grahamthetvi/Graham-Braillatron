@@ -1,6 +1,6 @@
 .PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test remote-display-test liblouis-test timer-test dictionary-test spelling-test contacts-test music-test library-test gmail-test calculator-test sentinel connectd displayd connect-test ui-test install a11y liblouis display motion-gate-sync-test weather-test podcasts-test radio-test worthwhile-test brf-test list-tests
 
-all: braillatron-ui braillatron-motion-test braillatron-moonraker-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-remote-display-test braillatron-calculator-test braillatron-sentinel braillatron-connectd braillatron-displayd braillatron-ui-test braillatron-connect-test
+all: braillatron-ui braillatron-motion-test braillatron-moonraker-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-remote-display-test braillatron-calculator-test braillatron-paper-separator-test braillatron-sentinel braillatron-connectd braillatron-displayd braillatron-ui-test braillatron-connect-test
 
 keyboard: braillatron-ui
 
@@ -130,6 +130,9 @@ braillatron-gmail-test: $(GMAIL_TEST_OBJS)
 
 braillatron-calculator-test: $(CALCULATOR_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(CALCULATOR_TEST_OBJS) -o $@
+
+braillatron-paper-separator-test: $(PAPER_SEPARATOR_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(PAPER_SEPARATOR_TEST_OBJS) -o $@
 
 # Dedicated object so liblouis-enabled targets never reuse stub liblouis_bridge.o.
 src/documents/liblouis_bridge_louis.o: src/documents/liblouis_bridge.cpp

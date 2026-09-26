@@ -480,10 +480,8 @@ void KeyboardService::handle_chord(uint8_t dot_mask)
 
 void KeyboardService::handle_safety(const braillatron_safety_broadcast_t &payload)
 {
+    /* Firmware never emits FAULT_NONE. Do not treat it as a rail clear. */
     if (payload.fault_code == BRAILLATRON_FAULT_NONE) {
-        MotionGate::unblock();
-        last_announced_fault_ = 0;
-        last_announced_severity_ = 0;
         return;
     }
 
