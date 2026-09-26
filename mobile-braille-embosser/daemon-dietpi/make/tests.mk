@@ -21,6 +21,7 @@ list-tests:
 	@printf '%-32s %-34s %s\n' 'braillatron-podcasts-test' 'podcast RSS + mpv IPC' 'none (stub)'
 	@printf '%-32s %-34s %s\n' 'braillatron-radio-test' 'radio stream backend' 'none (stub)'
 	@printf '%-32s %-34s %s\n' 'braillatron-library-test' 'library document store' 'none'
+	@printf '%-32s %-34s %s\n' 'braillatron-brf-test' 'BRF codec and cable parser' 'none'
 	@printf '%-32s %-34s %s\n' 'braillatron-library-backend-test' 'library network backend' 'none (stub)'
 	@printf '%-32s %-34s %s\n' 'braillatron-worthwhile-test' 'Worthwhile Secret backend' 'none (stub)'
 	@printf '%-32s %-34s %s\n' 'braillatron-gmail-test' 'Gmail backend' 'none (stub)'

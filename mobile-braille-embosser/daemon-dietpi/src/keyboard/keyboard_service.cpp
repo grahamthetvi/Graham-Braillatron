@@ -505,6 +505,10 @@ void KeyboardService::handle_safety(const braillatron_safety_broadcast_t &payloa
 
 void KeyboardService::handle_control_edge(const ControlEdge &edge)
 {
+    if (hooks::handle_brf_cable_key(edge.key, edge.pressed)) {
+        return;
+    }
+
     const bool menu_open = hooks::menu_overlay_open();
 
     // Any non-Speech key press abandons an in-progress dictation take.

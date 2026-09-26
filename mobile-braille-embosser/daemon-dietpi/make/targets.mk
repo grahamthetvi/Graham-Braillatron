@@ -1,4 +1,4 @@
-.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test remote-display-test liblouis-test timer-test dictionary-test spelling-test contacts-test music-test library-test gmail-test calculator-test paper-separator-test sentinel connectd displayd connect-test ui-test install a11y liblouis display motion-gate-sync-test weather-test podcasts-test radio-test worthwhile-test list-tests
+.PHONY: all clean check check-liblouis keyboard ui motion-test host-chord-test wikipedia-test audio-output-test display-test remote-display-test liblouis-test timer-test dictionary-test spelling-test contacts-test music-test library-test gmail-test calculator-test paper-separator-test sentinel connectd displayd connect-test ui-test install a11y liblouis display motion-gate-sync-test weather-test podcasts-test radio-test worthwhile-test brf-test list-tests
 
 all: braillatron-ui braillatron-motion-test braillatron-moonraker-test braillatron-motion-gate-sync-test braillatron-host-chord-test braillatron-wikipedia-test braillatron-audio-output-test braillatron-display-test braillatron-remote-display-test braillatron-calculator-test braillatron-paper-separator-test braillatron-sentinel braillatron-connectd braillatron-displayd braillatron-ui-test braillatron-connect-test
 
@@ -59,6 +59,8 @@ radio-test: braillatron-radio-test
 
 library-test: braillatron-library-test braillatron-library-backend-test braillatron-worthwhile-test
 
+brf-test: braillatron-brf-test
+
 worthwhile-test: braillatron-worthwhile-test
 
 gmail-test: braillatron-gmail-test
@@ -67,7 +69,7 @@ calculator-test: braillatron-calculator-test
 
 paper-separator-test: braillatron-paper-separator-test
 
-check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-library-backend-test braillatron-worthwhile-test braillatron-gmail-test braillatron-calculator-test braillatron-paper-separator-test
+check: all braillatron-timer-test braillatron-dictionary-test braillatron-spelling-test braillatron-contacts-test braillatron-music-test braillatron-weather-test braillatron-podcasts-test braillatron-radio-test braillatron-library-test braillatron-brf-test braillatron-library-backend-test braillatron-worthwhile-test braillatron-gmail-test braillatron-calculator-test braillatron-paper-separator-test
 	$(foreach t,$(CHECK_TEST_BINS),./$(t)$(newline))
 
 check-liblouis:
@@ -115,6 +117,9 @@ braillatron-radio-test: $(RADIO_TEST_OBJS)
 
 braillatron-library-test: $(LIBRARY_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(LIBRARY_TEST_OBJS) $(LDFLAGS) -o $@
+
+braillatron-brf-test: $(BRF_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(BRF_TEST_OBJS) $(LDFLAGS) -o $@
 
 braillatron-library-backend-test: $(LIBRARY_BACKEND_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(LIBRARY_BACKEND_TEST_OBJS) $(LDFLAGS) -o $@

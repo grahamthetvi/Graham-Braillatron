@@ -59,6 +59,16 @@ public:
     std::optional<std::string> translate_backward_cells(
         const std::vector<uint8_t> &dot_masks) const;
 
+    /**
+     * Back-translate a North American BRF buffer to print, line by line.
+     * Uses `en-us-brf.dis` ahead of the literary table, matching Graham Braille
+     * Editor's `backTranslateTextPreservingNewlines`, then restores a UEB
+     * opening quote that liblouis emits as "his".
+     * The device's braille grade selects Grade 1 or Grade 2. A Grade 2 file
+     * read with Grade 1 will not expand contractions.
+     */
+    std::optional<std::string> back_translate_brf(const std::string &brf) const;
+
 private:
     const char *table_list() const;
     void refresh_table_list();

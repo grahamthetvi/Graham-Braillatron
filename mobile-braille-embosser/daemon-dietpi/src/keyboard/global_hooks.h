@@ -48,6 +48,10 @@ void set_serial_link(platform::SerialLink *link);
 void set_recover_motion_gate(std::function<bool()> handler);
 bool recover_motion_gate();
 
+/** When a BRF cable job is waiting, Enter/Backspace are handled here. Return true if consumed. */
+void set_brf_cable_key_handler(std::function<bool(keyboard::ControlKey key, bool pressed)> handler);
+bool handle_brf_cable_key(keyboard::ControlKey key, bool pressed);
+
 bool standalone_app_active();
 bool inline_app_active();
 std::string active_standalone_app_id();
