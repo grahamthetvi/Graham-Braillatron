@@ -1314,7 +1314,15 @@ void OutputHub::persist_ui_config()
     if (ui_config_path_.empty()) {
         return;
     }
-    save_ui_config(ui_config_path_, ui_config_);
+    try {
+        const std::filesystem::path parent = std::filesystem::path(ui_config_path_).parent_path();
+        if (!parent.empty()) {
+            std::filesystem::create_directories(parent);
+        }
+        save_ui_config(ui_config_path_, ui_config_);
+    } catch (const std::exception &ex) {
+        std::cerr << "[ui] could not save " << ui_config_path_ << ": " << ex.what() << "\n";
+    }
 }
 
 void OutputHub::toggle_bool(bool &field, const char *name)

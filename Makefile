@@ -4,9 +4,11 @@ DICTIONARY_DB := mobile-braille-embosser/deploy/data/dictionary/en.sqlite
 
 DAEMON_DIR := mobile-braille-embosser/daemon-dietpi
 FIRMWARE_DIR := mobile-braille-embosser/firmware-arduino
+EMBOSSER_FW_DIR := mobile-braille-embosser/firmware-embosser
 
 check:
 	$(MAKE) -C $(DAEMON_DIR) check
+	$(MAKE) -C $(EMBOSSER_FW_DIR) check
 
 check-liblouis:
 	$(MAKE) -C $(DAEMON_DIR) check-liblouis
@@ -25,6 +27,7 @@ install:
 
 clean:
 	$(MAKE) -C $(DAEMON_DIR) clean
+	$(MAKE) -C $(EMBOSSER_FW_DIR) clean
 
 dictionary-data:
 	@mkdir -p "$(dir $(DICTIONARY_DB))"

@@ -41,4 +41,8 @@ struct UiConfig {
 UiConfig load_ui_config(const std::string &path);
 void save_ui_config(const std::string &path, const UiConfig &config);
 
+// Appliance images keep / read-only. Mutable UI settings live under /data when
+// that directory exists; otherwise the shipped path is used.
+std::string persistent_ui_config_path(const std::string &shipped_path);
+
 } // namespace braillatron::ui

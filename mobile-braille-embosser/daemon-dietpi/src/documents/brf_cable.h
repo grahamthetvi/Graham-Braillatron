@@ -1,5 +1,7 @@
 #pragma once
 
+#include "print_contract.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -15,15 +17,16 @@ struct BrfCableJob {
 
 /**
  * Byte parser for a computer plugged into a free Pi USB-A port through a
- * USB-serial cable (115200 8N1). A job is North American BRF. It ends on a
- * form feed, which is what Graham Braille Editor's generic text embosser
- * writes, or after a quiet gap when the sender does not send a form feed.
+ * USB-serial cable (BRAILLATRON_BRF_BAUD, 8N1). A job is North American
+ * BRF. It ends on a form feed, which is what Graham Braille Editor's generic
+ * text embosser writes, or after a quiet gap when the sender does not send
+ * a form feed.
  *
  * Optional first line: `BRF1 filename.brf`
  */
 class BrfCableParser {
 public:
-    static constexpr uint64_t kIdleCompleteMs = 1500;
+    static constexpr uint64_t kIdleCompleteMs = BRAILLATRON_BRF_IDLE_COMPLETE_MS;
     static constexpr size_t kMaxBytes = 2u * 1024u * 1024u;
 
     std::optional<BrfCableJob> feed(const uint8_t *data, size_t len, uint64_t now_ms);
@@ -57,7 +60,7 @@ private:
     std::string resolve_device() const;
 
     std::string device_spec_;
-    uint32_t baud_rate_ = 115200;
+    uint32_t baud_rate_ = BRAILLATRON_BRF_BAUD;
     std::string avoid_device_;
     bool enabled_ = true;
     int fd_ = -1;
@@ -66,5 +69,10 @@ private:
     bool logged_open_ = false;
     BrfCableParser parser_;
 };
+
+static_assert(BrfCableParser::kIdleCompleteMs == BRAILLATRON_BRF_IDLE_COMPLETE_MS,
+              "cable idle gap must match the print contract");
+static_assert(BRAILLATRON_BRF_BAUD == 115200,
+              "print-contract baud must stay 115200");
 
 } // namespace braillatron::documents

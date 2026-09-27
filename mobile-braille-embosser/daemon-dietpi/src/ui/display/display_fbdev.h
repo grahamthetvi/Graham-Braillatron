@@ -28,6 +28,8 @@ public:
 private:
     bool map_framebuffer();
     void unmap_framebuffer();
+    void claim_console();
+    void release_console();
     void blit_to_fb();
 
     DisplayConfig config_;
@@ -35,6 +37,7 @@ private:
     std::unique_ptr<ChromeRenderer> chrome_renderer_;
     ChromeRasterizer rasterizer_;
     int fb_fd_ = -1;
+    int tty_fd_ = -1;
     void *mapped_ = nullptr;
     size_t mapped_size_ = 0;
     uint16_t fb_width_ = 0;
