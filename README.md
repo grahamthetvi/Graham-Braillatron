@@ -11,8 +11,10 @@ Graham Braillatron/
 ├── mobile-braille-embosser/
 │   ├── README.md              Developer setup (bench keyboard, build, run)
 │   ├── daemon-dietpi/         Pi UI, motion, keyboard, and connect daemons
-│   ├── firmware-arduino/      Arduino Micro co-processor firmware
-│   ├── shared/                Serial protocol (single source of truth)
+│   ├── firmware-arduino/      Arduino Micro safety co-processor
+│   ├── firmware-embosser/     Host-testable BRF pipeline, link, and socket step list
+│   ├── firmware-keyboard-bridge/  ESP32-S3 phone-to-USB-HID bridge (not the embosser)
+│   ├── shared/                Serial protocol and print contract
 │   ├── deploy/                DietPi bootstrap, systemd units, SD card prep
 │   └── specs/                 Architecture and Pi SD image build guide
 └── LICENSE                    MIT
@@ -28,11 +30,15 @@ Graham Braillatron/
 | Wi‑Fi and network setup (Pi) | [Pi SD Image Guide — Wi‑Fi and network connectivity](mobile-braille-embosser/specs/Pi%20SD%20Image%20Software%20Build%20Guide.md#wi-fi-and-network-connectivity) |
 | connectd + app bring-up checklist | [Connectivity Follow-Up Checklist](mobile-braille-embosser/specs/Connectivity%20Follow-Up%20Checklist.md) |
 | Software architecture | [Master Software Architecture V9](mobile-braille-embosser/specs/Master%20Software%20Architecture%20V9.md) (apps/protocol/OS; interconnect is V5.1 + `pins.h` + `printer.cfg`) |
+| Two-product map (draft) | [Two Product Draft](mobile-braille-embosser/specs/Two%20Product%20Draft.md) — personal computer and cheaper BRF embosser, shared print contract |
 | Prototype wiring & BOM | [Skeleton Prototype V5.1 Build Guide](mobile-braille-embosser/specs/Skeleton%20Prototype%20V5.1%20Build%20Guide.md) |
 | Bench work still open | [Hardware Bring-Up To-Do](mobile-braille-embosser/specs/Hardware%20Bring-Up%20To-Do.md) |
 | Serial protocol | [shared/protocol.md](mobile-braille-embosser/shared/protocol.md) |
+| Print contract (geometry, BRF, status) | [shared/print_contract.md](mobile-braille-embosser/shared/print_contract.md) |
+| Embosser pipeline (`make check`) | [firmware-embosser/README.md](mobile-braille-embosser/firmware-embosser/README.md) |
+| Phone-to-USB-HID bridge | [firmware-keyboard-bridge/README.md](mobile-braille-embosser/firmware-keyboard-bridge/README.md) |
 | Arduino firmware build | [firmware-arduino/README.md](mobile-braille-embosser/firmware-arduino/README.md) |
 
 ## CI
 
-Push and pull requests run `make check` and `make check-liblouis` from the repository root (host self-tests) and compile the Arduino firmware with `arduino-cli`. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+Push and pull requests run `make check` and `make check-liblouis` from the repository root (daemon self-tests, then the embosser pipeline, link, and step-list tests) and compile the Arduino Micro firmware with `arduino-cli`. The phone-to-USB-HID bridge is not part of that AVR compile. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
