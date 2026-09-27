@@ -8,6 +8,7 @@
 
 #include <csignal>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -86,9 +87,15 @@ int main(int argc, char *argv[])
             braillatron::kinematics::load_kinematics_config(
                 resolve_config_path(base, "kinematics.conf"));
 
-        const std::string ui_config_path = resolve_config_path(base, "ui.conf");
+        const std::string shipped_ui_config_path = resolve_config_path(base, "ui.conf");
+        const std::string ui_config_path =
+            braillatron::ui::persistent_ui_config_path(shipped_ui_config_path);
+        std::error_code ui_config_ec;
+        const std::string ui_config_load_path =
+            std::filesystem::is_regular_file(ui_config_path, ui_config_ec) ? ui_config_path
+                                                                           : shipped_ui_config_path;
         const braillatron::ui::UiConfig ui_config =
-            braillatron::ui::load_ui_config(ui_config_path);
+            braillatron::ui::load_ui_config(ui_config_load_path);
         const braillatron::ui::DisplayConfig display_config =
             braillatron::ui::load_display_config(resolve_config_path(base, "display.conf"));
 

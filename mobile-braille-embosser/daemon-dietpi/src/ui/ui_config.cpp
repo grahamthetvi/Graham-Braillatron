@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -164,6 +165,16 @@ void save_ui_config(const std::string &path, const UiConfig &config)
     if (std::rename(tmp_path.c_str(), path.c_str()) != 0) {
         throw std::runtime_error("failed to rename ui config: " + tmp_path + " -> " + path);
     }
+}
+
+std::string persistent_ui_config_path(const std::string &shipped_path)
+{
+    const std::filesystem::path settings_dir = "/data/braillatron/settings";
+    std::error_code ec;
+    if (std::filesystem::is_directory(settings_dir, ec)) {
+        return (settings_dir / "ui.conf").string();
+    }
+    return shipped_path;
 }
 
 } // namespace braillatron::ui
